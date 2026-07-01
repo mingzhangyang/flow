@@ -65,3 +65,12 @@ test('保存 / 读取 Run（含事件日志）', async () => {
   await s.deleteRun(run.id);
   assert.equal(await s.loadRun(run.id), null);
 });
+
+test('保存 / 读取打卡日志', async () => {
+  const s = fresh();
+  assert.deepEqual(await s.loadCheckIns('example.medication'), []);
+
+  const log = [{ nodeId: 'morning', scheduledFor: 28_800_000, taken: true, at: 28_800_500 }];
+  await s.saveCheckIns('example.medication', log);
+  assert.deepEqual(await s.loadCheckIns('example.medication'), log);
+});

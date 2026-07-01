@@ -30,7 +30,7 @@ export default function App() {
       {active === null ? (
         <HomeScreen flows={FLOWS} onOpen={setActive} />
       ) : active.topology === 'scheduled' ? (
-        <ScheduleScreen flow={active} notifier={notifier} onExit={goHome} />
+        <ScheduleScreen flow={active} storage={storage} notifier={notifier} onExit={goHome} />
       ) : (
         <RunnerScreen flow={active} storage={storage} notifier={notifier} onExit={goHome} />
       )}

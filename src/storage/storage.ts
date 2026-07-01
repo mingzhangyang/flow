@@ -3,10 +3,12 @@
 
 import { type Flow, type Run } from '../domain/types';
 import { serializeFlow, deserializeFlow } from '../domain/serialize';
+import { type CheckIn } from '../runtime/adherence';
 import { type KVStore } from './kv';
 
 const FLOW = 'flow:';
 const RUN = 'run:';
+const CHECKINS = 'checkins:';
 
 export interface Storage {
   saveFlow(flow: Flow): Promise<void>;
@@ -22,6 +24,10 @@ export interface Storage {
   loadRun(id: string): Promise<Run | null>;
   listRuns(): Promise<Run[]>;
   deleteRun(id: string): Promise<void>;
+
+  /** 日程型 Flow 的打卡日志（按 flowId 存）。 */
+  saveCheckIns(flowId: string, log: CheckIn[]): Promise<void>;
+  loadCheckIns(flowId: string): Promise<CheckIn[]>;
 }
 
 export function createStorage(kv: KVStore): Storage {
@@ -77,6 +83,14 @@ export function createStorage(kv: KVStore): Storage {
     },
     async deleteRun(id) {
       await kv.removeItem(RUN + id);
+    },
+
+    async saveCheckIns(flowId, log) {
+      await kv.setItem(CHECKINS + flowId, JSON.stringify(log));
+    },
+    async loadCheckIns(flowId) {
+      const text = await kv.getItem(CHECKINS + flowId);
+      return text ? (JSON.parse(text) as CheckIn[]) : [];
     },
   };
 }
