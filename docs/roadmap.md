@@ -6,18 +6,18 @@
 
 ---
 
-## Phase 0 — 地基与领域模型  【当前】
+## Phase 0 — 地基与领域模型  ✅ 已完成
 > 目标：把"是什么"用代码固定下来，让一切可测试、可重放。
 
-- [ ] 领域类型：`Flow` / `Run` / `Node`（五种类型）+ `schemaVersion` + 可选 `rationale`　`C0,C2,E5`
-- [ ] 校验与序列化（开放格式，round-trip 无损）　`C6,E5`
-- [ ] Runtime 骨架：`reduce` / `project` / `nextEvents`，时钟显式注入　`E1,E2,E3`
-- [ ] Runtime 黄金测试（含顺序型与日程型两种拓扑）　`E4`
-- [ ] 项目脚手架：目录结构、测试运行器、契约测试约定　`C10`
+- [x] 领域类型：`Flow` / `Run` / `FlowNode`（五种类型）+ `schemaVersion` + 可选 `rationale`　`C0,C2,E5`
+- [x] 校验与序列化（开放格式，round-trip 无损）　`C6,E5`
+- [x] Runtime 骨架：`reduce` / `project` / `nextEvents`，时钟显式注入　`E1,E2,E3`
+- [x] Runtime 黄金测试（含顺序型与日程型两种拓扑）　`E4`
+- [x] 项目脚手架：目录结构、`node --test` 运行器、契约测试约定　`C10`
 
-**验收**：给定一条示例 Flow + 注入时钟 + 事件日志，Runtime 产出确定的事件序列。
+**验收**：✅ 给定示例 Flow + 注入时钟 + 事件日志，Runtime 产出确定的事件序列（`npm run check`：typecheck 通过，20 用例全绿）。
 
-## Phase 1 — 最小可运行（MVP：运行体验）
+## Phase 1 — 最小可运行（MVP：运行体验）  【当前】
 > 目标：一条 Flow 能被真正"跑"起来，运行界面极简。
 
 - [ ] 本地 Storage：保存/读取 Flow 与 Run 记录，离线可用　`C6`

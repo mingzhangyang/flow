@@ -1,0 +1,24 @@
+# src —— 纯逻辑层
+
+本目录是与框架无关的纯 TypeScript。它不依赖 React Native / Expo，可被 `node --test` 直接运行。
+所有设计以 [`../constitution/`](../constitution/README.md) 为准，模块边界见 [`../docs/architecture.md`](../docs/architecture.md)。
+
+## 模块
+
+- `domain/` —— 领域模型：`Flow` / `Run` / `FlowNode`（5 种）类型、校验、序列化。纯类型与纯函数。
+- `runtime/` —— 运行时引擎：`reduce` / `project` / `nextEvents`，以及时钟层。时钟显式注入（E3），全部确定性（E4）。
+- `examples/` —— 两条示例 Flow：`coffee`（顺序型）、`medication`（日程型）。
+
+## 约定
+
+- **可擦除 TS**：不使用 enum / namespace / 参数属性等（`erasableSyntaxOnly`），以便 `node --test` 原生剥离类型直接运行。
+- **相对 import 带 `.ts` 后缀**：Node 的类型剥离需要显式扩展名。
+- **契约测试**：每个模块用 `*.contract.test.ts` 只针对公开接口断言；运行时的确定性用 `runtime.golden.test.ts` 做黄金主测试（C10）。
+
+## 命令
+
+```bash
+npm run typecheck   # tsc -p tsconfig.src.json
+npm test            # node --test（运行所有 *.test.ts）
+npm run check       # 先类型检查再跑测试
+```

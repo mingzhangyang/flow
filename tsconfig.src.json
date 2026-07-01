@@ -1,0 +1,17 @@
+{
+  "//": "类型检查纯逻辑层（src/domain, src/runtime）。与 Expo 应用的 tsconfig.json 分离，避免 bundler 冲突。用 node --test 直接运行 .ts，因此要求可擦除语法与显式 .ts import。",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "module": "preserve",
+    "target": "es2023",
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*.ts"]
+}
