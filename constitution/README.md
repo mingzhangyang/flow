@@ -39,3 +39,7 @@ Constitution: C3, C5   # 本次改动服务于第 3、第 5 条约束
 
 - 当前宪章版本：`v1.0`
 - 最近修订：2026-07-01（整合 Flow/Run 区分、两种时间拓扑、确定性定义、医疗安全等审查意见）
+
+## 决策记录
+
+- 产品品牌名 = **准时 / Zhunshi**；领域单位名词继续用小写 `flow`。详见 [`docs/adr/0002-product-name-zhunshi.md`](../docs/adr/0002-product-name-zhunshi.md)。
