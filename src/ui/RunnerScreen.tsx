@@ -13,7 +13,7 @@ import {
   pauseAction,
   resumeAction,
   backAction,
-} from '../app/actions';
+} from '../session/actions';
 import { Timeline } from './Timeline';
 import { fmtDuration } from './format';
 import { colors, spacing, radius } from './theme';

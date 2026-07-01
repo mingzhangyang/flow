@@ -7,7 +7,11 @@
 
 - `domain/` —— 领域模型：`Flow` / `Run` / `FlowNode`（5 种）类型、校验、序列化。纯类型与纯函数。
 - `runtime/` —— 运行时引擎：`reduce` / `project` / `nextEvents`，以及时钟层。时钟显式注入（E3），全部确定性（E4）。
+- `session/` —— 动作层：把「用户意图 + now」翻译为 `RunEvent`（纯函数、可测试）。
 - `examples/` —— 两条示例 Flow：`coffee`（顺序型）、`medication`（日程型）。
+- `ui/` —— React Native 展示层（`*.tsx`）：只读 runtime 状态、派发事件。非纯逻辑，由 `tsconfig.json` 做类型检查。
+
+> 注意：不要使用 `src/app/` 目录名——Expo Router 保留了 `app/` / `src/app/` 作为路由约定。
 
 ## 约定
 
