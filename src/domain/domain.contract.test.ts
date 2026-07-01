@@ -4,11 +4,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { SCHEMA_VERSION, type Flow } from './types.ts';
-import { validateFlow } from './validate.ts';
-import { serializeFlow, deserializeFlow } from './serialize.ts';
-import { coffeeFlow } from '../examples/coffee.ts';
-import { medicationFlow } from '../examples/medication.ts';
+import { SCHEMA_VERSION, type Flow } from './types';
+import { validateFlow } from './validate';
+import { serializeFlow, deserializeFlow } from './serialize';
+import { coffeeFlow } from '../examples/coffee';
+import { medicationFlow } from '../examples/medication';
 
 test('两个示例 Flow 都是合法的', () => {
   assert.deepEqual(validateFlow(coffeeFlow), []);

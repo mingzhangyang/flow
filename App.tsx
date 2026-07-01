@@ -1,20 +1,38 @@
+// 准时 / Zhunshi —— 应用外壳。
+// Phase 1 MVP：内置两条示例 flow；点开后按拓扑进入运行界面（顺序型 Runner / 日程型 Schedule）。
+// 简单的状态切换即导航，暂不引入路由库（Constraint 0：先别增加复杂度）。
+
+import { useState } from 'react';
+import { SafeAreaView, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { type Flow } from './src/domain/types';
+import { coffeeFlow } from './src/examples/coffee';
+import { medicationFlow } from './src/examples/medication';
+import { HomeScreen } from './src/ui/HomeScreen';
+import { RunnerScreen } from './src/ui/RunnerScreen';
+import { ScheduleScreen } from './src/ui/ScheduleScreen';
+import { colors } from './src/ui/theme';
+
+const FLOWS: Flow[] = [coffeeFlow, medicationFlow];
 
 export default function App() {
+  const [active, setActive] = useState<Flow | null>(null);
+  const goHome = () => setActive(null);
+
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <SafeAreaView style={styles.root}>
+      <StatusBar style="dark" />
+      {active === null ? (
+        <HomeScreen flows={FLOWS} onOpen={setActive} />
+      ) : active.topology === 'scheduled' ? (
+        <ScheduleScreen flow={active} onExit={goHome} />
+      ) : (
+        <RunnerScreen flow={active} onExit={goHome} />
+      )}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  root: { flex: 1, backgroundColor: colors.bg },
 });

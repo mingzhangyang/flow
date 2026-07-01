@@ -2,7 +2,7 @@
 // 这是产品的创始场景，验证日程型拓扑是一等公民（01-domain-model.md §二）。
 // 注意 E6：Flow 是描述性的，绝不构成医疗处方；示例仅作结构演示。
 
-import { SCHEMA_VERSION, type Flow } from '../domain/types.ts';
+import { SCHEMA_VERSION, type Flow } from '../domain/types';
 
 const hm = (h: number, m: number): number => h * 60 + m;
 

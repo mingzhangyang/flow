@@ -1,7 +1,7 @@
 // 领域类型。这是全系统的地基，对应 constitution/01-domain-model.md。
 // 核心区分：Flow（定义，不可变）≠ Run（运行实例，携带事件日志）。
 
-import type { Instant, TimeOfDay } from '../runtime/clock.ts';
+import type { Instant, TimeOfDay } from '../runtime/clock';
 
 /** 当前 Flow 文件格式版本。格式只能加法演进或带迁移（E5）。 */
 export const SCHEMA_VERSION = 1;

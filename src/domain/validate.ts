@@ -1,7 +1,7 @@
 // Flow 校验。保证一份定义结构合法、节点类型与拓扑相容。
 
-import { SCHEMA_VERSION, type Flow, type FlowNode, type Topology } from './types.ts';
-import { MINUTES_PER_DAY } from '../runtime/clock.ts';
+import { SCHEMA_VERSION, type Flow, type FlowNode, type Topology } from './types';
+import { MINUTES_PER_DAY } from '../runtime/clock';
 
 export interface ValidationIssue {
   path: string;

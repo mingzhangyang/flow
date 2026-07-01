@@ -3,8 +3,8 @@
 //   - 时钟显式注入：所有 now / tzOffset 都是参数，绝不隐读环境。
 //   - 确定性：给定同样的输入，必得同样的输出（可重放、可验证）。
 
-import { type Flow, type FlowNode, type Run, type RunEvent, type ScheduledNode } from '../domain/types.ts';
-import { type Instant, localMidnight, MS_PER_DAY, MS_PER_MINUTE } from './clock.ts';
+import { type Flow, type FlowNode, type Run, type RunEvent, type ScheduledNode } from '../domain/types';
+import { type Instant, localMidnight, MS_PER_DAY, MS_PER_MINUTE } from './clock';
 
 export type RunStatus = 'idle' | 'running' | 'paused' | 'completed';
 

@@ -1,7 +1,7 @@
 // 示例：法压咖啡 —— 顺序型（相对计时）。
 // 体现 C2（Flow 是可阅读的知识）与 C3（节点表达事件而非时间）。
 
-import { SCHEMA_VERSION, type Flow } from '../domain/types.ts';
+import { SCHEMA_VERSION, type Flow } from '../domain/types';
 
 export const coffeeFlow: Flow = {
   schemaVersion: SCHEMA_VERSION,

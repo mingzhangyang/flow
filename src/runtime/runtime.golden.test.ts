@@ -4,11 +4,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { type Run, type RunEvent } from '../domain/types.ts';
-import { reduce, project, nextEvents } from './engine.ts';
-import { MS_PER_DAY } from './clock.ts';
-import { coffeeFlow } from '../examples/coffee.ts';
-import { medicationFlow } from '../examples/medication.ts';
+import { type Run, type RunEvent } from '../domain/types';
+import { reduce, project, nextEvents } from './engine';
+import { MS_PER_DAY } from './clock';
+import { coffeeFlow } from '../examples/coffee';
+import { medicationFlow } from '../examples/medication';
 
 const T0 = 1_000_000;
 const sec = (n: number): number => n * 1000;
