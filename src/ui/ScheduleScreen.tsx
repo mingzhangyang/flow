@@ -2,18 +2,27 @@
 // 它的“下一步”由 nextEvents() 给出：未来 24 小时内每个定时事件的下一次触发（各自独立）。
 // 遵守 E6：描述性、非处方性，显式提示以医嘱为准。
 
+import { useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
 import { type Flow } from '../domain/types';
 import { nextEvents } from '../runtime/engine';
 import { timeOfDay, MS_PER_DAY } from '../runtime/clock';
+import { type Notifier } from '../notifications/notifier';
+import { planScheduledReminders } from '../notifications/plan';
 import { fmtTimeOfDay } from './format';
 import { colors, spacing, radius } from './theme';
 
-export function ScheduleScreen(props: { flow: Flow; onExit: () => void }) {
-  const { flow } = props;
+export function ScheduleScreen(props: { flow: Flow; notifier: Notifier; onExit: () => void }) {
+  const { flow, notifier } = props;
   const now = Date.now();
   const tz = -new Date().getTimezoneOffset(); // 显式时区：由 UTC 加到本地的分钟数（E3）
   const occurrences = nextEvents(flow, now, tz, MS_PER_DAY);
+
+  // 进入时把未来 24h 的定时提醒排入本地通知（C5）。原生生效，Web 为 noop。
+  useEffect(() => {
+    const reminders = planScheduledReminders(flow, Date.now(), tz, MS_PER_DAY);
+    notifier.schedule(reminders).catch(() => {});
+  }, [flow]);
 
   return (
     <View style={styles.screen}>

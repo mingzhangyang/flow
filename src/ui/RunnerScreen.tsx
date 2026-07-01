@@ -1,48 +1,24 @@
 // Runner：顺序型 Flow 的运行界面。宪章 C4「打开即可开始」、C5 暂停/恢复/跳过/回退。
-// 时钟停在这里（Date.now()），向下全是纯函数（E3）。UI 只读 project 的状态、派发事件。
+// 运行状态、持久化（C6）与通知（C5）都收在 usePersistentRun 里；本组件只负责呈现与派发。
 
-import { useState, useEffect } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
-import { type Flow, type Run, type RunEvent } from '../domain/types';
-import { type Instant } from '../runtime/clock';
-import { reduce, project } from '../runtime/engine';
-import {
-  startAction,
-  completeCurrentAction,
-  skipCurrentAction,
-  pauseAction,
-  resumeAction,
-  backAction,
-} from '../session/actions';
+import { type Flow } from '../domain/types';
+import { type Storage } from '../storage/storage';
+import { type Notifier } from '../notifications/notifier';
+import { usePersistentRun } from './usePersistentRun';
 import { Timeline } from './Timeline';
 import { fmtDuration } from './format';
 import { colors, spacing, radius } from './theme';
 
-const newRunId = (): string => `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
-export function RunnerScreen(props: { flow: Flow; onExit: () => void }) {
+export function RunnerScreen(props: {
+  flow: Flow;
+  storage: Storage;
+  notifier: Notifier;
+  onExit: () => void;
+}) {
   const { flow } = props;
-  const [run, setRun] = useState<Run>(() => ({ id: newRunId(), flow, events: [] }));
-  const [now, setNow] = useState<Instant>(() => Date.now());
-  const state = project(flow, run.events, now);
-
-  // 仅在计时进行时按秒刷新——暂停/等待时不空转（E2 的精神：状态可由日志推导）。
-  useEffect(() => {
-    if (state.status !== 'running') return;
-    const id = setInterval(() => setNow(Date.now()), 500);
-    return () => clearInterval(id);
-  }, [state.status]);
-
-  const apply = (event: RunEvent | null): void => {
-    if (!event) return;
-    setRun((r) => reduce(r, event));
-    setNow(Date.now());
-  };
-  const reset = (): void => {
-    setRun({ id: newRunId(), flow, events: [] });
-    setNow(Date.now());
-  };
-
+  const run = usePersistentRun(flow, props.storage, props.notifier);
+  const state = run.state;
   const node = state.currentIndex < flow.nodes.length ? flow.nodes[state.currentIndex] : null;
   const running = state.status === 'running' || state.status === 'paused';
 
@@ -92,20 +68,11 @@ export function RunnerScreen(props: { flow: Flow; onExit: () => void }) {
         </View>
 
         {state.status === 'completed' ? (
-          <Pressable style={styles.primary} onPress={reset}>
+          <Pressable style={styles.primary} onPress={run.reset}>
             <Text style={styles.primaryText}>重新开始</Text>
           </Pressable>
         ) : (
-          <Pressable
-            style={styles.primary}
-            onPress={() =>
-              apply(
-                state.status === 'idle'
-                  ? startAction(Date.now())
-                  : completeCurrentAction(flow, run.events, Date.now()),
-              )
-            }
-          >
+          <Pressable style={styles.primary} onPress={state.status === 'idle' ? run.start : run.complete}>
             <Text style={styles.primaryText}>
               {state.status === 'idle' ? '开始' : node?.kind === 'gate' ? '确认' : '完成本步'}
             </Text>
@@ -114,22 +81,12 @@ export function RunnerScreen(props: { flow: Flow; onExit: () => void }) {
 
         {running ? (
           <View style={styles.controls}>
-            <SecondaryButton
-              label="上一步"
-              disabled={state.currentIndex === 0}
-              onPress={() => apply(backAction(flow, run.events, Date.now()))}
-            />
+            <SecondaryButton label="上一步" disabled={state.currentIndex === 0} onPress={run.back} />
             <SecondaryButton
               label={state.status === 'paused' ? '恢复' : '暂停'}
-              onPress={() =>
-                apply(
-                  state.status === 'paused'
-                    ? resumeAction(flow, run.events, Date.now())
-                    : pauseAction(flow, run.events, Date.now()),
-                )
-              }
+              onPress={state.status === 'paused' ? run.resume : run.pause}
             />
-            <SecondaryButton label="跳过" onPress={() => apply(skipCurrentAction(flow, run.events, Date.now()))} />
+            <SecondaryButton label="跳过" onPress={run.skip} />
           </View>
         ) : null}
 

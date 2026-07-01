@@ -17,20 +17,20 @@
 
 **验收**：✅ 给定示例 Flow + 注入时钟 + 事件日志，Runtime 产出确定的事件序列（`npm run check`：typecheck 通过，20 用例全绿）。
 
-## Phase 1 — 最小可运行（MVP：运行体验）  【当前，进行中】
+## Phase 1 — 最小可运行（MVP：运行体验）  ✅ 已完成
 > 目标：一条 Flow 能被真正"跑"起来，运行界面极简。
 
-- [x] 动作层 `src/app/actions`：意图 + now → RunEvent（纯函数、可测试）　`C5`
+- [x] 动作层 `src/session/actions`：意图 + now → RunEvent（纯函数、可测试）　`C5`
 - [x] Runner + Timeline Renderer：打开即可开始，一屏看清"现在/下一步"　`C4`
 - [x] 运行控制：暂停 / 恢复 / 跳过 / 回退 / 等待确认　`C5`
 - [x] 日程型运行视图：未来 24h 的 `nextEvents` 列表（服药）　`领域模型§二,E6`
 - [x] 内置两条示例 Flow：法压咖啡（顺序型）+ 服药（日程型）　`C2`
-- [ ] 本地 Storage：保存/读取 Flow 与 Run 记录，离线可用　`C6`
-- [ ] Notification Engine：顺序型（相对计时）到点提醒　`C5`
+- [x] 本地 Storage：`KVStore` 端口 + 纯 `Storage` + AsyncStorage 适配（Web 回退 localStorage）；Run 持久化与掉线恢复　`C6`
+- [x] Notification：纯规划器 `plan` + `Notifier` 端口 + expo-notifications 适配（原生）；顺序计时到点 & 日程提醒　`C5`
 
-**验收**：能选一条示例 Flow 打开就跑，中途可暂停/跳过（✅ UI + 逻辑就绪；类型检查与单测通过；Expo Web 实机渲染经 Playwright 截图验证——首页/Runner 倒计时/Timeline/服药日程均正常）；持久化与通知待补，掉线恢复随 Storage 落地。
+**验收**：✅ 打开示例 Flow 即跑，可暂停/跳过/回退；**整页刷新后重开自动恢复到原步骤且计时继续**（Playwright 验证：03:59→reload→03:49）；类型检查 + 33 单测通过。通知逻辑经单测与真实 API 类型校验；**本地推送需真机验证**（headless 无法覆盖）。
 
-## Phase 2 — 创始场景闭环（服药 / 日程型）
+## Phase 2 — 创始场景闭环（服药 / 日程型）  【当前】
 > 目标：把创始场景真正做扎实，验证日程型拓扑不是二等公民。
 
 - [ ] 日程型节点：绝对时刻 + 每日重复 + 多药并行独立　`领域模型§二`
