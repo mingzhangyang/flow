@@ -1,0 +1,62 @@
+# 架构（Architecture）
+
+本文件定义模块边界与接口。它服务于 **C9（Agent 优先维护架构）** 与 **C10（任何模块可被单独重建）**。
+所有设计以 [`constitution/`](../constitution/README.md) 为准；本文只讲"怎么落地"，不改"是什么"。
+
+## 分层总览
+
+```
+┌──────────────────────────────────────────────┐
+│  UI 层                                          │
+│  ├─ Editor（编辑，可以复杂）                      │
+│  └─ Runner + Timeline Renderer（运行，必须极简）  │  ← C4
+├──────────────────────────────────────────────┤
+│  Runtime Engine（纯函数、最小状态）  ← E1/E2/E3/E4 │
+├──────────────────────────────────────────────┤
+│  Domain Model（Flow / Run / Node 类型 + schema） │  ← 领域模型
+├────────────┬─────────────────┬────────────────┤
+│  Storage    │  Notification    │  AI Assistant   │
+│（本地优先）  │（定时通知/闹钟）  │（编辑器，非主人） │
+└────────────┴─────────────────┴────────────────┘
+```
+
+**依赖方向**：上层依赖下层，下层不知道上层。Domain Model 不依赖任何模块。
+模块之间**只通过类型化接口通信**（C10），每个接口配契约测试。
+
+## 模块与契约
+
+### 1. Domain Model（`src/domain/`）
+纯类型与纯函数，无副作用。定义 `Flow`、`Run`、`Node`（五种类型见 `constitution/01-domain-model.md`）、schema 版本与校验、序列化/反序列化。
+- **不变式**：Flow 不可变；Node 可带可选 `rationale`；每个 Flow 带 `schemaVersion`。
+
+### 2. Runtime Engine（`src/runtime/`）
+把「Flow 定义 + 注入时钟 + Run 事件日志」推进为"当前应处于的状态 + 接下来的事件"。
+- 关键接口（示意）：
+  - `reduce(run: Run, event: RunEvent, now: Instant): Run` — 纯函数，`now` 显式注入（E3）。
+  - `project(flow: Flow, log: RunEvent[], now: Instant): RunState` — 由日志重建状态（E2）。
+  - `nextEvents(flow, state, now): ScheduledEvent[]` — 供通知层调度。
+- **不变式**：无隐式 `now()`、无隐藏内存；同一输入必得同一输出（E4）。
+- **黄金测试**：一批 `(flow, injected clock, event log) → expected event sequence` 用例。
+
+### 3. Storage（`src/storage/`）
+持久化 Flow 定义与 Run 记录。本地优先、离线可用。
+- 接口：`saveFlow / loadFlow / listFlows / exportFlow / importFlow / appendRunEvent / loadRun`。
+- **不变式**：导出/导入用开放格式，round-trip 无损（C6/E5）。
+
+### 4. Notification Engine（`src/notifications/`）
+把 Runtime 给出的 `nextEvents` 翻译成平台的本地定时通知/闹钟（expo-notifications）。
+- 接口：`schedule(events) / cancel(ids) / rescheduleFor(run)`。
+- **不变式**：不含业务逻辑，只做"事件 → 平台通知"的翻译；掉电/重启后可由 Run 记录重建。
+
+### 5. AI Assistant（`src/ai/`）
+Flow 的**编辑器**，不是主人（见 `02-ai-principles.md`）。
+- 能力顺序：解释 → 优化 → 找瓶颈 → 比较 →（最后）生成。
+- **不变式**：只提议"新版本"，产出必须可 Diff / Undo（AI-C3）；对正在运行的 Run 只读（AI-C1）。
+
+### 6. UI（`src/ui/` 或 `app/`）
+- **Editor**：可以复杂。
+- **Runner + Timeline Renderer**：必须极简，"打开即可开始"（C4）；只读 Runtime 状态并派发用户事件（暂停/跳过/确认/回退，C5）。
+
+## 契约测试约定
+每个模块在其目录下维护 `*.contract.test.ts`，只针对**公开接口**断言。
+重构一个模块的内部实现时，契约测试 + Runtime 黄金测试必须仍绿。
