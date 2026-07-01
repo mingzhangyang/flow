@@ -9,6 +9,7 @@ import { type KVStore } from './kv';
 const FLOW = 'flow:';
 const RUN = 'run:';
 const CHECKINS = 'checkins:';
+const REV = 'rev:';
 
 export interface Storage {
   saveFlow(flow: Flow): Promise<void>;
@@ -28,6 +29,10 @@ export interface Storage {
   /** 日程型 Flow 的打卡日志（按 flowId 存）。 */
   saveCheckIns(flowId: string, log: CheckIn[]): Promise<void>;
   loadCheckIns(flowId: string): Promise<CheckIn[]>;
+
+  /** Flow 的历史修订快照（按 flowId 存，旧版本追加保留）。 */
+  saveRevisions(flowId: string, revisions: Flow[]): Promise<void>;
+  loadRevisions(flowId: string): Promise<Flow[]>;
 }
 
 export function createStorage(kv: KVStore): Storage {
@@ -91,6 +96,14 @@ export function createStorage(kv: KVStore): Storage {
     async loadCheckIns(flowId) {
       const text = await kv.getItem(CHECKINS + flowId);
       return text ? (JSON.parse(text) as CheckIn[]) : [];
+    },
+
+    async saveRevisions(flowId, revisions) {
+      await kv.setItem(REV + flowId, JSON.stringify(revisions));
+    },
+    async loadRevisions(flowId) {
+      const text = await kv.getItem(REV + flowId);
+      return text ? (JSON.parse(text) as Flow[]) : [];
     },
   };
 }

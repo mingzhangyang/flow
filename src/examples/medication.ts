@@ -8,6 +8,7 @@ const hm = (h: number, m: number): number => h * 60 + m;
 
 export const medicationFlow: Flow = {
   schemaVersion: SCHEMA_VERSION,
+  version: 1,
   id: 'example.medication',
   title: '每日服药提醒',
   description: '示例用药日程；请以医嘱为准。',

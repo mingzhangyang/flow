@@ -26,6 +26,9 @@ export function validateFlow(flow: Flow): ValidationIssue[] {
   if (flow.nodes.length === 0) {
     issues.push({ path: 'nodes', message: 'a flow needs at least one node' });
   }
+  if (flow.version !== undefined && !(Number.isInteger(flow.version) && flow.version >= 1)) {
+    issues.push({ path: 'version', message: 'version must be an integer >= 1' });
+  }
 
   const seenIds = new Set<string>();
   flow.nodes.forEach((node, i) => validateNode(node, `nodes[${i}]`, flow.topology, seenIds, issues));

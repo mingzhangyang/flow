@@ -5,6 +5,7 @@ import { SCHEMA_VERSION, type Flow } from '../domain/types';
 
 export const coffeeFlow: Flow = {
   schemaVersion: SCHEMA_VERSION,
+  version: 1,
   id: 'example.coffee',
   title: '法压咖啡',
   description: '一杯基础法压壶咖啡的冲泡流程。',

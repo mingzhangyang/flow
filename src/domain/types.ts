@@ -63,6 +63,13 @@ export type NodeKind = FlowNode['kind'];
 /** 两种时间拓扑，都是一等公民（01-domain-model.md §二）。 */
 export type Topology = 'sequential' | 'scheduled';
 
+/** 来源信息。分享/导入的 Flow 应带 provenance（E6）。 */
+export interface Provenance {
+  author?: string;
+  source?: string;
+  importedAt?: Instant;
+}
+
 /** Flow —— 可复用、不可变的定义。 */
 export interface Flow {
   schemaVersion: SchemaVersion;
@@ -71,6 +78,9 @@ export interface Flow {
   description?: string;
   topology: Topology;
   nodes: FlowNode[];
+  /** 内容修订号，编辑提交时递增（缺省视为 1）。 */
+  version?: number;
+  provenance?: Provenance;
 }
 
 // ---- Run（运行实例）----
