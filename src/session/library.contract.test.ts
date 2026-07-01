@@ -41,6 +41,19 @@ test('再次 commit 递增版本并保留历史', async () => {
   assert.equal(history[0].title, '我的流程'); // 旧版本被保留
 });
 
+test('restore 把旧版本作为新修订提交（可回退）', async () => {
+  const { lib } = make();
+  await lib.commit(sample()); // v1: 标题“我的流程”
+  await lib.commit(setMeta(sample(), { title: '第二版' })); // v2
+  const [v1] = await lib.revisions('mine');
+
+  const restored = await lib.restore(v1); // 回到 v1 内容
+  assert.equal(restored.title, '我的流程');
+  assert.equal(restored.version, 3); // 作为新版本提交
+  const current = await lib.get('mine');
+  assert.equal(current?.title, '我的流程');
+});
+
 test('导出 / 导入无损，导入登记 provenance.importedAt', async () => {
   const { lib } = make();
   const saved = await lib.commit(sample());

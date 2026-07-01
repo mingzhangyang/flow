@@ -16,6 +16,7 @@ export function HomeScreen(props: {
   onNew: (topology: Topology) => void;
   onEdit: (flow: Flow) => void;
   onExport: (flow: Flow) => void;
+  onInsight: (flow: Flow) => void;
   onImport: () => void;
 }) {
   const [mine, setMine] = useState<Flow[]>([]);
@@ -62,6 +63,7 @@ export function HomeScreen(props: {
                   <Text style={styles.cardMeta}>{flow.nodes.length} 步 ·  点按运行</Text>
                 </Pressable>
                 <View style={styles.rowActions}>
+                  <Pressable onPress={() => props.onInsight(flow)}><Text style={styles.link}>解读</Text></Pressable>
                   <Pressable onPress={() => props.onEdit(flow)}><Text style={styles.link}>编辑</Text></Pressable>
                   <Pressable onPress={() => props.onExport(flow)}><Text style={styles.link}>导出</Text></Pressable>
                   <Pressable onPress={() => del(flow.id)}><Text style={[styles.link, styles.danger]}>删除</Text></Pressable>
@@ -73,14 +75,19 @@ export function HomeScreen(props: {
 
         <Text style={styles.sectionKicker}>示例</Text>
         {props.examples.map((flow) => (
-          <Pressable key={flow.id} style={styles.card} onPress={() => props.onRun(flow)}>
-            <View style={styles.cardTop}>
-              <Text style={styles.cardTitle}>{flow.title}</Text>
-              <Text style={styles.badge}>{topologyLabel[flow.topology]}</Text>
+          <View key={flow.id} style={styles.card}>
+            <Pressable onPress={() => props.onRun(flow)}>
+              <View style={styles.cardTop}>
+                <Text style={styles.cardTitle}>{flow.title}</Text>
+                <Text style={styles.badge}>{topologyLabel[flow.topology]}</Text>
+              </View>
+              {flow.description ? <Text style={styles.cardDesc}>{flow.description}</Text> : null}
+              <Text style={styles.cardMeta}>{flow.nodes.length} 步 ·  点按运行</Text>
+            </Pressable>
+            <View style={styles.rowActions}>
+              <Pressable onPress={() => props.onInsight(flow)}><Text style={styles.link}>解读</Text></Pressable>
             </View>
-            {flow.description ? <Text style={styles.cardDesc}>{flow.description}</Text> : null}
-            <Text style={styles.cardMeta}>{flow.nodes.length} 步 ·  点按运行</Text>
-          </Pressable>
+          </View>
         ))}
       </ScrollView>
     </View>

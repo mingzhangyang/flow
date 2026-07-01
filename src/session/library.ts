@@ -14,6 +14,8 @@ export interface Library {
   commit(flow: Flow): Promise<Flow>;
   remove(id: string): Promise<void>;
   revisions(id: string): Promise<Flow[]>;
+  /** 回到某个历史版本：把旧快照作为新修订提交（当前版本入历史，可再回退）。AI-C3 的 Undo 底座。 */
+  restore(revision: Flow): Promise<Flow>;
   exportFlow(id: string): Promise<string | null>;
   /** 从开放格式文本导入，登记来源时间，保存并返回。 */
   importFlow(text: string, now: Instant): Promise<Flow>;
@@ -37,6 +39,9 @@ export function createLibrary(storage: Storage): Library {
 
     remove: (id) => storage.deleteFlow(id),
     revisions: (id) => storage.loadRevisions(id),
+    async restore(revision) {
+      return this.commit(revision);
+    },
     exportFlow: (id) => storage.exportFlow(id),
 
     async importFlow(text, now) {

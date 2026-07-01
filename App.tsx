@@ -19,6 +19,7 @@ import { ScheduleScreen } from './src/ui/ScheduleScreen';
 import { EditorScreen } from './src/ui/EditorScreen';
 import { ExportScreen } from './src/ui/ExportScreen';
 import { ImportScreen } from './src/ui/ImportScreen';
+import { InsightScreen } from './src/ui/InsightScreen';
 import { colors } from './src/ui/theme';
 
 const EXAMPLES: Flow[] = [coffeeFlow, medicationFlow];
@@ -29,6 +30,7 @@ type Screen =
   | { name: 'run'; flow: Flow }
   | { name: 'edit'; flow: Flow }
   | { name: 'export'; flow: Flow }
+  | { name: 'insight'; flow: Flow }
   | { name: 'import' };
 
 export default function App() {
@@ -57,6 +59,7 @@ export default function App() {
           onNew={(topology: Topology) => setScreen({ name: 'edit', flow: createFlow({ id: newFlowId(), title: '', topology }) })}
           onEdit={(flow) => setScreen({ name: 'edit', flow })}
           onExport={(flow) => setScreen({ name: 'export', flow })}
+          onInsight={(flow) => setScreen({ name: 'insight', flow })}
           onImport={() => setScreen({ name: 'import' })}
         />
       ) : screen.name === 'run' ? (
@@ -69,6 +72,8 @@ export default function App() {
         <EditorScreen draft={screen.flow} library={library} onSaved={homeRefreshed} onCancel={home} />
       ) : screen.name === 'export' ? (
         <ExportScreen flow={screen.flow} onDone={home} />
+      ) : screen.name === 'insight' ? (
+        <InsightScreen flow={screen.flow} library={library} onExit={home} onChanged={homeRefreshed} />
       ) : (
         <ImportScreen library={library} onImported={homeRefreshed} onCancel={home} />
       )}
