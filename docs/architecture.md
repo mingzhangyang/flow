@@ -52,6 +52,11 @@
 Flow 的**编辑器**，不是主人（见 `02-ai-principles.md`）。
 - 能力顺序：解释 → 优化 → 找瓶颈 → 比较 →（最后）生成。
 - **不变式**：只提议"新版本"，产出必须可 Diff / Undo（AI-C3）；对正在运行的 Run 只读（AI-C1）。
+- **模型端口（`src/ai/model/`）**：生成能力经由 `ModelPort` 接口调用外部大模型，**不绑定任何一家供应商**。
+  - `ModelPort`：`complete(ModelRequest) → ModelResponse` 的最小文本补全端口；`fetch` 显式注入（同 E3 时钟注入思路），契约测试用假 fetch 断言请求形状。
+  - 适配器：`anthropic`（Claude Messages API）、`openaiCompatible`（覆盖 OpenAI / DeepSeek / Kimi / 通义 / 智谱 / Ollama 等一切 `/chat/completions` 方言）。新增供应商 = 新增一个 config 变体 + 一个适配器（扩展而非修改）。
+  - 配置（供应商、端点、模型、密钥）经 `KVStore` 只存本机（C6）；生成产物带 `provenance.source = "ai:<provider>/<model>"`（E6）。
+  - 管线纯函数化：`buildGenerationRequest` / `parseGeneratedFlow`（解析、校验、分配 id）确定性可测；`generateFlow` 仅编排。
 
 ### 6. UI（`src/ui/` 或 `app/`）
 - **Editor**：可以复杂。

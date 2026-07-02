@@ -58,10 +58,10 @@
 - [x] 找瓶颈 / 优化建议：`ai/analyze`（瓶颈占比、缺失 rationale、间隔过近…）　`AI-C4②③`
 - [x] 比较两个 Flow：`ai/diff`　`AI-C4④`
 - [x] 改动可 Diff / Undo：`InsightScreen` 展示与上一版差异 + `library.restore`「回到上一版」；AI 只读 Flow 定义、绝不碰运行中的 Run　`AI-C1,AI-C3`
-- [ ] （最后）从自然语言**生成** Flow —— 待接入真实模型（AI-C4 把“生成”放在最后）
+- [x] （最后）从自然语言**生成** Flow —— 经 `ModelPort` 接入真实模型，**不绑定单一供应商**：Anthropic（Claude）与任意 OpenAI 兼容端点（DeepSeek / Kimi / 通义 / 智谱 / Ollama…）可切换；密钥只存本机；生成物为草稿，入编辑器审阅后保存为新版本　`AI-C1,AI-C3,C6,E6`
 
 **验收**：✅ 对示例/自建 flow 生成解读与洞察（瓶颈、缺失“为什么”）；编辑产生新版本后可看差异并「回到上一版」（Playwright 全程验证，无报错）。
-**说明**：自然语言生成需真实模型，按 AI-C4 的顺序留待接入 Claude API 时实现。
+**说明**：自然语言生成已实现——模型层为供应商无关的 `ModelPort`（见 `docs/architecture.md` §5）；适配器与解析管线经契约测试 + 本地 mock 端点端到端验证；对真实云端 API 的连通性依用户自配密钥，未在 CI 覆盖。
 
 ---
 

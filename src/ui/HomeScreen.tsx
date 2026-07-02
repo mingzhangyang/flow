@@ -18,6 +18,7 @@ export function HomeScreen(props: {
   onExport: (flow: Flow) => void;
   onInsight: (flow: Flow) => void;
   onImport: () => void;
+  onGenerate: () => void;
 }) {
   const [mine, setMine] = useState<Flow[]>([]);
   const reload = (): void => {
@@ -43,6 +44,9 @@ export function HomeScreen(props: {
           </Pressable>
           <Pressable style={styles.action} onPress={() => props.onNew('scheduled')}>
             <Text style={styles.actionText}>＋ 日程</Text>
+          </Pressable>
+          <Pressable style={[styles.action, styles.actionGhost]} onPress={props.onGenerate}>
+            <Text style={styles.actionGhostText}>✨ AI 生成</Text>
           </Pressable>
           <Pressable style={[styles.action, styles.actionGhost]} onPress={props.onImport}>
             <Text style={styles.actionGhostText}>导入</Text>

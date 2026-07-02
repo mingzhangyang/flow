@@ -10,6 +10,7 @@
 - `session/` —— 动作层：把「用户意图 + now」翻译为 `RunEvent`（纯函数、可测试）。
 - `storage/` —— 持久化：`KVStore` 端口 + 纯 `Storage`（可测）+ `asyncStorageKv` 适配器（应用侧）。
 - `notifications/` —— 通知：纯规划器 `plan` + `Notifier` 端口 + `expoNotifier`（`.ts` 默认 noop / `.native.ts` 原生实现）。
+- `ai/` —— AI 助手：`explain` / `analyze` / `diff` 离线解释器；`generate` 自然语言生成管线；`model/` 供应商无关的 `ModelPort` 端口 + Anthropic / OpenAI 兼容适配器（fetch 注入、可契约测试）。
 - `examples/` —— 两条示例 Flow：`coffee`（顺序型）、`medication`（日程型）。
 - `ui/` —— React Native 展示层（`*.tsx` 与 hook）：只读 runtime 状态、派发事件。非纯逻辑，由 `tsconfig.json` 做类型检查。
 

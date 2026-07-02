@@ -20,6 +20,7 @@ import { EditorScreen } from './src/ui/EditorScreen';
 import { ExportScreen } from './src/ui/ExportScreen';
 import { ImportScreen } from './src/ui/ImportScreen';
 import { InsightScreen } from './src/ui/InsightScreen';
+import { GenerateScreen } from './src/ui/GenerateScreen';
 import { colors } from './src/ui/theme';
 
 const EXAMPLES: Flow[] = [coffeeFlow, medicationFlow];
@@ -31,7 +32,8 @@ type Screen =
   | { name: 'edit'; flow: Flow }
   | { name: 'export'; flow: Flow }
   | { name: 'insight'; flow: Flow }
-  | { name: 'import' };
+  | { name: 'import' }
+  | { name: 'generate' };
 
 export default function App() {
   const storage = useMemo(() => createStorage(asyncStorageKV), []);
@@ -61,6 +63,7 @@ export default function App() {
           onExport={(flow) => setScreen({ name: 'export', flow })}
           onInsight={(flow) => setScreen({ name: 'insight', flow })}
           onImport={() => setScreen({ name: 'import' })}
+          onGenerate={() => setScreen({ name: 'generate' })}
         />
       ) : screen.name === 'run' ? (
         screen.flow.topology === 'scheduled' ? (
@@ -74,6 +77,13 @@ export default function App() {
         <ExportScreen flow={screen.flow} onDone={home} />
       ) : screen.name === 'insight' ? (
         <InsightScreen flow={screen.flow} library={library} onExit={home} onChanged={homeRefreshed} />
+      ) : screen.name === 'generate' ? (
+        <GenerateScreen
+          kv={asyncStorageKV}
+          newFlowId={newFlowId}
+          onDraft={(flow) => setScreen({ name: 'edit', flow })}
+          onCancel={home}
+        />
       ) : (
         <ImportScreen library={library} onImported={homeRefreshed} onCancel={home} />
       )}
