@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { type Run, type RunEvent } from '../domain/types';
-import { reduce, project, nextEvents } from './engine';
+import { reduce, project, nextEvents, upcomingEvents } from './engine';
 import { MS_PER_DAY } from './clock';
 import { coffeeFlow } from '../examples/coffee';
 import { medicationFlow } from '../examples/medication';
@@ -117,6 +117,19 @@ test('reduce 守卫非法转移', () => {
   assert.throws(() => reduce(started, { type: 'started', at: T0 })); // 重复开始
 });
 
+test('reduce 拒绝越界下标——坏日志进不了 Run', () => {
+  const empty: Run = { id: 'r', flow: coffeeFlow, events: [] };
+  const started = reduce(empty, { type: 'started', at: T0 });
+  const n = coffeeFlow.nodes.length;
+  assert.throws(() => reduce(started, { type: 'stepCompleted', index: n, at: T0 }));
+  assert.throws(() => reduce(started, { type: 'skipped', index: -1, at: T0 }));
+  assert.throws(() => reduce(started, { type: 'gateConfirmed', index: 1.5, at: T0 }));
+  assert.throws(() => reduce(started, { type: 'wentBack', toIndex: n, at: T0 }));
+  // 合法边界仍通过
+  assert.ok(reduce(started, { type: 'stepCompleted', index: 0, at: T0 }));
+  assert.ok(reduce(started, { type: 'wentBack', toIndex: n - 1, at: T0 }));
+});
+
 // ---- 日程型（每日服药）----
 
 test('nextEvents 计算各药的下一次触发，且互相独立', () => {
@@ -148,4 +161,44 @@ test('nextEvents 是确定性的', () => {
 
 test('顺序型 Flow 不产生 scheduled 事件', () => {
   assert.deepEqual(nextEvents(coffeeFlow, T0, 0, MS_PER_DAY), []);
+});
+
+// ---- upcomingEvents：多日窗口内的全部触发（供通知层一次排入数日提醒）----
+
+test('upcomingEvents 展开多日：每天 3 剂 × 3 天', () => {
+  const now = 25_200_000; // 1970-01-01 07:00 UTC
+  const occ = upcomingEvents(medicationFlow, now, 0, 3 * MS_PER_DAY);
+  assert.equal(occ.length, 9);
+  // 按时间排序；首日 08:00 开始，随后每日重复
+  assert.equal(occ[0].at, 28_800_000); // 今天 08:00
+  assert.equal(occ[3].at, 28_800_000 + MS_PER_DAY); // 明天 08:00
+  assert.deepEqual(
+    occ.slice(0, 3).map((o) => o.nodeId),
+    ['morning', 'noon', 'evening'],
+  );
+});
+
+test('upcomingEvents 与 nextEvents 在单日窗口内一致（每节点恰一次时）', () => {
+  const now = 25_200_000; // 07:00，三剂都还在今天
+  assert.deepEqual(
+    upcomingEvents(medicationFlow, now, 0, MS_PER_DAY / 2),
+    nextEvents(medicationFlow, now, 0, MS_PER_DAY / 2),
+  );
+});
+
+test('upcomingEvents：once 只排今天，过时不候', () => {
+  const onceFlow = { ...medicationFlow, repeat: { kind: 'once' as const } };
+  const morningOnly = upcomingEvents(onceFlow, 36_000_000, 0, 7 * MS_PER_DAY); // 10:00，早剂已过
+  assert.deepEqual(
+    morningOnly.map((o) => o.nodeId),
+    ['noon', 'evening'], // 只有今天剩下的两剂，不跨日
+  );
+});
+
+test('upcomingEvents 是确定性的', () => {
+  const now = 36_000_000;
+  assert.deepEqual(
+    upcomingEvents(medicationFlow, now, 0, 3 * MS_PER_DAY),
+    upcomingEvents(medicationFlow, now, 0, 3 * MS_PER_DAY),
+  );
 });

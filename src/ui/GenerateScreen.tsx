@@ -5,7 +5,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
 import { type Flow } from '../domain/types';
-import { type KVStore } from '../storage/kv';
+import { type SecretStore } from '../storage/kv';
 import { generateFlow } from '../ai/generate';
 import {
   createModelPort,
@@ -24,7 +24,10 @@ const platformFetch: FetchLike = (url, init) =>
   fetch(url, init).then((r) => ({ ok: r.ok, status: r.status, text: () => r.text() }));
 
 export function GenerateScreen(props: {
-  kv: KVStore;
+  /** 机密存储（原生 = Keychain/Keystore；Web 回落 localStorage）。 */
+  secrets: SecretStore;
+  /** 旧版明文位置；读取时一次性搬迁（可省略）。 */
+  legacySecrets?: SecretStore;
   newFlowId: () => string;
   onDraft: (flow: Flow) => void;
   onCancel: () => void;
@@ -40,7 +43,7 @@ export function GenerateScreen(props: {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadModelConfig(props.kv)
+    loadModelConfig(props.secrets, props.legacySecrets)
       .then((saved) => {
         if (!saved) return;
         setProvider(saved.provider);
@@ -49,7 +52,7 @@ export function GenerateScreen(props: {
         setBaseUrl(saved.provider === 'openai-compatible' ? saved.baseUrl : (saved.baseUrl ?? ''));
       })
       .catch(() => {});
-  }, [props.kv]);
+  }, [props.secrets, props.legacySecrets]);
 
   const switchProvider = (next: ProviderKind): void => {
     setProvider(next);
@@ -77,7 +80,7 @@ export function GenerateScreen(props: {
     setBusy(true);
     setError(null);
     const cfg = config();
-    saveModelConfig(props.kv, cfg).catch(() => {});
+    saveModelConfig(props.secrets, cfg).catch(() => {});
     generateFlow(createModelPort(cfg, platformFetch), description, {
       id: props.newFlowId(),
       todayDayIndex: localDayIndex(Date.now(), systemTimeZone), // everyNDays 的起算日（E3 显式注入）

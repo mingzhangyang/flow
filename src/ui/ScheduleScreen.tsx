@@ -19,8 +19,6 @@ import {
   type DoseStatus,
 } from '../runtime/adherence';
 import { type Storage } from '../storage/storage';
-import { type Notifier } from '../notifications/notifier';
-import { planScheduledReminders } from '../notifications/plan';
 import { nextEvents } from '../runtime/engine';
 import { fmtTimeOfDay } from './format';
 import { paletteFor, type Palette, spacing, radius, type, mono } from './theme';
@@ -67,10 +65,11 @@ function DoseBead(props: { status: DoseStatus; s: Styles; bs: BeadStyles }) {
 export function ScheduleScreen(props: {
   flow: Flow;
   storage: Storage;
-  notifier: Notifier;
+  /** 打开即视为为这条 flow 开启提醒；实际登记与多日重排由 App 层编排。 */
+  onEnrollReminders: (flowId: string) => void;
   onExit: () => void;
 }) {
-  const { flow, storage, notifier } = props;
+  const { flow, storage } = props;
   const c = paletteFor(useColorScheme());
   const styles = useMemo(() => createStyles(c), [c]);
   const beadStyles = useMemo(() => createBeadStyles(c), [c]);
@@ -82,7 +81,7 @@ export function ScheduleScreen(props: {
   useEffect(() => {
     let alive = true;
     storage.loadCheckIns(flow.id).then((log) => alive && setCheckIns(log)).catch(() => {});
-    notifier.schedule(planScheduledReminders(flow, Date.now(), tz, MS_PER_DAY)).catch(() => {});
+    props.onEnrollReminders(flow.id);
     return () => {
       alive = false;
     };

@@ -23,7 +23,7 @@
       },
       "predictiveBackGestureEnabled": false
     },
-    "plugins": ["expo-notifications"],
+    "plugins": ["expo-notifications", "expo-secure-store"],
     "web": {
       "favicon": "./assets/favicon.png"
     }

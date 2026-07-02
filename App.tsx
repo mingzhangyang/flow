@@ -2,8 +2,8 @@
 // Phase 3：内置示例 + 用户自建的 flow 库；可新建/编辑/导出/导入，按拓扑运行。
 // 简单的状态机即导航（Constraint 0：先别引入路由库）。
 
-import { useMemo, useState } from 'react';
-import { SafeAreaView, StyleSheet, useColorScheme } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AppState, SafeAreaView, StyleSheet, useColorScheme } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import {
   useFonts,
@@ -16,8 +16,11 @@ import { coffeeFlow } from './src/examples/coffee';
 import { medicationFlow } from './src/examples/medication';
 import { createStorage } from './src/storage/storage';
 import { asyncStorageKV } from './src/storage/asyncStorageKv';
+import { secureKV } from './src/storage/secureKv';
 import { createLibrary } from './src/session/library';
 import { createExpoNotifier } from './src/notifications/expoNotifier';
+import { enrollFlow, rescheduleReminders } from './src/notifications/reschedule';
+import { systemTimeZone } from './src/runtime/systemTimeZone';
 import { systemSharer } from './src/sharing/systemSharer';
 import { HomeScreen } from './src/ui/HomeScreen';
 import { RunnerScreen } from './src/ui/RunnerScreen';
@@ -60,6 +63,30 @@ export default function App() {
     home();
   };
 
+  // 重排已登记 flow 未来数日的日程提醒——启动、回到前台、库变更时各续一次（C5）。
+  const refreshReminders = useCallback((): void => {
+    library
+      .list()
+      .then((flows) =>
+        rescheduleReminders({
+          kv: asyncStorageKV,
+          notifier,
+          flows: [...EXAMPLES, ...flows],
+          now: Date.now(),
+          deviceTz: systemTimeZone,
+        }),
+      )
+      .catch(() => {});
+  }, [library, notifier]);
+
+  useEffect(() => {
+    refreshReminders();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refreshReminders();
+    });
+    return () => sub.remove();
+  }, [refreshReminders, refreshKey]);
+
   if (!fontsLoaded) return null;
 
   return (
@@ -80,7 +107,14 @@ export default function App() {
         />
       ) : screen.name === 'run' ? (
         screen.flow.topology === 'scheduled' ? (
-          <ScheduleScreen flow={screen.flow} storage={storage} notifier={notifier} onExit={home} />
+          <ScheduleScreen
+            flow={screen.flow}
+            storage={storage}
+            onEnrollReminders={(flowId) => {
+              enrollFlow(asyncStorageKV, flowId).then(refreshReminders).catch(() => {});
+            }}
+            onExit={home}
+          />
         ) : (
           <RunnerScreen flow={screen.flow} storage={storage} notifier={notifier} onExit={home} />
         )
@@ -92,7 +126,8 @@ export default function App() {
         <InsightScreen flow={screen.flow} library={library} onExit={home} onChanged={homeRefreshed} />
       ) : screen.name === 'generate' ? (
         <GenerateScreen
-          kv={asyncStorageKV}
+          secrets={secureKV}
+          legacySecrets={asyncStorageKV}
           newFlowId={newFlowId}
           onDraft={(flow) => setScreen({ name: 'edit', flow })}
           onCancel={home}

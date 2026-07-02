@@ -34,7 +34,9 @@
 - 关键接口（示意）：
   - `reduce(run: Run, event: RunEvent, now: Instant): Run` — 纯函数，`now` 显式注入（E3）。
   - `project(flow: Flow, log: RunEvent[], now: Instant): RunState` — 由日志重建状态（E2）。
-  - `nextEvents(flow, state, now): ScheduledEvent[]` — 供通知层调度。
+  - `nextEvents(flow, state, now): ScheduledEvent[]` — 每节点最近一次触发，驱动界面「下一次」。
+  - `upcomingEvents(flow, now, tz, horizonMs)` — 窗口内**全部**触发（可跨多日），供通知层一次排入数日提醒。
+  - `reduce` 对带下标的事件做范围校验——非法转移抛错，坏日志进不了 Run。
 - **不变式**：无隐式 `now()`、无隐藏内存；同一输入必得同一输出（E4）。
 - **重复规则（`runtime/recurrence.ts`）**：节律在 **Flow 级**（`Flow.repeat`，整个模式一起重复，ADR-0003）。`occursOnDay(repeat, anchor, tz)` 判定某条规则在某个本地日是否发生（weekly 按星期、everyNDays 按起算日取模），engine 排下一次触发与 adherence 过滤今日清单共用（今天不在节律上 = 整条 flow 今天无事件）；`describeRecurrence` 供 UI/解读。once 语义为「仅今天一次，过时不候」——无状态运行时不跨日顺延，这是缺省值（默认不重复）。
 - **时区**：与时钟同为显式注入。`TimeZone.offsetAt(instant)` 表达「偏移随时刻变化」，因此 DST 切换日也正确（固定偏移标量仍兼容）；墙钟 → Instant 的换算集中在 `instantAtTimeOfDay`——被跳过的时刻取切换后第一个时刻，重复的时刻取第一次。适配器有二：`systemTimeZone`（按被询问时刻取设备偏移）与 `ianaTimeZone(name)`（按 IANA 时区名，供 `Flow.timeZone` 锚定非设备时区——出差时仍按家里的时区提醒）；`timeZoneForFlow(flow, fallback)` 做选择与坏名回退。测试注入固定或阶跃时区，IANA 适配器用真实 DST 切换点验证。
@@ -44,11 +46,21 @@
 持久化 Flow 定义与 Run 记录。本地优先、离线可用。
 - 接口：`saveFlow / loadFlow / listFlows / exportFlow / importFlow / appendRunEvent / loadRun`。
 - **不变式**：导出/导入用开放格式，round-trip 无损（C6/E5）。
+- **读入闸门**：持久数据回到纯核心前先过校验——flow 快照（含 Run 内嵌、历史修订）走
+  迁移 + 校验（`coerceFlow`），Run 事件日志用 `reduce` 从头重放验证（重放即校验，E4）；
+  坏数据返回 null / 逐条跳过，绝不让非法状态流入运行时。
+- **机密走窄端口**：`SecretStore`（getItem/setItem/removeItem，无枚举）。适配器
+  `secureKv.native`（iOS Keychain / Android Keystore，expo-secure-store）、Web 回落
+  AsyncStorage；AI 模型密钥经此存储，不与普通数据混在一个后端（C6）。
 
 ### 4. Notification Engine（`src/notifications/`）
-把 Runtime 给出的 `nextEvents` 翻译成平台的本地定时通知/闹钟（expo-notifications）。
+把 Runtime 给出的触发时刻翻译成平台的本地定时通知/闹钟（expo-notifications）。
 - 接口：`schedule(events) / cancel(ids) / rescheduleFor(run)`。
 - **不变式**：不含业务逻辑，只做"事件 → 平台通知"的翻译；掉电/重启后可由 Run 记录重建。
+- **多日排入与重排（`reschedule.ts`）**：用户打开某条日程型 flow 的运行视图即为它**登记**提醒
+  （enroll，不为没打开过的 flow 自动推送）；App 启动 / 回到前台 / 库变更时把已登记 flow
+  未来 7 天的提醒整批重排（上一批 id 记在 KV，先取消再排入）——App 几天不开，提醒也不断档（C5）。
+  单批截断到 48 条（iOS 待决通知上限 64，留余量）；计划本身是纯函数（`plan.ts`），编排不含时钟隐读（E3）。
 
 ### 5. AI Assistant（`src/ai/`）
 Flow 的**编辑器**，不是主人（见 `02-ai-principles.md`）。
@@ -57,7 +69,7 @@ Flow 的**编辑器**，不是主人（见 `02-ai-principles.md`）。
 - **模型端口（`src/ai/model/`）**：生成能力经由 `ModelPort` 接口调用外部大模型，**不绑定任何一家供应商**。
   - `ModelPort`：`complete(ModelRequest) → ModelResponse` 的最小文本补全端口；`fetch` 显式注入（同 E3 时钟注入思路），契约测试用假 fetch 断言请求形状。
   - 适配器：`anthropic`（Claude Messages API）、`openaiCompatible`（覆盖 OpenAI / DeepSeek / Kimi / 通义 / 智谱 / Ollama 等一切 `/chat/completions` 方言）。新增供应商 = 新增一个 config 变体 + 一个适配器（扩展而非修改）。
-  - 配置（供应商、端点、模型、密钥）经 `KVStore` 只存本机（C6）；生成产物带 `provenance.source = "ai:<provider>/<model>"`（E6）。
+  - 配置（供应商、端点、模型、密钥）只存本机（C6），且走 `SecretStore` 窄端口——原生端为系统安全存储（Keychain/Keystore），旧版明文位置读取时一次性搬迁；生成产物带 `provenance.source = "ai:<provider>/<model>"`（E6）。
   - 管线纯函数化：`buildGenerationRequest` / `parseGeneratedFlow`（解析、校验、分配 id）确定性可测；`generateFlow` 仅编排。
 
 ### 6. Sharing（`src/sharing/`）

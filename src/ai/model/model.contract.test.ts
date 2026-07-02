@@ -142,3 +142,17 @@ test('模型配置：缺失或损坏时返回 null', async () => {
   await kv.setItem('ai-model-config', JSON.stringify({ provider: 'unknown' }));
   assert.equal(await loadModelConfig(kv), null);
 });
+
+test('模型配置：从旧位置一次性搬迁到安全存储', async () => {
+  const legacy = createInMemoryKV();
+  const secure = createInMemoryKV();
+  await saveModelConfig(legacy, openaiCfg);
+
+  assert.deepEqual(await loadModelConfig(secure, legacy), openaiCfg); // 读到旧配置
+  assert.deepEqual(await loadModelConfig(secure), openaiCfg); // 已写入安全存储
+  assert.equal(await legacy.getItem('ai-model-config'), null); // 旧位置已清除
+
+  // 安全存储已有配置时优先，不再看旧位置
+  await legacy.setItem('ai-model-config', JSON.stringify({ ...openaiCfg, model: 'other' }));
+  assert.deepEqual(await loadModelConfig(secure, legacy), openaiCfg);
+});

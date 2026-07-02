@@ -21,6 +21,9 @@ export interface Library {
   importFlow(text: string, now: Instant): Promise<Flow>;
 }
 
+/** 每条 flow 保留的历史修订上限：超出时丢最旧的，避免存储无界增长。 */
+export const MAX_REVISIONS = 50;
+
 export function createLibrary(storage: Storage): Library {
   return {
     list: () => storage.listFlows(),
@@ -30,7 +33,7 @@ export function createLibrary(storage: Storage): Library {
       const prev = await storage.loadFlow(flow.id);
       if (prev) {
         const history = await storage.loadRevisions(flow.id);
-        await storage.saveRevisions(flow.id, [...history, prev]);
+        await storage.saveRevisions(flow.id, [...history, prev].slice(-MAX_REVISIONS));
       }
       const next: Flow = { ...flow, version: prev ? (prev.version ?? 1) + 1 : 1 };
       await storage.saveFlow(next);
@@ -50,8 +53,9 @@ export function createLibrary(storage: Storage): Library {
         ...parsed,
         provenance: { ...(parsed.provenance ?? {}), importedAt: now },
       };
-      await storage.saveFlow(imported);
-      return imported;
+      // 走 commit：若同 id 的 flow 已存在，旧版本入历史、version 递增——
+      // 导入绝不静默覆盖用户已有的 flow（C6「Flow 不应消失」、AI-C3 可回退）。
+      return this.commit(imported);
     },
   };
 }

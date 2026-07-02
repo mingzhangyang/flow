@@ -8,6 +8,13 @@ export interface KVStore {
   keys(): Promise<string[]>;
 }
 
+/**
+ * 机密专用的窄端口：只有单键读写，没有枚举。
+ * 平台安全存储（如 iOS Keychain / Android Keystore）不提供 keys()，
+ * 所以机密走这个更小的接口；任何 KVStore 结构上都满足它（测试用内存 KV 即可）。
+ */
+export type SecretStore = Pick<KVStore, 'getItem' | 'setItem' | 'removeItem'>;
+
 /** 内存实现，供测试与默认回退使用。 */
 export function createInMemoryKV(): KVStore {
   const map = new Map<string, string>();
