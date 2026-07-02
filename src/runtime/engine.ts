@@ -4,7 +4,13 @@
 //   - 确定性：给定同样的输入，必得同样的输出（可重放、可验证）。
 
 import { type Flow, type FlowNode, type Run, type RunEvent, type ScheduledNode } from '../domain/types';
-import { type Instant, localMidnight, MS_PER_DAY, MS_PER_MINUTE } from './clock';
+import {
+  type Instant,
+  type TimeZoneLike,
+  instantAtTimeOfDay,
+  localMidnight,
+  MS_PER_MINUTE,
+} from './clock';
 
 export type RunStatus = 'idle' | 'running' | 'paused' | 'completed';
 
@@ -153,14 +159,14 @@ export interface ScheduledOccurrence {
 export function nextEvents(
   flow: Flow,
   now: Instant,
-  tzOffsetMinutes: number,
+  tz: TimeZoneLike,
   horizonMs: number,
 ): ScheduledOccurrence[] {
   if (flow.topology !== 'scheduled') return [];
 
   const out: ScheduledOccurrence[] = [];
   for (const node of collectScheduled(flow.nodes)) {
-    const at = nextOccurrence(node, now, tzOffsetMinutes);
+    const at = nextOccurrence(node, now, tz);
     if (at !== null && at <= now + horizonMs) {
       out.push({ nodeId: node.id, label: node.label, at });
     }
@@ -178,10 +184,15 @@ function collectScheduled(nodes: FlowNode[]): ScheduledNode[] {
   return acc;
 }
 
-function nextOccurrence(node: ScheduledNode, now: Instant, tzOffsetMinutes: number): Instant | null {
-  const todayAt = localMidnight(now, tzOffsetMinutes) + node.at * MS_PER_MINUTE;
+function nextOccurrence(node: ScheduledNode, now: Instant, tz: TimeZoneLike): Instant | null {
+  // 墙钟时刻按「目标那一天」的偏移换算（DST 正确）。不能用 todayAt + 24h 推明天——
+  // 切换日的一天不是 24 小时。
+  const todayAt = instantAtTimeOfDay(now, node.at, tz);
   if (node.repeat.kind === 'daily') {
-    return todayAt >= now ? todayAt : todayAt + MS_PER_DAY;
+    if (todayAt >= now) return todayAt;
+    // 明天的锚点：今天开始 + 36h。本地一天长 23–25 小时，该点必落在明天之内。
+    const tomorrowAnchor = localMidnight(now, tz) + 36 * 60 * MS_PER_MINUTE;
+    return instantAtTimeOfDay(tomorrowAnchor, node.at, tz);
   }
   // once：仅当今天该时刻仍在未来时
   return todayAt >= now ? todayAt : null;

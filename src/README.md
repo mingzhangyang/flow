@@ -6,7 +6,7 @@
 ## 模块
 
 - `domain/` —— 领域模型：`Flow` / `Run` / `FlowNode`（5 种）类型、校验、序列化。纯类型与纯函数。
-- `runtime/` —— 运行时引擎：`reduce` / `project` / `nextEvents`，以及时钟层。时钟显式注入（E3），全部确定性（E4）。
+- `runtime/` —— 运行时引擎：`reduce` / `project` / `nextEvents`，以及时钟层。时钟与时区显式注入（E3），全部确定性（E4）；时区是 `TimeZone.offsetAt(instant)` 接口（DST 正确），`systemTimeZone` 为设备时区适配器（应用侧注入）。
 - `session/` —— 动作层：把「用户意图 + now」翻译为 `RunEvent`（纯函数、可测试）。
 - `storage/` —— 持久化：`KVStore` 端口 + 纯 `Storage`（可测）+ `asyncStorageKv` 适配器（应用侧）。
 - `notifications/` —— 通知：纯规划器 `plan` + `Notifier` 端口 + `expoNotifier`（`.ts` 默认 noop / `.native.ts` 原生实现）。

@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
 import { type Flow } from '../domain/types';
 import { timeOfDay, MS_PER_DAY } from '../runtime/clock';
+import { systemTimeZone } from '../runtime/systemTimeZone';
 import {
   todayDoses,
   recordCheckIn,
@@ -36,7 +37,7 @@ export function ScheduleScreen(props: {
   onExit: () => void;
 }) {
   const { flow, storage, notifier } = props;
-  const tz = -new Date().getTimezoneOffset(); // 显式时区（E3）
+  const tz = systemTimeZone; // 显式注入设备时区（E3）；偏移按时刻取值，跨 DST 切换日正确
   const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
   const [now, setNow] = useState<number>(() => Date.now());
 
