@@ -12,12 +12,21 @@ export function serializeFlow(flow: Flow): string {
 
 /** 从开放格式 JSON 解析出一份 Flow；旧 schema 自动迁移，然后校验。 */
 export function deserializeFlow(text: string): Flow {
-  let data = JSON.parse(text) as Flow;
-  if ((data as { schemaVersion?: number }).schemaVersion === 1) {
-    data = migrateV1(data);
+  return coerceFlow(JSON.parse(text));
+}
+
+/**
+ * 已解析的 JSON 值 → 合法 Flow：旧 schema 迁移 + 校验。
+ * 持久层读回的任何 flow 快照（Run 内嵌、历史修订）都应经此闸门，
+ * 保证旧数据升级后仍被迁移、坏数据不会流入纯核心（E5）。
+ */
+export function coerceFlow(data: unknown): Flow {
+  let flow = data as Flow;
+  if ((flow as { schemaVersion?: number }).schemaVersion === 1) {
+    flow = migrateV1(flow);
   }
-  assertValidFlow(data);
-  return data;
+  assertValidFlow(flow);
+  return flow;
 }
 
 /**

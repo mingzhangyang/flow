@@ -16,15 +16,23 @@ const timed = (id: string, label: string, d: number, rationale?: string): TimedN
 // ---- explain ----
 
 test('explain 概述 + 逐步 + 计入 rationale', () => {
-  const lines = explain(coffeeFlow);
+  const lines = explain(coffeeFlow, 'zh');
   assert.match(lines[0], /法压咖啡/);
   assert.match(lines[0], /顺序型/);
   assert.ok(lines.some((l) => /浸泡/.test(l) && /因为/.test(l))); // rationale 被写进说明
 });
 
 test('explain 日程型汇总每日时间', () => {
-  const lines = explain(medicationFlow);
+  const lines = explain(medicationFlow, 'zh');
   assert.ok(lines.some((l) => /每天/.test(l) && /08:00/.test(l)));
+});
+
+test('explain 英文输出：概述与 rationale 均为英文措辞', () => {
+  const lines = explain(coffeeFlow, 'en');
+  assert.match(lines[0], /sequential flow with 5 steps/);
+  assert.ok(lines.some((l) => /because/.test(l)));
+  const sched = explain(medicationFlow, 'en');
+  assert.ok(sched.some((l) => /every day/.test(l) && /08:00/.test(l)));
 });
 
 test('totalTimedSeconds 只累加计时步', () => {
@@ -37,7 +45,7 @@ test('analyze 找出瓶颈（最长步占比 >= 60%）', () => {
   let f = createFlow({ id: 'f', title: '测试', topology: 'sequential' });
   f = addNode(f, timed('a', '快步', 10));
   f = addNode(f, timed('b', '慢步', 100));
-  const findings = analyze(f);
+  const findings = analyze(f, 'zh');
   const bottleneck = findings.find((x) => x.id === 'bottleneck');
   assert.ok(bottleneck);
   assert.equal(bottleneck.severity, 'warn');
@@ -46,11 +54,23 @@ test('analyze 找出瓶颈（最长步占比 >= 60%）', () => {
 
 test('analyze 提示缺失的“为什么”', () => {
   const f = addNode(createFlow({ id: 'f', title: 't', topology: 'sequential' }), timed('a', 'A', 10));
-  assert.ok(analyze(f).some((x) => x.id === 'missing-why'));
+  assert.ok(analyze(f, 'zh').some((x) => x.id === 'missing-why'));
+});
+
+test('analyze 各语言给出同样的发现（id 一致，仅文案不同）', () => {
+  const ids = analyze(coffeeFlow, 'zh').map((x) => x.id);
+  assert.deepEqual(analyze(coffeeFlow, 'en').map((x) => x.id), ids);
+  assert.deepEqual(analyze(coffeeFlow, 'zh-Hant').map((x) => x.id), ids);
+});
+
+test('explain 繁体输出：繁体措辞', () => {
+  const lines = explain(coffeeFlow, 'zh-Hant');
+  assert.match(lines[0], /順序型/);
+  assert.ok(lines.some((l) => /因為/.test(l)));
 });
 
 test('analyze 是确定性的', () => {
-  assert.deepEqual(analyze(coffeeFlow), analyze(coffeeFlow));
+  assert.deepEqual(analyze(coffeeFlow, 'zh'), analyze(coffeeFlow, 'zh'));
 });
 
 // ---- diff ----
@@ -76,7 +96,7 @@ test('diff 捕获新增/删除/修改/移动', () => {
   assert.ok(kinds.includes('nodeChanged'));
 
   const changed = changes.find((c) => c.kind === 'nodeChanged');
-  assert.ok(changed && 'fields' in changed && changed.fields.includes('名称') && changed.fields.includes('时长'));
+  assert.ok(changed && 'fields' in changed && changed.fields.includes('label') && changed.fields.includes('duration'));
 });
 
 test('diff 捕获移动', () => {
@@ -88,8 +108,17 @@ test('diff 捕获移动', () => {
   assert.ok(changes.some((c) => c.kind === 'nodeMoved'));
 });
 
-test('describeChange 输出可读文本', () => {
-  assert.match(describeChange({ kind: 'nodeAdded', id: 'x', label: '新步骤' }), /新增/);
+test('describeChange 输出可读文本（两种语言）', () => {
+  assert.match(describeChange({ kind: 'nodeAdded', id: 'x', label: '新步骤' }, 'zh'), /新增/);
+  assert.match(describeChange({ kind: 'nodeAdded', id: 'x', label: 'New step' }, 'en'), /Added/);
+  assert.match(
+    describeChange({ kind: 'nodeChanged', id: 'x', label: 'A', fields: ['label', 'duration'] }, 'zh'),
+    /名称、时长/,
+  );
+  assert.match(
+    describeChange({ kind: 'nodeChanged', id: 'x', label: 'A', fields: ['label', 'duration'] }, 'en'),
+    /name, duration/,
+  );
 });
 
 test('相同 Flow 无差异', () => {

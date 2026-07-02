@@ -5,7 +5,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
 import { type Flow } from '../domain/types';
-import { type KVStore } from '../storage/kv';
+import { type SecretStore } from '../storage/kv';
 import { generateFlow } from '../ai/generate';
 import {
   createModelPort,
@@ -18,19 +18,24 @@ import { loadModelConfig, saveModelConfig } from '../ai/model/settings';
 import { type FetchLike } from '../ai/model/port';
 import { localDayIndex } from '../runtime/clock';
 import { systemTimeZone } from '../runtime/systemTimeZone';
+import { useI18n } from './i18n';
 import { paletteFor, type Palette, spacing, radius } from './theme';
 
 const platformFetch: FetchLike = (url, init) =>
   fetch(url, init).then((r) => ({ ok: r.ok, status: r.status, text: () => r.text() }));
 
 export function GenerateScreen(props: {
-  kv: KVStore;
+  /** 机密存储（原生 = Keychain/Keystore；Web 回落 localStorage）。 */
+  secrets: SecretStore;
+  /** 旧版明文位置；读取时一次性搬迁（可省略）。 */
+  legacySecrets?: SecretStore;
   newFlowId: () => string;
   onDraft: (flow: Flow) => void;
   onCancel: () => void;
 }) {
   const c = paletteFor(useColorScheme());
   const styles = useMemo(() => createStyles(c), [c]);
+  const { locale, t } = useI18n();
   const [description, setDescription] = useState('');
   const [provider, setProvider] = useState<ProviderKind>('anthropic');
   const [apiKey, setApiKey] = useState('');
@@ -40,7 +45,7 @@ export function GenerateScreen(props: {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadModelConfig(props.kv)
+    loadModelConfig(props.secrets, props.legacySecrets)
       .then((saved) => {
         if (!saved) return;
         setProvider(saved.provider);
@@ -49,7 +54,7 @@ export function GenerateScreen(props: {
         setBaseUrl(saved.provider === 'openai-compatible' ? saved.baseUrl : (saved.baseUrl ?? ''));
       })
       .catch(() => {});
-  }, [props.kv]);
+  }, [props.secrets, props.legacySecrets]);
 
   const switchProvider = (next: ProviderKind): void => {
     setProvider(next);
@@ -77,9 +82,10 @@ export function GenerateScreen(props: {
     setBusy(true);
     setError(null);
     const cfg = config();
-    saveModelConfig(props.kv, cfg).catch(() => {});
-    generateFlow(createModelPort(cfg, platformFetch), description, {
+    saveModelConfig(props.secrets, cfg).catch(() => {});
+    generateFlow(createModelPort(cfg, platformFetch, locale), description, {
       id: props.newFlowId(),
+      locale,
       todayDayIndex: localDayIndex(Date.now(), systemTimeZone), // everyNDays 的起算日（E3 显式注入）
     })
       .then((res) => {
@@ -93,23 +99,23 @@ export function GenerateScreen(props: {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={props.onCancel} hitSlop={12}><Text style={styles.back}>‹ 返回</Text></Pressable>
-        <Text style={styles.title}>AI 生成</Text>
+        <Pressable onPress={props.onCancel} hitSlop={12}><Text style={styles.back}>{t.back}</Text></Pressable>
+        <Text style={styles.title}>{t.generateTitle}</Text>
         <View style={{ width: 48 }} />
       </View>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.hint}>用一句话描述你的时间模式，AI 会转写成一条 flow 草稿，由你审阅后保存。</Text>
+        <Text style={styles.hint}>{t.generateHint}</Text>
         <TextInput
           style={styles.input}
           value={description}
-          onChangeText={(t) => { setDescription(t); setError(null); }}
-          placeholder="例：法压咖啡——倒 92 度热水，浸泡 4 分钟，压下压杆再倒出"
+          onChangeText={(text) => { setDescription(text); setError(null); }}
+          placeholder={t.generatePlaceholder}
           placeholderTextColor={c.pending}
           multiline
           testID="gen-description"
         />
 
-        <Text style={styles.sectionKicker}>模型设置</Text>
+        <Text style={styles.sectionKicker}>{t.generateModelSettings}</Text>
         <View style={styles.row}>
           {(['anthropic', 'openai-compatible'] as const).map((p) => (
             <Pressable
@@ -118,7 +124,7 @@ export function GenerateScreen(props: {
               onPress={() => switchProvider(p)}
             >
               <Text style={[styles.chipText, provider === p && styles.chipTextOn]}>
-                {p === 'anthropic' ? 'Claude' : 'OpenAI 兼容'}
+                {p === 'anthropic' ? 'Claude' : t.generateProviderOpenAI}
               </Text>
             </Pressable>
           ))}
@@ -126,7 +132,7 @@ export function GenerateScreen(props: {
 
         {provider === 'openai-compatible' ? (
           <>
-            <Text style={styles.label}>端点（Base URL）</Text>
+            <Text style={styles.label}>{t.generateBaseUrl}</Text>
             <TextInput
               style={styles.field}
               value={baseUrl}
@@ -146,23 +152,23 @@ export function GenerateScreen(props: {
           </>
         ) : null}
 
-        <Text style={styles.label}>模型</Text>
+        <Text style={styles.label}>{t.generateModel}</Text>
         <TextInput
           style={styles.field}
           value={model}
           onChangeText={setModel}
-          placeholder={provider === 'anthropic' ? ANTHROPIC_DEFAULT_MODEL : '如 deepseek-chat'}
+          placeholder={provider === 'anthropic' ? ANTHROPIC_DEFAULT_MODEL : t.generateModelPlaceholder}
           placeholderTextColor={c.pending}
           autoCapitalize="none"
           autoCorrect={false}
         />
 
-        <Text style={styles.label}>API Key（只保存在本机）</Text>
+        <Text style={styles.label}>{t.generateApiKey}</Text>
         <TextInput
           style={styles.field}
           value={apiKey}
           onChangeText={setApiKey}
-          placeholder={provider === 'openai-compatible' ? '本地服务（Ollama）可留空' : 'sk-...'}
+          placeholder={provider === 'openai-compatible' ? t.generateKeyOptional : 'sk-...'}
           placeholderTextColor={c.pending}
           secureTextEntry
           autoCapitalize="none"
@@ -175,9 +181,9 @@ export function GenerateScreen(props: {
           onPress={doGenerate}
           testID="gen-submit"
         >
-          <Text style={styles.primaryText}>{busy ? '生成中…' : '生成草稿'}</Text>
+          <Text style={styles.primaryText}>{busy ? t.generateBusy : t.generateSubmit}</Text>
         </Pressable>
-        <Text style={styles.footnote}>生成后会进入编辑器，确认无误再保存；保存即产生可回退的新版本。</Text>
+        <Text style={styles.footnote}>{t.generateFootnote}</Text>
       </ScrollView>
     </View>
   );

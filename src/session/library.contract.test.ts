@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 
 import { createInMemoryKV } from '../storage/kv';
 import { createStorage } from '../storage/storage';
-import { createLibrary } from './library';
+import { createLibrary, MAX_REVISIONS } from './library';
 import { createFlow, addNode, setMeta } from '../domain/editing';
 import { serializeFlow } from '../domain/serialize';
 import { type TimedNode } from '../domain/types';
@@ -65,6 +65,31 @@ test('导出 / 导入无损，导入登记 provenance.importedAt', async () => {
   assert.equal(imported.provenance?.importedAt, 1234);
   assert.equal(imported.id, 'mine');
   assert.deepEqual(imported.nodes, saved.nodes);
+});
+
+test('导入同 id 的 flow → 旧版本入历史，绝不静默覆盖', async () => {
+  const { lib } = make();
+  await lib.commit(sample()); // v1：标题「我的流程」
+
+  const foreign = setMeta(sample(), { title: '别人分享的同名流程' });
+  const imported = await lib.importFlow(serializeFlow(foreign), 999);
+
+  assert.equal(imported.version, 2); // 作为新修订入库
+  assert.equal(imported.provenance?.importedAt, 999);
+  const history = await lib.revisions('mine');
+  assert.equal(history.length, 1);
+  assert.equal(history[0].title, '我的流程'); // 原 flow 保留在历史中，可回退
+});
+
+test('历史修订有上限：超出时丢最旧的', async () => {
+  const { lib } = make();
+  await lib.commit(sample());
+  for (let i = 1; i <= MAX_REVISIONS + 5; i++) {
+    await lib.commit(setMeta(sample(), { title: `第 ${i} 版` }));
+  }
+  const history = await lib.revisions('mine');
+  assert.equal(history.length, MAX_REVISIONS);
+  assert.equal(history.at(-1)?.title, `第 ${MAX_REVISIONS + 4} 版`); // 最新的都在
 });
 
 test('remove 从库中移除', async () => {

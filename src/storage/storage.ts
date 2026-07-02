@@ -1,8 +1,9 @@
 // Storage：Flow 定义与 Run 记录的持久化（C6 —— Flow 永远属于用户，可导出、离线可用）。
 // 纯逻辑，建立在 KVStore 端口之上；不依赖任何平台 API。
 
-import { type Flow, type Run } from '../domain/types';
-import { serializeFlow, deserializeFlow } from '../domain/serialize';
+import { type Flow, type Run, type RunEvent, type RunEventType } from '../domain/types';
+import { serializeFlow, deserializeFlow, coerceFlow } from '../domain/serialize';
+import { reduce } from '../runtime/engine';
 import { type CheckIn } from '../runtime/adherence';
 import { type KVStore } from './kv';
 
@@ -10,6 +11,51 @@ const FLOW = 'flow:';
 const RUN = 'run:';
 const CHECKINS = 'checkins:';
 const REV = 'rev:';
+
+// ---- 持久数据回到纯核心前的闸门 ----
+// Flow 快照走迁移 + 校验（coerceFlow）；事件日志用 reduce 从头重放来验证合法性——
+// 重放即校验（E4）。读到坏数据返回 null/跳过，而不是让非法状态流入运行时。
+
+const EVENT_TYPES = new Set<RunEventType>([
+  'started',
+  'stepCompleted',
+  'skipped',
+  'gateConfirmed',
+  'paused',
+  'resumed',
+  'wentBack',
+]);
+
+function isRunEvent(value: unknown): value is RunEvent {
+  if (typeof value !== 'object' || value === null) return false;
+  const e = value as { type?: unknown; at?: unknown };
+  return typeof e.type === 'string' && EVENT_TYPES.has(e.type as RunEventType) && typeof e.at === 'number';
+}
+
+function parseRun(text: string): Run | null {
+  try {
+    const raw = JSON.parse(text) as { id?: unknown; flow?: unknown; events?: unknown };
+    if (typeof raw.id !== 'string' || !Array.isArray(raw.events)) return null;
+    if (!raw.events.every(isRunEvent)) return null;
+    const flow = coerceFlow(raw.flow); // 旧 schema 快照在此迁移
+    let run: Run = { id: raw.id, flow, events: [] };
+    for (const event of raw.events) run = reduce(run, event);
+    return run;
+  } catch {
+    return null;
+  }
+}
+
+function isCheckIn(value: unknown): value is CheckIn {
+  if (typeof value !== 'object' || value === null) return false;
+  const c = value as { nodeId?: unknown; scheduledFor?: unknown; taken?: unknown; at?: unknown };
+  return (
+    typeof c.nodeId === 'string' &&
+    typeof c.scheduledFor === 'number' &&
+    typeof c.taken === 'boolean' &&
+    typeof c.at === 'number'
+  );
+}
 
 export interface Storage {
   saveFlow(flow: Flow): Promise<void>;
@@ -75,14 +121,15 @@ export function createStorage(kv: KVStore): Storage {
     },
     async loadRun(id) {
       const text = await kv.getItem(RUN + id);
-      return text ? (JSON.parse(text) as Run) : null;
+      return text ? parseRun(text) : null;
     },
     async listRuns() {
       const keys = (await kv.keys()).filter((k) => k.startsWith(RUN));
       const runs: Run[] = [];
       for (const k of keys) {
         const text = await kv.getItem(k);
-        if (text) runs.push(JSON.parse(text) as Run);
+        const run = text ? parseRun(text) : null;
+        if (run) runs.push(run);
       }
       return runs;
     },
@@ -95,7 +142,14 @@ export function createStorage(kv: KVStore): Storage {
     },
     async loadCheckIns(flowId) {
       const text = await kv.getItem(CHECKINS + flowId);
-      return text ? (JSON.parse(text) as CheckIn[]) : [];
+      if (!text) return [];
+      try {
+        const raw = JSON.parse(text) as unknown;
+        // 每条打卡相互独立：坏条目单独丢弃，不拖累其余记录。
+        return Array.isArray(raw) ? raw.filter(isCheckIn) : [];
+      } catch {
+        return [];
+      }
     },
 
     async saveRevisions(flowId, revisions) {
@@ -103,7 +157,23 @@ export function createStorage(kv: KVStore): Storage {
     },
     async loadRevisions(flowId) {
       const text = await kv.getItem(REV + flowId);
-      return text ? (JSON.parse(text) as Flow[]) : [];
+      if (!text) return [];
+      try {
+        const raw = JSON.parse(text) as unknown;
+        if (!Array.isArray(raw)) return [];
+        // 修订快照逐条迁移 + 校验；坏快照跳过，保住其余历史。
+        const revisions: Flow[] = [];
+        for (const item of raw) {
+          try {
+            revisions.push(coerceFlow(item));
+          } catch {
+            // skip invalid snapshot
+          }
+        }
+        return revisions;
+      } catch {
+        return [];
+      }
     },
   };
 }

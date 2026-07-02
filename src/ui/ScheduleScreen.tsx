@@ -19,20 +19,20 @@ import {
   type DoseStatus,
 } from '../runtime/adherence';
 import { type Storage } from '../storage/storage';
-import { type Notifier } from '../notifications/notifier';
-import { planScheduledReminders } from '../notifications/plan';
 import { nextEvents } from '../runtime/engine';
 import { fmtTimeOfDay } from './format';
+import { useI18n } from './i18n';
+import { type Strings } from './strings';
 import { paletteFor, type Palette, spacing, radius, type, mono } from './theme';
 
 const GRACE_MINUTES = 120;
 
-const STATUS_LABEL: Record<DoseStatus, string> = {
-  upcoming: '待服',
-  due: '可服用',
-  taken: '已服',
-  missed: '漏服',
-};
+const statusLabels = (t: Strings): Record<DoseStatus, string> => ({
+  upcoming: t.doseUpcoming,
+  due: t.doseDue,
+  taken: t.doseTaken,
+  missed: t.doseMissed,
+});
 
 const statusColors = (c: Palette): Record<DoseStatus, string> => ({
   upcoming: c.textMuted,
@@ -67,11 +67,13 @@ function DoseBead(props: { status: DoseStatus; s: Styles; bs: BeadStyles }) {
 export function ScheduleScreen(props: {
   flow: Flow;
   storage: Storage;
-  notifier: Notifier;
+  /** 打开即视为为这条 flow 开启提醒；实际登记与多日重排由 App 层编排。 */
+  onEnrollReminders: (flowId: string) => void;
   onExit: () => void;
 }) {
-  const { flow, storage, notifier } = props;
+  const { flow, storage } = props;
   const c = paletteFor(useColorScheme());
+  const { locale, t } = useI18n();
   const styles = useMemo(() => createStyles(c), [c]);
   const beadStyles = useMemo(() => createBeadStyles(c), [c]);
   // 显式注入时区（E3）：flow 锚定了 IANA 时区则按锚定时区，否则跟随设备；跨 DST 正确
@@ -82,7 +84,7 @@ export function ScheduleScreen(props: {
   useEffect(() => {
     let alive = true;
     storage.loadCheckIns(flow.id).then((log) => alive && setCheckIns(log)).catch(() => {});
-    notifier.schedule(planScheduledReminders(flow, Date.now(), tz, MS_PER_DAY)).catch(() => {});
+    props.onEnrollReminders(flow.id);
     return () => {
       alive = false;
     };
@@ -96,7 +98,8 @@ export function ScheduleScreen(props: {
 
   const doses = todayDoses(flow, checkIns, now, tz, GRACE_MINUTES);
   // 节律在 flow 级：今天不在节律上时给出下一次的日子
-  const cadence = describeRecurrence(flow.repeat ?? { kind: 'once' });
+  const cadence = describeRecurrence(flow.repeat ?? { kind: 'once' }, locale);
+  const STATUS_LABEL = statusLabels(t);
   const [nextOcc] = doses.length === 0 ? nextEvents(flow, now, tz, 400 * MS_PER_DAY) : [];
   const nowMinutes = timeOfDay(now, tz);
   // 「现在」游标插在哪两剂之间
@@ -116,26 +119,32 @@ export function ScheduleScreen(props: {
     <View style={styles.screen}>
       <View style={styles.header}>
         <Pressable onPress={props.onExit} hitSlop={12}>
-          <Text style={styles.back}>‹ 返回</Text>
+          <Text style={styles.back}>{t.back}</Text>
         </Pressable>
         <Text style={styles.title} numberOfLines={1}>{flow.title}</Text>
         <View style={{ width: 48 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.sectionKicker}>
-          今天 · {cadence}{flow.timeZone ? ` · 按 ${flow.timeZone} 时区` : ''}
-        </Text>
+        <Text style={styles.sectionKicker}>{t.scheduleToday(cadence, flow.timeZone)}</Text>
 
         <View style={styles.card}>
           {doses.length === 0 ? (
             <Text style={styles.empty}>
-              今天不在节律上{nextOcc ? `，下一次：${new Date(nextOcc.at).getMonth() + 1} 月 ${new Date(nextOcc.at).getDate()} 日 ${fmtTimeOfDay(timeOfDay(nextOcc.at, tz))}` : ''}。
+              {t.scheduleOffDay(
+                nextOcc
+                  ? {
+                      month: new Date(nextOcc.at).getMonth() + 1,
+                      day: new Date(nextOcc.at).getDate(),
+                      time: fmtTimeOfDay(timeOfDay(nextOcc.at, tz)),
+                    }
+                  : null,
+              )}
             </Text>
           ) : null}
           {doses.map((d, i) => (
             <View key={d.nodeId}>
-              {i === cursorAt ? <NowCursor minutes={nowMinutes} s={styles} /> : null}
+              {i === cursorAt ? <NowCursor minutes={nowMinutes} s={styles} t={t} /> : null}
               <View style={styles.row}>
                 <Text style={[styles.time, d.status === 'taken' && styles.timeTaken]}>
                   {fmtTimeOfDay(timeOfDay(d.scheduledFor, tz))}
@@ -156,32 +165,32 @@ export function ScheduleScreen(props: {
                 </View>
                 {d.status === 'taken' ? (
                   <Pressable onPress={() => undo(d)} hitSlop={8}>
-                    <Text style={styles.undo}>撤销</Text>
+                    <Text style={styles.undo}>{t.undo}</Text>
                   </Pressable>
                 ) : (
                   <Pressable style={styles.take} onPress={() => take(d)}>
-                    <Text style={styles.takeText}>打卡</Text>
+                    <Text style={styles.takeText}>{t.checkIn}</Text>
                   </Pressable>
                 )}
               </View>
             </View>
           ))}
-          {cursorAt === doses.length && doses.length > 0 ? <NowCursor minutes={nowMinutes} s={styles} /> : null}
+          {cursorAt === doses.length && doses.length > 0 ? <NowCursor minutes={nowMinutes} s={styles} t={t} /> : null}
         </View>
 
         <Text style={styles.note}>
           {flow.description ? flow.description + '\n' : ''}
-          本表仅作提醒之用，不构成医疗处方或诊断；请以医嘱为准。
+          {t.scheduleNote}
         </Text>
       </ScrollView>
     </View>
   );
 }
 
-function NowCursor(props: { minutes: number; s: Styles }) {
+function NowCursor(props: { minutes: number; s: Styles; t: Strings }) {
   return (
     <View style={props.s.cursorRow}>
-      <Text style={props.s.cursorLabel}>现在 {fmtTimeOfDay(props.minutes)}</Text>
+      <Text style={props.s.cursorLabel}>{props.t.scheduleNow(fmtTimeOfDay(props.minutes))}</Text>
       <View style={props.s.cursorLine} />
     </View>
   );

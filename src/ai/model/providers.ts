@@ -1,6 +1,7 @@
 // 供应商注册表：ModelProviderConfig（可辨识联合）→ ModelPort。
 // 新增一家供应商 = 新增一个 config 变体 + 一个适配器 + 这里的一个分支（扩展而非修改，C9/C10）。
 
+import type { Locale } from '../../i18n/locale';
 import { createAnthropicPort, type AnthropicConfig } from './anthropic';
 import { createOpenAICompatiblePort, type OpenAICompatibleConfig } from './openaiCompatible';
 import type { FetchLike, ModelPort } from './port';
@@ -9,15 +10,19 @@ export type ModelProviderConfig = AnthropicConfig | OpenAICompatibleConfig;
 
 export type ProviderKind = ModelProviderConfig['provider'];
 
-export function createModelPort(config: ModelProviderConfig, fetchFn: FetchLike): ModelPort {
+export function createModelPort(
+  config: ModelProviderConfig,
+  fetchFn: FetchLike,
+  locale: Locale,
+): ModelPort {
   switch (config.provider) {
     case 'anthropic':
-      return createAnthropicPort(config, fetchFn);
+      return createAnthropicPort(config, fetchFn, locale);
     case 'openai-compatible':
-      return createOpenAICompatiblePort(config, fetchFn);
+      return createOpenAICompatiblePort(config, fetchFn, locale);
     default: {
       const never: never = config;
-      throw new Error(`未知的模型供应商：${JSON.stringify(never)}`);
+      throw new Error(`unknown model provider: ${JSON.stringify(never)}`);
     }
   }
 }

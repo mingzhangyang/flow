@@ -74,3 +74,69 @@ test('保存 / 读取打卡日志', async () => {
   await s.saveCheckIns('example.medication', log);
   assert.deepEqual(await s.loadCheckIns('example.medication'), log);
 });
+
+// ---- 持久数据回到纯核心前的闸门：坏数据返回 null / 跳过，绝不流入运行时 ----
+
+test('损坏的 Run 记录 → loadRun 为 null，listRuns 跳过', async () => {
+  const kv = createInMemoryKV();
+  const s = createStorage(kv);
+  await kv.setItem('run:broken-json', '{not json');
+  await kv.setItem('run:bad-shape', JSON.stringify({ id: 'x' })); // 缺 events
+  await kv.setItem(
+    'run:illegal-log',
+    JSON.stringify({
+      id: 'illegal-log',
+      flow: coffeeFlow,
+      events: [
+        { type: 'started', at: 0 },
+        { type: 'wentBack', toIndex: 999, at: 1 }, // 越界——重放即校验（E4）
+      ],
+    }),
+  );
+
+  assert.equal(await s.loadRun('broken-json'), null);
+  assert.equal(await s.loadRun('bad-shape'), null);
+  assert.equal(await s.loadRun('illegal-log'), null);
+  assert.deepEqual(await s.listRuns(), []);
+});
+
+test('Run 内嵌的旧 schema flow 快照在读取时被迁移', async () => {
+  const kv = createInMemoryKV();
+  const s = createStorage(kv);
+  const v1Flow = {
+    schemaVersion: 1,
+    id: 'old-med',
+    title: '旧版服药',
+    topology: 'scheduled',
+    nodes: [{ kind: 'scheduled', id: 'a', label: '药', at: 480, repeat: { kind: 'daily' } }],
+  };
+  await kv.setItem(
+    'run:active-old-med',
+    JSON.stringify({ id: 'active-old-med', flow: v1Flow, events: [{ type: 'started', at: 0 }] }),
+  );
+
+  const run = await s.loadRun('active-old-med');
+  assert.ok(run);
+  assert.equal(run.flow.schemaVersion, 2);
+  assert.deepEqual(run.flow.repeat, { kind: 'daily' }); // 节点上的 repeat 上移到 flow 级
+});
+
+test('损坏的打卡日志 → 坏条目单独丢弃', async () => {
+  const kv = createInMemoryKV();
+  const s = createStorage(kv);
+  await kv.setItem('checkins:x', '{not json');
+  assert.deepEqual(await s.loadCheckIns('x'), []);
+
+  const good = { nodeId: 'a', scheduledFor: 1, taken: true, at: 2 };
+  await kv.setItem('checkins:y', JSON.stringify([good, { nodeId: 42 }, null]));
+  assert.deepEqual(await s.loadCheckIns('y'), [good]);
+});
+
+test('损坏的历史修订 → 坏快照跳过，其余保留', async () => {
+  const kv = createInMemoryKV();
+  const s = createStorage(kv);
+  await kv.setItem('rev:x', JSON.stringify([coffeeFlow, { not: 'a flow' }]));
+  const revisions = await s.loadRevisions('x');
+  assert.equal(revisions.length, 1);
+  assert.equal(revisions[0].id, coffeeFlow.id);
+});

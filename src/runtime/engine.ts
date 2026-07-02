@@ -48,6 +48,19 @@ function assertLegal(run: Run, event: RunEvent): void {
   const hasStarted = run.events.some((e) => e.type === 'started');
   if (event.type === 'started' && hasStarted) throw new Error('run already started');
   if (event.type !== 'started' && !hasStarted) throw new Error('run not started');
+
+  // 带下标的事件必须落在节点范围内——越界日志会让 project 读到不存在的节点。
+  const n = run.flow.nodes.length;
+  if (event.type === 'stepCompleted' || event.type === 'skipped' || event.type === 'gateConfirmed') {
+    if (!Number.isInteger(event.index) || event.index < 0 || event.index >= n) {
+      throw new Error(`event index ${String(event.index)} out of range [0, ${n})`);
+    }
+  }
+  if (event.type === 'wentBack') {
+    if (!Number.isInteger(event.toIndex) || event.toIndex < 0 || event.toIndex >= n) {
+      throw new Error(`wentBack toIndex ${String(event.toIndex)} out of range [0, ${n})`);
+    }
+  }
 }
 
 // ---- 顺序型：把事件日志折叠为一个游标，再按 now 计算可观察状态 ----
@@ -181,6 +194,41 @@ export function nextEvents(
       out.push({ nodeId: node.id, label: node.label, at });
     }
   }
+  out.sort((a, b) => a.at - b.at || (a.nodeId < b.nodeId ? -1 : 1));
+  return out;
+}
+
+/**
+ * 计算 [now, now+horizonMs] 窗口内所有 scheduled 节点的**全部**触发时刻（可跨多日）。
+ * nextEvents 只取每节点最近一次（驱动界面「下一次」）；本函数供通知层一次排入多日提醒，
+ * 让 App 几天不被打开时提醒也不断档（C5）。逐日推进沿用 nextOccurrence 的 DST 语义。
+ */
+export function upcomingEvents(
+  flow: Flow,
+  now: Instant,
+  tz: TimeZoneLike,
+  horizonMs: number,
+): ScheduledOccurrence[] {
+  if (flow.topology !== 'scheduled') return [];
+
+  const repeat = flow.repeat ?? { kind: 'once' as const };
+  const nodes = collectScheduled(flow.nodes);
+  const end = now + horizonMs;
+  const out: ScheduledOccurrence[] = [];
+
+  let anchor: Instant = now;
+  for (let i = 0; i < MAX_SCAN_DAYS; i++) {
+    if (localMidnight(anchor, tz) > end) break; // 这一天已整体越过窗口
+    if (occursOnDay(repeat, anchor, tz)) {
+      for (const node of nodes) {
+        const at = instantAtTimeOfDay(anchor, node.at, tz);
+        if (at >= now && at <= end) out.push({ nodeId: node.id, label: node.label, at });
+      }
+    }
+    if (repeat.kind === 'once') break; // 仅今天，过时不候
+    anchor = localMidnight(anchor, tz) + 36 * 60 * MS_PER_MINUTE;
+  }
+
   out.sort((a, b) => a.at - b.at || (a.nodeId < b.nodeId ? -1 : 1));
   return out;
 }

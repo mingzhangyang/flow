@@ -6,6 +6,8 @@ import { View, Text, StyleSheet } from 'react-native';
 import { type FlowNode } from '../domain/types';
 import { type RunStatus } from '../runtime/engine';
 import { fmtDuration } from './format';
+import { useI18n } from './i18n';
+import { type Strings } from './strings';
 import { colors, dark, spacing, radius } from './theme';
 
 type StepState = 'done' | 'current' | 'pending';
@@ -17,14 +19,14 @@ function stepState(index: number, currentIndex: number, status: RunStatus): Step
   return 'pending';
 }
 
-function meta(node: FlowNode): string {
+function meta(node: FlowNode, t: Strings): string {
   switch (node.kind) {
     case 'timed':
       return fmtDuration(node.durationSec);
     case 'gate':
-      return '需确认';
+      return t.nodeNeedsConfirm;
     case 'instant':
-      return '即时';
+      return t.nodeInstant;
     default:
       return '';
   }
@@ -36,29 +38,30 @@ export function Timeline(props: {
   status: RunStatus;
   tone?: 'light' | 'dark';
 }) {
-  const t = props.tone === 'dark' ? darkTone : lightTone;
+  const tone = props.tone === 'dark' ? darkTone : lightTone;
+  const { t } = useI18n();
   return (
     <View style={styles.wrap}>
       {props.nodes.map((node, i) => {
         const st = stepState(i, props.currentIndex, props.status);
         return (
           <View key={node.id} style={styles.row}>
-            <View style={[styles.dot, t.dot, st === 'done' && t.dotDone, st === 'current' && t.dotCurrent]}>
+            <View style={[styles.dot, tone.dot, st === 'done' && tone.dotDone, st === 'current' && tone.dotCurrent]}>
               {st === 'done' ? (
-                <Text style={[styles.check, t.check]}>✓</Text>
+                <Text style={[styles.check, tone.check]}>✓</Text>
               ) : (
-                <Text style={[styles.dotNum, t.dotNum]}>{i + 1}</Text>
+                <Text style={[styles.dotNum, tone.dotNum]}>{i + 1}</Text>
               )}
             </View>
             <View style={styles.body}>
               <Text
-                style={[t.label, st === 'current' && t.labelCurrent, st === 'done' && t.labelDone]}
+                style={[tone.label, st === 'current' && tone.labelCurrent, st === 'done' && tone.labelDone]}
               >
                 {node.label}
               </Text>
-              {node.rationale ? <Text style={t.rationale}>{node.rationale}</Text> : null}
+              {node.rationale ? <Text style={tone.rationale}>{node.rationale}</Text> : null}
             </View>
-            <Text style={t.meta}>{meta(node)}</Text>
+            <Text style={tone.meta}>{meta(node, t)}</Text>
           </View>
         );
       })}

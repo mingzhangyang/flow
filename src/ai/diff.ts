@@ -2,12 +2,16 @@
 // 无论改动来自人还是将来的 AI，都能先看差异、再决定。纯函数、确定性、离线。
 
 import { type Flow, type FlowNode } from '../domain/types';
+import { type Locale } from '../i18n/locale';
+
+/** 节点上可发生变化的字段（稳定标识，语言无关；译文见 describeChange）。 */
+export type NodeField = 'kind' | 'label' | 'rationale' | 'duration' | 'time';
 
 export type Change =
   | { kind: 'meta'; field: 'title' | 'description'; from?: string; to?: string }
   | { kind: 'nodeAdded'; id: string; label: string }
   | { kind: 'nodeRemoved'; id: string; label: string }
-  | { kind: 'nodeChanged'; id: string; label: string; fields: string[] }
+  | { kind: 'nodeChanged'; id: string; label: string; fields: NodeField[] }
   | { kind: 'nodeMoved'; id: string; label: string; from: number; to: number };
 
 export function diffFlows(prev: Flow, next: Flow): Change[] {
@@ -50,28 +54,74 @@ export function diffFlows(prev: Flow, next: Flow): Change[] {
   return changes;
 }
 
-function changedFields(a: FlowNode, b: FlowNode): string[] {
-  const fields: string[] = [];
-  if (a.kind !== b.kind) fields.push('类型');
-  if (a.label !== b.label) fields.push('名称');
-  if ((a.rationale ?? '') !== (b.rationale ?? '')) fields.push('为什么');
-  if (a.kind === 'timed' && b.kind === 'timed' && a.durationSec !== b.durationSec) fields.push('时长');
-  if (a.kind === 'scheduled' && b.kind === 'scheduled' && a.at !== b.at) fields.push('时间');
+function changedFields(a: FlowNode, b: FlowNode): NodeField[] {
+  const fields: NodeField[] = [];
+  if (a.kind !== b.kind) fields.push('kind');
+  if (a.label !== b.label) fields.push('label');
+  if ((a.rationale ?? '') !== (b.rationale ?? '')) fields.push('rationale');
+  if (a.kind === 'timed' && b.kind === 'timed' && a.durationSec !== b.durationSec) fields.push('duration');
+  if (a.kind === 'scheduled' && b.kind === 'scheduled' && a.at !== b.at) fields.push('time');
   return fields;
 }
 
-/** 一条差异的人类可读描述。 */
-export function describeChange(c: Change): string {
+interface DiffText {
+  fieldNames: Record<NodeField, string>;
+  fieldJoiner: string;
+  unnamed: string;
+  meta: (field: 'title' | 'description', to: string | undefined) => string;
+  added: (label: string) => string;
+  removed: (label: string) => string;
+  changed: (label: string, fields: string) => string;
+  moved: (label: string, from: number, to: number) => string;
+}
+
+const TEXT: Record<Locale, DiffText> = {
+  zh: {
+    fieldNames: { kind: '类型', label: '名称', rationale: '为什么', duration: '时长', time: '时间' },
+    fieldJoiner: '、',
+    unnamed: '（未命名）',
+    meta: (field, to) => `${field === 'title' ? '标题' : '描述'} 改为「${to ?? '（空）'}」`,
+    added: (label) => `新增　${label}`,
+    removed: (label) => `删除　${label}`,
+    changed: (label, fields) => `修改　${label}（${fields}）`,
+    moved: (label, from, to) => `移动　${label}（第 ${from + 1} → 第 ${to + 1}）`,
+  },
+  'zh-Hant': {
+    fieldNames: { kind: '類型', label: '名稱', rationale: '為什麼', duration: '時長', time: '時間' },
+    fieldJoiner: '、',
+    unnamed: '（未命名）',
+    meta: (field, to) => `${field === 'title' ? '標題' : '描述'} 改為「${to ?? '（空）'}」`,
+    added: (label) => `新增　${label}`,
+    removed: (label) => `刪除　${label}`,
+    changed: (label, fields) => `修改　${label}（${fields}）`,
+    moved: (label, from, to) => `移動　${label}（第 ${from + 1} → 第 ${to + 1}）`,
+  },
+  en: {
+    fieldNames: { kind: 'type', label: 'name', rationale: 'why', duration: 'duration', time: 'time' },
+    fieldJoiner: ', ',
+    unnamed: '(unnamed)',
+    meta: (field, to) => `${field === 'title' ? 'Title' : 'Description'} changed to "${to ?? '(empty)'}"`,
+    added: (label) => `Added ${label}`,
+    removed: (label) => `Removed ${label}`,
+    changed: (label, fields) => `Changed ${label} (${fields})`,
+    moved: (label, from, to) => `Moved ${label} (#${from + 1} → #${to + 1})`,
+  },
+};
+
+/** 一条差异的人类可读描述。语言显式注入（同 E3 思路）。 */
+export function describeChange(c: Change, locale: Locale): string {
+  const t = TEXT[locale];
+  const fields = (fs: NodeField[]): string => fs.map((f) => t.fieldNames[f]).join(t.fieldJoiner);
   switch (c.kind) {
     case 'meta':
-      return `${c.field === 'title' ? '标题' : '描述'} 改为「${c.to ?? '（空）'}」`;
+      return t.meta(c.field, c.to);
     case 'nodeAdded':
-      return `新增　${c.label || '（未命名）'}`;
+      return t.added(c.label || t.unnamed);
     case 'nodeRemoved':
-      return `删除　${c.label || '（未命名）'}`;
+      return t.removed(c.label || t.unnamed);
     case 'nodeChanged':
-      return `修改　${c.label}（${c.fields.join('、')}）`;
+      return t.changed(c.label, fields(c.fields));
     case 'nodeMoved':
-      return `移动　${c.label}（第 ${c.from + 1} → 第 ${c.to + 1}）`;
+      return t.moved(c.label, c.from, c.to);
   }
 }

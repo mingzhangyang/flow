@@ -2,6 +2,8 @@
 // 设计目标：不绑定任何一家供应商。Claude / OpenAI 兼容端点 / 本地模型都只是本端口的适配器，
 // 上层能力（生成等）只依赖本接口，因此更换或新增供应商不触碰业务逻辑。
 
+import { type Locale } from '../../i18n/locale';
+
 /** 一次模型调用请求（供应商无关的最小形状）。 */
 export interface ModelRequest {
   /** 系统指令：角色设定与输出约束。 */
@@ -39,8 +41,13 @@ export type FetchLike = (
   init: { method: string; headers: Record<string, string>; body: string },
 ) => Promise<FetchResponseLike>;
 
-/** 把非 2xx 响应整理成一句可读错误（尽量提取供应商的 error.message）。 */
-export function describeHttpError(provider: string, status: number, rawBody: string): string {
+/** 把非 2xx 响应整理成一句可读错误（尽量提取供应商的 error.message）。语言显式注入。 */
+export function describeHttpError(
+  provider: string,
+  status: number,
+  rawBody: string,
+  locale: Locale,
+): string {
   let detail = '';
   try {
     const parsed = JSON.parse(rawBody) as { error?: { message?: string }; message?: string };
@@ -48,5 +55,23 @@ export function describeHttpError(provider: string, status: number, rawBody: str
   } catch {
     detail = rawBody.slice(0, 200);
   }
-  return `${provider} 请求失败（HTTP ${status}）${detail ? `：${detail}` : ''}`;
+  if (locale === 'zh') return `${provider} 请求失败（HTTP ${status}）${detail ? `：${detail}` : ''}`;
+  if (locale === 'zh-Hant') return `${provider} 請求失敗（HTTP ${status}）${detail ? `：${detail}` : ''}`;
+  return `${provider} request failed (HTTP ${status})${detail ? `: ${detail}` : ''}`;
 }
+
+/** 适配器共用的用户可读错误文案。 */
+export const MODEL_ERRORS: Record<Locale, { refusal: string; empty: string }> = {
+  zh: {
+    refusal: '模型拒绝了这次请求（refusal），请调整描述后重试',
+    empty: '模型没有返回文本内容',
+  },
+  'zh-Hant': {
+    refusal: '模型拒絕了這次請求（refusal），請調整描述後重試',
+    empty: '模型沒有回傳文字內容',
+  },
+  en: {
+    refusal: 'The model refused this request — adjust the description and retry',
+    empty: 'The model returned no text',
+  },
+};

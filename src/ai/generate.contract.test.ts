@@ -49,7 +49,7 @@ test('请求包含 schema 约束与用户描述', () => {
 // ---- parseGeneratedFlow ----
 
 test('解析顺序型输出：分配 id、保留 rationale、通过校验', () => {
-  const res = parseGeneratedFlow(sequentialJson, { id: 'flow-1' });
+  const res = parseGeneratedFlow(sequentialJson, { id: 'flow-1', locale: 'zh' });
   assert.ok(res.ok);
   assert.equal(res.flow.id, 'flow-1');
   assert.equal(res.flow.schemaVersion, 2);
@@ -60,7 +60,7 @@ test('解析顺序型输出：分配 id、保留 rationale、通过校验', () =
 });
 
 test('解析日程型输出："HH:MM" 换算为分钟，并行子节点也分配 id', () => {
-  const res = parseGeneratedFlow(scheduledJson, { id: 'flow-2' });
+  const res = parseGeneratedFlow(scheduledJson, { id: 'flow-2', locale: 'zh' });
   assert.ok(res.ok);
   const first = res.flow.nodes[0];
   assert.equal(first.kind, 'scheduled');
@@ -74,24 +74,24 @@ test('解析日程型输出："HH:MM" 换算为分钟，并行子节点也分配
 
 test('容忍 markdown 代码块与前后缀文字', () => {
   const wrapped = '当然，这是您要的 flow：\n```json\n' + sequentialJson + '\n```\n希望有帮助！';
-  const res = parseGeneratedFlow(wrapped, { id: 'f' });
+  const res = parseGeneratedFlow(wrapped, { id: 'f', locale: 'zh' });
   assert.ok(res.ok);
 });
 
 test('非 JSON 输出返回错误（不抛异常）', () => {
-  const res = parseGeneratedFlow('抱歉，我做不到。', { id: 'f' });
+  const res = parseGeneratedFlow('抱歉，我做不到。', { id: 'f', locale: 'zh' });
   assert.equal(res.ok, false);
   assert.ok(!res.ok && /JSON/.test(res.error));
 });
 
 test('校验失败返回问题列表（如空 nodes、未知 kind）', () => {
-  const empty = parseGeneratedFlow(JSON.stringify({ title: 't', topology: 'sequential', nodes: [] }), { id: 'f' });
+  const empty = parseGeneratedFlow(JSON.stringify({ title: 't', topology: 'sequential', nodes: [] }), { id: 'f', locale: 'zh' });
   assert.equal(empty.ok, false);
   assert.ok(!empty.ok && empty.issues && empty.issues.length > 0);
 
   const badKind = parseGeneratedFlow(
     JSON.stringify({ title: 't', topology: 'sequential', nodes: [{ kind: 'magic', label: 'x' }] }),
-    { id: 'f' },
+    { id: 'f', locale: 'zh' },
   );
   assert.equal(badKind.ok, false);
 });
@@ -105,7 +105,7 @@ test('repeat 整理（flow 级）：weekly/everyNDays 收下，缺省与未知�
       nodes: [{ kind: 'scheduled', label: 'x', at: '08:00', ...(repeat !== undefined && onNode ? { repeat } : {}) }],
     });
   const rep = (text: string) => {
-    const res = parseGeneratedFlow(text, { id: 'f', todayDayIndex: 123 });
+    const res = parseGeneratedFlow(text, { id: 'f', locale: 'zh', todayDayIndex: 123 });
     assert.ok(res.ok);
     return res.flow.repeat;
   };
@@ -121,11 +121,11 @@ test('repeat 整理（flow 级）：weekly/everyNDays 收下，缺省与未知�
 test('日程型输出可携带锚定时区（timeZone 透传）', () => {
   const withTz = JSON.parse(scheduledJson);
   withTz.timeZone = 'Asia/Shanghai';
-  const res = parseGeneratedFlow(JSON.stringify(withTz), { id: 'f' });
+  const res = parseGeneratedFlow(JSON.stringify(withTz), { id: 'f', locale: 'zh' });
   assert.ok(res.ok);
   assert.equal(res.flow.timeZone, 'Asia/Shanghai');
   // 未提及时区则不带该字段
-  const plain = parseGeneratedFlow(scheduledJson, { id: 'f' });
+  const plain = parseGeneratedFlow(scheduledJson, { id: 'f', locale: 'zh' });
   assert.ok(plain.ok && plain.flow.timeZone === undefined);
 });
 
@@ -139,13 +139,13 @@ function stubPort(text: string): ModelPort {
 }
 
 test('generateFlow：任何实现了 ModelPort 的供应商都能产出带来源标注的草稿', async () => {
-  const res = await generateFlow(stubPort(sequentialJson), '做咖啡', { id: 'flow-9' });
+  const res = await generateFlow(stubPort(sequentialJson), '做咖啡', { id: 'flow-9', locale: 'zh' });
   assert.ok(res.ok);
   assert.equal(res.flow.provenance?.source, 'ai:stub/test-model'); // E6 来源标注
   assert.equal(res.flow.version, undefined); // 版本由 library.commit 分配（AI-C3）
 });
 
 test('generateFlow：解析失败原样返回错误结果', async () => {
-  const res = await generateFlow(stubPort('nope'), 'x', { id: 'f' });
+  const res = await generateFlow(stubPort('nope'), 'x', { id: 'f', locale: 'zh' });
   assert.equal(res.ok, false);
 });

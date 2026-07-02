@@ -6,64 +6,65 @@ import { useMemo, useState } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Platform, useColorScheme } from 'react-native';
 import { type Flow } from '../domain/types';
 import { serializeFlow } from '../domain/serialize';
-import { buildShareText, buildSharePayload } from '../sharing/share';
+import { buildShareText, buildSharePayload, dataDivider } from '../sharing/share';
 import { type Sharer, type ShareOutcome } from '../sharing/sharer';
+import { useI18n } from './i18n';
+import { type Strings } from './strings';
 import { paletteFor, type Palette, spacing, radius } from './theme';
 
-const OUTCOME_TEXT: Record<ShareOutcome, string> = {
-  shared: '已唤起分享 ✓',
-  copied: '已复制全文，去粘贴给朋友吧 ✓',
-  unavailable: '此环境不支持分享或剪贴板',
-};
+const outcomeText = (t: Strings): Record<ShareOutcome, string> => ({
+  shared: t.shareOutcomeShared,
+  copied: t.shareOutcomeCopied,
+  unavailable: t.shareOutcomeUnavailable,
+});
 
 export function ExportScreen(props: { flow: Flow; sharer: Sharer; onDone: () => void }) {
   const c = paletteFor(useColorScheme());
   const styles = useMemo(() => createStyles(c), [c]);
+  const { locale, t } = useI18n();
   const [author, setAuthor] = useState('');
   const [feedback, setFeedback] = useState<string | null>(null);
 
-  const shareText = useMemo(() => buildShareText(props.flow, { author }), [props.flow, author]);
+  const shareText = useMemo(() => buildShareText(props.flow, { author, locale }), [props.flow, author, locale]);
   const json = useMemo(() => serializeFlow(buildSharePayload(props.flow, { author })), [props.flow, author]);
-  const readable = shareText.slice(0, shareText.indexOf('——以下'));
+  const readable = shareText.slice(0, shareText.indexOf(dataDivider(locale)));
 
   const send = (message: string): void => {
     props.sharer
       .share({ title: props.flow.title, message })
-      .then((outcome) => setFeedback(OUTCOME_TEXT[outcome]))
+      .then((outcome) => setFeedback(outcomeText(t)[outcome]))
       .catch(() => setFeedback(null)); // 用户取消等——不打扰
   };
 
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={props.onDone} hitSlop={12}><Text style={styles.back}>‹ 返回</Text></Pressable>
-        <Text style={styles.title}>分享 · 导出</Text>
+        <Pressable onPress={props.onDone} hitSlop={12}><Text style={styles.back}>{t.back}</Text></Pressable>
+        <Text style={styles.title}>{t.exportTitle}</Text>
         <View style={{ width: 48 }} />
       </View>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.hint}>
-          分享全文 = 一段人能读懂的做法说明 + 可导入的数据。对方把全文粘进「准时」的导入框，就收下了这条 flow。
-        </Text>
+        <Text style={styles.hint}>{t.exportHint}</Text>
         <TextInput
           style={styles.field}
           value={author}
           onChangeText={setAuthor}
-          placeholder="署名（可选，随分享一起标注来源）"
+          placeholder={t.exportAuthor}
           placeholderTextColor={c.pending}
         />
 
-        <Text style={styles.sectionKicker}>预览</Text>
+        <Text style={styles.sectionKicker}>{t.exportPreview}</Text>
         <Text style={styles.preview}>{readable.trimEnd()}</Text>
 
         <Pressable style={styles.primary} onPress={() => send(shareText)}>
-          <Text style={styles.primaryText}>分享全文…</Text>
+          <Text style={styles.primaryText}>{t.exportShareFull}</Text>
         </Pressable>
         {feedback ? <Text style={styles.feedback}>{feedback}</Text> : null}
 
-        <Text style={styles.sectionKicker}>仅数据（JSON）</Text>
+        <Text style={styles.sectionKicker}>{t.exportDataOnly}</Text>
         <TextInput style={styles.json} value={json} editable={false} multiline selectTextOnFocus />
         <Pressable style={[styles.primary, styles.secondary]} onPress={() => send(json)}>
-          <Text style={styles.secondaryText}>只分享数据</Text>
+          <Text style={styles.secondaryText}>{t.exportShareData}</Text>
         </Pressable>
       </ScrollView>
     </View>

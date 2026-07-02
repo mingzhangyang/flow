@@ -45,12 +45,26 @@ test('occursOnDay：once 与 daily 恒为真（once 只发生一次由 engine �
   assert.equal(occursOnDay({ kind: 'daily' }, THURSDAY_NOON, TZ), true);
 });
 
-test('describeRecurrence：人类可读', () => {
-  assert.equal(describeRecurrence({ kind: 'once' }), '仅今天');
-  assert.equal(describeRecurrence({ kind: 'daily' }), '每天');
-  assert.equal(describeRecurrence({ kind: 'weekly', days: [5, 1] }), '每周一、五');
-  assert.equal(describeRecurrence({ kind: 'everyNDays', n: 2, fromDay: 0 }), '隔天');
-  assert.equal(describeRecurrence({ kind: 'everyNDays', n: 3, fromDay: 0 }), '每 3 天');
+test('describeRecurrence：人类可读（中文）', () => {
+  assert.equal(describeRecurrence({ kind: 'once' }, 'zh'), '仅今天');
+  assert.equal(describeRecurrence({ kind: 'daily' }, 'zh'), '每天');
+  assert.equal(describeRecurrence({ kind: 'weekly', days: [5, 1] }, 'zh'), '每周一、五');
+  assert.equal(describeRecurrence({ kind: 'everyNDays', n: 2, fromDay: 0 }, 'zh'), '隔天');
+  assert.equal(describeRecurrence({ kind: 'everyNDays', n: 3, fromDay: 0 }, 'zh'), '每 3 天');
+});
+
+test('describeRecurrence：人类可读（繁体）', () => {
+  assert.equal(describeRecurrence({ kind: 'once' }, 'zh-Hant'), '僅今天');
+  assert.equal(describeRecurrence({ kind: 'weekly', days: [5, 1] }, 'zh-Hant'), '每週一、五');
+  assert.equal(describeRecurrence({ kind: 'everyNDays', n: 3, fromDay: 0 }, 'zh-Hant'), '每 3 天');
+});
+
+test('describeRecurrence：人类可读（英文）', () => {
+  assert.equal(describeRecurrence({ kind: 'once' }, 'en'), 'today only');
+  assert.equal(describeRecurrence({ kind: 'daily' }, 'en'), 'every day');
+  assert.equal(describeRecurrence({ kind: 'weekly', days: [5, 1] }, 'en'), 'weekly on Mon, Fri');
+  assert.equal(describeRecurrence({ kind: 'everyNDays', n: 2, fromDay: 0 }, 'en'), 'every other day');
+  assert.equal(describeRecurrence({ kind: 'everyNDays', n: 3, fromDay: 0 }, 'en'), 'every 3 days');
 });
 
 // ---- engine 集成：下一次触发跳到正确的日子 ----

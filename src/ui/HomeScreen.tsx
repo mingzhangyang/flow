@@ -10,6 +10,7 @@ import { timeOfDay, MS_PER_DAY } from '../runtime/clock';
 import { systemTimeZone } from '../runtime/systemTimeZone';
 import { timeZoneForFlow } from '../runtime/ianaTimeZone';
 import { fmtTimeOfDay } from './format';
+import { useI18n } from './i18n';
 import { paletteFor, type Palette, dark, spacing, radius, type, mono } from './theme';
 
 /** 卡片色线的低饱和候选色；由 flow id 稳定派生。 */
@@ -19,8 +20,6 @@ function stripeOf(id: string): string {
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
   return STRIPES[h % STRIPES.length];
 }
-
-const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
 
 function SeqGlyph(props: { color: string }) {
   return (
@@ -56,6 +55,7 @@ export function HomeScreen(props: {
 }) {
   const c = paletteFor(useColorScheme());
   const styles = useMemo(() => createStyles(c), [c]);
+  const { t } = useI18n();
   const [mine, setMine] = useState<Flow[]>([]);
   const reload = (): void => {
     props.library.list().then(setMine).catch(() => {});
@@ -97,17 +97,15 @@ export function HomeScreen(props: {
           </View>
         </View>
         {flow.description ? <Text style={styles.cardDesc}>{flow.description}</Text> : null}
-        <Text style={styles.cardMeta}>
-          {flow.nodes.length} {flow.topology === 'sequential' ? '步' : '个时刻'} · 点按运行
-        </Text>
+        <Text style={styles.cardMeta}>{t.cardMeta(flow.nodes.length, flow.topology)}</Text>
       </Pressable>
       <View style={styles.rowActions}>
-        <Pressable onPress={() => props.onInsight(flow)}><Text style={styles.link}>解读</Text></Pressable>
+        <Pressable onPress={() => props.onInsight(flow)}><Text style={styles.link}>{t.linkInsight}</Text></Pressable>
         {own ? (
           <>
-            <Pressable onPress={() => props.onEdit(flow)}><Text style={styles.link}>编辑</Text></Pressable>
-            <Pressable onPress={() => props.onExport(flow)}><Text style={styles.link}>分享</Text></Pressable>
-            <Pressable onPress={() => del(flow.id)}><Text style={[styles.link, styles.danger]}>删除</Text></Pressable>
+            <Pressable onPress={() => props.onEdit(flow)}><Text style={styles.link}>{t.linkEdit}</Text></Pressable>
+            <Pressable onPress={() => props.onExport(flow)}><Text style={styles.link}>{t.linkShare}</Text></Pressable>
+            <Pressable onPress={() => del(flow.id)}><Text style={[styles.link, styles.danger]}>{t.delete}</Text></Pressable>
           </>
         ) : null}
       </View>
@@ -117,9 +115,9 @@ export function HomeScreen(props: {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Text style={styles.brand}>准时</Text>
+        <Text style={styles.brand}>{t.brand}</Text>
         <Text style={styles.date}>
-          {today.getMonth() + 1} 月 {today.getDate()} 日 · 周{WEEKDAYS[today.getDay()]}
+          {t.headerDate(today.getMonth() + 1, today.getDate(), today.getDay())}
         </Text>
       </View>
 
@@ -128,7 +126,7 @@ export function HomeScreen(props: {
           <Pressable style={styles.next} onPress={() => props.onRun(upNext.flow)}>
             <Text style={styles.nextTime}>{fmtTimeOfDay(timeOfDay(upNext.occ.at, systemTimeZone))}</Text>
             <View style={styles.nextBody}>
-              <Text style={styles.nextKicker}>接下来</Text>
+              <Text style={styles.nextKicker}>{t.upNext}</Text>
               <Text style={styles.nextLabel} numberOfLines={1}>{upNext.occ.label}</Text>
               <Text style={styles.nextFlow} numberOfLines={1}>{upNext.flow.title}</Text>
             </View>
@@ -138,27 +136,27 @@ export function HomeScreen(props: {
 
         <View style={styles.actions}>
           <Pressable style={styles.action} onPress={() => props.onNew('sequential')}>
-            <Text style={styles.actionText}>＋ 顺序</Text>
+            <Text style={styles.actionText}>{t.newSequential}</Text>
           </Pressable>
           <Pressable style={styles.action} onPress={() => props.onNew('scheduled')}>
-            <Text style={styles.actionText}>＋ 日程</Text>
+            <Text style={styles.actionText}>{t.newScheduled}</Text>
           </Pressable>
           <Pressable style={[styles.action, styles.actionGhost]} onPress={props.onGenerate}>
-            <Text style={styles.actionGhostText}>✨ AI 生成</Text>
+            <Text style={styles.actionGhostText}>{t.aiGenerate}</Text>
           </Pressable>
           <Pressable style={[styles.action, styles.actionGhost]} onPress={props.onImport}>
-            <Text style={styles.actionGhostText}>导入</Text>
+            <Text style={styles.actionGhostText}>{t.importAction}</Text>
           </Pressable>
         </View>
 
         {mine.length > 0 ? (
           <>
-            <Text style={styles.sectionKicker}>我的</Text>
+            <Text style={styles.sectionKicker}>{t.sectionMine}</Text>
             {mine.map((f) => card(f, true))}
           </>
         ) : null}
 
-        <Text style={styles.sectionKicker}>示例</Text>
+        <Text style={styles.sectionKicker}>{t.sectionExamples}</Text>
         {props.examples.map((f) => card(f, false))}
       </ScrollView>
     </View>

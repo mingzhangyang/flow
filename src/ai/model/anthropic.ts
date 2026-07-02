@@ -1,8 +1,10 @@
 // Anthropic（Claude）适配器：ModelRequest → Messages API → 文本。
 // 只做协议翻译，不含业务逻辑；密钥保存在用户本机（C6 本地优先），请求由客户端直连。
 
+import { type Locale } from '../../i18n/locale';
 import {
   describeHttpError,
+  MODEL_ERRORS,
   type FetchLike,
   type ModelPort,
   type ModelRequest,
@@ -27,7 +29,11 @@ interface MessagesResponse {
   content?: { type: string; text?: string }[];
 }
 
-export function createAnthropicPort(config: AnthropicConfig, fetchFn: FetchLike): ModelPort {
+export function createAnthropicPort(
+  config: AnthropicConfig,
+  fetchFn: FetchLike,
+  locale: Locale,
+): ModelPort {
   const base = (config.baseUrl?.trim() || ANTHROPIC_DEFAULT_BASE_URL).replace(/\/+$/, '');
   return {
     id: `anthropic/${config.model}`,
@@ -49,17 +55,17 @@ export function createAnthropicPort(config: AnthropicConfig, fetchFn: FetchLike)
         }),
       });
       const raw = await res.text();
-      if (!res.ok) throw new Error(describeHttpError('Anthropic', res.status, raw));
+      if (!res.ok) throw new Error(describeHttpError('Anthropic', res.status, raw, locale));
 
       const data = JSON.parse(raw) as MessagesResponse;
       if (data.stop_reason === 'refusal') {
-        throw new Error('模型拒绝了这次请求（refusal），请调整描述后重试');
+        throw new Error(MODEL_ERRORS[locale].refusal);
       }
       const text = (data.content ?? [])
         .filter((block) => block.type === 'text')
         .map((block) => block.text ?? '')
         .join('');
-      if (!text) throw new Error('模型没有返回文本内容');
+      if (!text) throw new Error(MODEL_ERRORS[locale].empty);
       return { text, model: data.model ?? config.model };
     },
   };
