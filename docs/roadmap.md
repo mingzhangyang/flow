@@ -69,12 +69,25 @@
 
 ---
 
+## Phase 5 — 发布准备（进行中）
+> 目标：把已完成的产品送上真机与商店。工程面已就绪；余项多为资产、账号与合规。
+
+- [x] CI：GitHub Actions 每次 push/PR 跑 `npm run check`（与本地完全一致）　`C10`
+- [x] 应用标识：`bundleIdentifier` / `android.package`（com.mingzhangyang.zhunshi）、`scheme: zhunshi`、buildNumber / versionCode；`expo-notifications` plugin 接入　`C6`
+- [x] 隐私政策草稿：`docs/privacy-policy.md`（本地优先、无账号、无遥测、AI BYOK；待托管 URL、生效日期、联系方式）　`C6,E6`
+- [ ] 真机验证本地推送（iOS 权限时机、Android 13+ 通知权限与渠道、后台到点）——需真机
+- [ ] 品牌资产：替换占位 icon / adaptive icon / splash / favicon
+- [ ] EAS：`eas init` + `eas.json`、签名（Apple Developer 账号、Android keystore 备份）、TestFlight / internal testing 内测
+- [ ] 商店合规与材料：隐私政策上线到公开 URL、健康类内容申报（免责声明首用可见）、AI 第三方数据共享申报、商店文案与截图
+- [ ]（可选，v1.0 后）崩溃上报（与无追踪承诺一致）、OTA 更新、国内商店的软著/备案
+
 ## 里程碑
 - **M1（地基）** = Phase 0：可重放的 Runtime。
 - **M2（能跑）** = Phase 1：MVP 运行体验。
 - **M3（创始场景）** = Phase 2：服药闭环。
 - **M4（知识载体）** = Phase 3：编辑与共享。
 - **M5（AI 编辑器）** = Phase 4。
+- **M6（发布）** = Phase 5：真机 + 商店。
 
 ## 记录约定
 - 触碰不可变原则的决策 → 写一条 ADR 到 `docs/adr/`。
