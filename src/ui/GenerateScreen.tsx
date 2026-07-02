@@ -2,8 +2,8 @@
 // 生成结果不直接入库：用户在编辑器里确认后保存为新版本（AI-C1 用户决定、AI-C3 可 Diff/Undo）。
 // 供应商可切换：Anthropic（Claude）或任何 OpenAI 兼容端点；配置与密钥只存本机（C6）。
 
-import { useEffect, useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { useEffect, useState, useMemo } from 'react';
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
 import { type Flow } from '../domain/types';
 import { type KVStore } from '../storage/kv';
 import { generateFlow } from '../ai/generate';
@@ -18,7 +18,7 @@ import { loadModelConfig, saveModelConfig } from '../ai/model/settings';
 import { type FetchLike } from '../ai/model/port';
 import { localDayIndex } from '../runtime/clock';
 import { systemTimeZone } from '../runtime/systemTimeZone';
-import { colors, spacing, radius } from './theme';
+import { paletteFor, type Palette, spacing, radius } from './theme';
 
 const platformFetch: FetchLike = (url, init) =>
   fetch(url, init).then((r) => ({ ok: r.ok, status: r.status, text: () => r.text() }));
@@ -29,6 +29,8 @@ export function GenerateScreen(props: {
   onDraft: (flow: Flow) => void;
   onCancel: () => void;
 }) {
+  const c = paletteFor(useColorScheme());
+  const styles = useMemo(() => createStyles(c), [c]);
   const [description, setDescription] = useState('');
   const [provider, setProvider] = useState<ProviderKind>('anthropic');
   const [apiKey, setApiKey] = useState('');
@@ -102,7 +104,7 @@ export function GenerateScreen(props: {
           value={description}
           onChangeText={(t) => { setDescription(t); setError(null); }}
           placeholder="例：法压咖啡——倒 92 度热水，浸泡 4 分钟，压下压杆再倒出"
-          placeholderTextColor={colors.pending}
+          placeholderTextColor={c.pending}
           multiline
           testID="gen-description"
         />
@@ -130,7 +132,7 @@ export function GenerateScreen(props: {
               value={baseUrl}
               onChangeText={setBaseUrl}
               placeholder="https://api.deepseek.com/v1"
-              placeholderTextColor={colors.pending}
+              placeholderTextColor={c.pending}
               autoCapitalize="none"
               autoCorrect={false}
             />
@@ -150,7 +152,7 @@ export function GenerateScreen(props: {
           value={model}
           onChangeText={setModel}
           placeholder={provider === 'anthropic' ? ANTHROPIC_DEFAULT_MODEL : '如 deepseek-chat'}
-          placeholderTextColor={colors.pending}
+          placeholderTextColor={c.pending}
           autoCapitalize="none"
           autoCorrect={false}
         />
@@ -161,7 +163,7 @@ export function GenerateScreen(props: {
           value={apiKey}
           onChangeText={setApiKey}
           placeholder={provider === 'openai-compatible' ? '本地服务（Ollama）可留空' : 'sk-...'}
-          placeholderTextColor={colors.pending}
+          placeholderTextColor={c.pending}
           secureTextEntry
           autoCapitalize="none"
           autoCorrect={false}
@@ -181,46 +183,46 @@ export function GenerateScreen(props: {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
+const createStyles = (c: Palette) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: c.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
-  back: { fontSize: 16, color: colors.accent, width: 48 },
-  title: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '600', color: colors.text },
+  back: { fontSize: 16, color: c.accent, width: 48 },
+  title: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '600', color: c.text },
   content: { padding: spacing.md, gap: spacing.sm },
-  hint: { fontSize: 14, color: colors.textMuted },
+  hint: { fontSize: 14, color: c.textMuted },
   input: {
-    backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
-    padding: spacing.md, fontSize: 15, color: colors.text, minHeight: 110, textAlignVertical: 'top',
+    backgroundColor: c.surface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
+    padding: spacing.md, fontSize: 15, color: c.text, minHeight: 110, textAlignVertical: 'top',
   },
-  sectionKicker: { fontSize: 13, color: colors.textMuted, letterSpacing: 1, marginTop: spacing.sm },
+  sectionKicker: { fontSize: 13, color: c.textMuted, letterSpacing: 2, marginTop: spacing.sm },
   row: { flexDirection: 'row', gap: spacing.sm },
   rowWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   chip: {
-    borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
+    borderRadius: radius.pill, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface,
     paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
   },
-  chipOn: { backgroundColor: colors.accent, borderColor: colors.accent },
-  chipText: { fontSize: 14, color: colors.text, fontWeight: '600' },
-  chipTextOn: { color: colors.accentText },
+  chipOn: { backgroundColor: c.accent, borderColor: c.accent },
+  chipText: { fontSize: 14, color: c.text, fontWeight: '600' },
+  chipTextOn: { color: c.accentText },
   presetChip: {
-    borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border,
+    borderRadius: radius.pill, borderWidth: 1, borderColor: c.border,
     paddingHorizontal: spacing.sm, paddingVertical: 2,
   },
-  presetText: { fontSize: 12, color: colors.textMuted },
-  label: { fontSize: 13, color: colors.textMuted, marginTop: spacing.xs },
+  presetText: { fontSize: 12, color: c.textMuted },
+  label: { fontSize: 13, color: c.textMuted, marginTop: spacing.xs },
   field: {
-    backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
-    paddingHorizontal: spacing.md, paddingVertical: spacing.sm, fontSize: 14, color: colors.text,
+    backgroundColor: c.surface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm, fontSize: 14, color: c.text,
   },
-  error: { color: colors.warn, fontSize: 14, marginTop: spacing.xs },
+  error: { color: c.warn, fontSize: 14, marginTop: spacing.xs },
   primary: {
-    backgroundColor: colors.accent, borderRadius: radius.md, paddingVertical: spacing.md,
+    backgroundColor: c.accent, borderRadius: radius.pill, paddingVertical: spacing.md,
     alignItems: 'center', marginTop: spacing.sm,
   },
   primaryOff: { opacity: 0.4 },
-  primaryText: { color: colors.accentText, fontSize: 16, fontWeight: '700' },
-  footnote: { fontSize: 12, color: colors.textMuted, textAlign: 'center', marginTop: spacing.xs },
+  primaryText: { color: c.accentText, fontSize: 16, fontWeight: '700' },
+  footnote: { fontSize: 12, color: c.textMuted, textAlign: 'center', marginTop: spacing.xs },
 });

@@ -6,7 +6,7 @@
     "scheme": "zhunshi",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.mingzhangyang.zhunshi",

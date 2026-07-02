@@ -3,8 +3,8 @@
 // 「现在」游标标出此刻在一天中的位置。各剂量相互独立，漏一颗不阻塞其它（C5）。
 // 遵守 E6：描述性、非处方性，显式免责。
 
-import { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, Animated } from 'react-native';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { View, Text, ScrollView, Pressable, StyleSheet, Animated, useColorScheme } from 'react-native';
 import { type Flow, type FlowNode, type Recurrence } from '../domain/types';
 import { timeOfDay, MS_PER_DAY } from '../runtime/clock';
 import { systemTimeZone } from '../runtime/systemTimeZone';
@@ -22,16 +22,23 @@ import { type Storage } from '../storage/storage';
 import { type Notifier } from '../notifications/notifier';
 import { planScheduledReminders } from '../notifications/plan';
 import { fmtTimeOfDay } from './format';
-import { colors, spacing, radius, type, mono } from './theme';
+import { paletteFor, type Palette, spacing, radius, type, mono } from './theme';
 
 const GRACE_MINUTES = 120;
 
-const STATUS: Record<DoseStatus, { label: string; color: string }> = {
-  upcoming: { label: '待服', color: colors.textMuted },
-  due: { label: '可服用', color: colors.accent },
-  taken: { label: '已服', color: colors.accent },
-  missed: { label: '漏服', color: colors.warn },
+const STATUS_LABEL: Record<DoseStatus, string> = {
+  upcoming: '待服',
+  due: '可服用',
+  taken: '已服',
+  missed: '漏服',
 };
+
+const statusColors = (c: Palette): Record<DoseStatus, string> => ({
+  upcoming: c.textMuted,
+  due: c.accent,
+  taken: c.accent,
+  missed: c.warn,
+});
 
 /** 收集所有 scheduled 节点的重复方式，非每天的在行内标注。 */
 function repeatLabels(nodes: FlowNode[]): Map<string, string> {
@@ -49,8 +56,11 @@ function repeatLabels(nodes: FlowNode[]): Map<string, string> {
   return map;
 }
 
+type Styles = ReturnType<typeof createStyles>;
+type BeadStyles = ReturnType<typeof createBeadStyles>;
+
 /** 时刻珠：状态即形态；打卡瞬间弹一下（克制的确认感）。 */
-function DoseBead(props: { status: DoseStatus }) {
+function DoseBead(props: { status: DoseStatus; s: Styles; bs: BeadStyles }) {
   const scale = useRef(new Animated.Value(1)).current;
   const prev = useRef(props.status);
   useEffect(() => {
@@ -62,8 +72,8 @@ function DoseBead(props: { status: DoseStatus }) {
   }, [props.status, scale]);
 
   return (
-    <Animated.View style={[styles.bead, beadStyles[props.status], { transform: [{ scale }] }]}>
-      {props.status === 'taken' ? <Text style={styles.beadCheck}>✓</Text> : null}
+    <Animated.View style={[props.s.bead, props.bs[props.status], { transform: [{ scale }] }]}>
+      {props.status === 'taken' ? <Text style={props.s.beadCheck}>✓</Text> : null}
     </Animated.View>
   );
 }
@@ -75,6 +85,9 @@ export function ScheduleScreen(props: {
   onExit: () => void;
 }) {
   const { flow, storage, notifier } = props;
+  const c = paletteFor(useColorScheme());
+  const styles = useMemo(() => createStyles(c), [c]);
+  const beadStyles = useMemo(() => createBeadStyles(c), [c]);
   // 显式注入时区（E3）：flow 锚定了 IANA 时区则按锚定时区，否则跟随设备；跨 DST 正确
   const tz = timeZoneForFlow(flow, systemTimeZone);
   const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
@@ -129,22 +142,22 @@ export function ScheduleScreen(props: {
         <View style={styles.card}>
           {doses.map((d, i) => (
             <View key={d.nodeId}>
-              {i === cursorAt ? <NowCursor minutes={nowMinutes} /> : null}
+              {i === cursorAt ? <NowCursor minutes={nowMinutes} s={styles} /> : null}
               <View style={styles.row}>
                 <Text style={[styles.time, d.status === 'taken' && styles.timeTaken]}>
                   {fmtTimeOfDay(timeOfDay(d.scheduledFor, tz))}
                 </Text>
                 <View style={styles.axis}>
                   {i > 0 || cursorAt === 0 ? <View style={styles.axisLineTop} /> : null}
-                  <DoseBead status={d.status} />
+                  <DoseBead status={d.status} s={styles} bs={beadStyles} />
                   {i < doses.length - 1 || cursorAt === doses.length ? (
                     <View style={styles.axisLineBottom} />
                   ) : null}
                 </View>
                 <View style={styles.body}>
                   <Text style={[styles.label, d.status === 'taken' && styles.labelTaken]}>{d.label}</Text>
-                  <Text style={[styles.status, { color: STATUS[d.status].color }]}>
-                    {STATUS[d.status].label}
+                  <Text style={[styles.status, { color: statusColors(c)[d.status] }]}>
+                    {STATUS_LABEL[d.status]}
                     {d.status === 'taken' && d.takenAt !== null ? ` · ${fmtTimeOfDay(timeOfDay(d.takenAt, tz))}` : ''}
                     {labels.has(d.nodeId) ? ` · ${labels.get(d.nodeId)}` : ''}
                   </Text>
@@ -161,7 +174,7 @@ export function ScheduleScreen(props: {
               </View>
             </View>
           ))}
-          {cursorAt === doses.length && doses.length > 0 ? <NowCursor minutes={nowMinutes} /> : null}
+          {cursorAt === doses.length && doses.length > 0 ? <NowCursor minutes={nowMinutes} s={styles} /> : null}
         </View>
 
         <Text style={styles.note}>
@@ -173,67 +186,67 @@ export function ScheduleScreen(props: {
   );
 }
 
-function NowCursor(props: { minutes: number }) {
+function NowCursor(props: { minutes: number; s: Styles }) {
   return (
-    <View style={styles.cursorRow}>
-      <Text style={styles.cursorLabel}>现在 {fmtTimeOfDay(props.minutes)}</Text>
-      <View style={styles.cursorLine} />
+    <View style={props.s.cursorRow}>
+      <Text style={props.s.cursorLabel}>现在 {fmtTimeOfDay(props.minutes)}</Text>
+      <View style={props.s.cursorLine} />
     </View>
   );
 }
 
 const BEAD = 22;
 
-const beadStyles: Record<DoseStatus, object> = StyleSheet.create({
-  upcoming: { backgroundColor: colors.surface, borderWidth: 2, borderColor: colors.pending },
-  due: { backgroundColor: colors.surface, borderWidth: 3, borderColor: colors.accent },
-  taken: { backgroundColor: colors.accent, borderWidth: 0 },
-  missed: { backgroundColor: colors.done, borderWidth: 0 },
+const createBeadStyles = (c: Palette) => StyleSheet.create({
+  upcoming: { backgroundColor: c.surface, borderWidth: 2, borderColor: c.pending },
+  due: { backgroundColor: c.surface, borderWidth: 3, borderColor: c.accent },
+  taken: { backgroundColor: c.accent, borderWidth: 0 },
+  missed: { backgroundColor: c.done, borderWidth: 0 },
 });
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
+const createStyles = (c: Palette) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: c.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
-  back: { fontSize: 16, color: colors.accent, width: 48 },
-  title: { flex: 1, textAlign: 'center', fontSize: type.emphasis - 1, fontWeight: '600', color: colors.text },
+  back: { fontSize: 16, color: c.accent, width: 48 },
+  title: { flex: 1, textAlign: 'center', fontSize: type.emphasis - 1, fontWeight: '600', color: c.text },
   content: { padding: spacing.md, gap: spacing.sm },
-  sectionKicker: { fontSize: type.caption + 1, color: colors.textMuted, letterSpacing: 1, marginLeft: spacing.xs },
+  sectionKicker: { fontSize: type.caption + 1, color: c.textMuted, letterSpacing: 1, marginLeft: spacing.xs },
   card: {
-    backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: c.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border,
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md },
   time: {
-    fontSize: type.emphasis, fontFamily: mono.medium, color: colors.text,
+    fontSize: type.emphasis, fontFamily: mono.medium, color: c.text,
     fontVariant: ['tabular-nums'], width: 56,
   },
-  timeTaken: { color: colors.textMuted },
+  timeTaken: { color: c.textMuted },
   axis: { width: BEAD, alignItems: 'center', alignSelf: 'stretch', justifyContent: 'center' },
   axisLineTop: {
     position: 'absolute', top: -spacing.md, bottom: '50%', width: 2,
-    backgroundColor: colors.border, marginBottom: BEAD / 2 + 4,
+    backgroundColor: c.border, marginBottom: BEAD / 2 + 4,
   },
   axisLineBottom: {
     position: 'absolute', top: '50%', bottom: -spacing.md, width: 2,
-    backgroundColor: colors.border, marginTop: BEAD / 2 + 4,
+    backgroundColor: c.border, marginTop: BEAD / 2 + 4,
   },
   bead: { width: BEAD, height: BEAD, borderRadius: BEAD / 2, alignItems: 'center', justifyContent: 'center' },
-  beadCheck: { color: colors.accentText, fontSize: 12, fontWeight: '800' },
+  beadCheck: { color: c.accentText, fontSize: 12, fontWeight: '800' },
   body: { flex: 1 },
-  label: { fontSize: type.body, color: colors.text },
-  labelTaken: { color: colors.textMuted, textDecorationLine: 'line-through' },
+  label: { fontSize: type.body, color: c.text },
+  labelTaken: { color: c.textMuted, textDecorationLine: 'line-through' },
   status: { fontSize: type.caption + 1, marginTop: 2 },
   take: {
-    backgroundColor: colors.accent, borderRadius: radius.pill,
+    backgroundColor: c.accent, borderRadius: radius.pill,
     paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
   },
-  takeText: { color: colors.accentText, fontSize: 14, fontWeight: '700' },
-  undo: { color: colors.textMuted, fontSize: 14, paddingHorizontal: spacing.sm },
+  takeText: { color: c.accentText, fontSize: 14, fontWeight: '700' },
+  undo: { color: c.textMuted, fontSize: 14, paddingHorizontal: spacing.sm },
   cursorRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 2 },
-  cursorLabel: { fontSize: type.caption, color: colors.accent, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  cursorLine: { flex: 1, height: 1.5, backgroundColor: colors.accent, opacity: 0.45, borderRadius: 1 },
-  note: { fontSize: 13, color: colors.textMuted, marginTop: spacing.md, lineHeight: 19 },
+  cursorLabel: { fontSize: type.caption, color: c.accent, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  cursorLine: { flex: 1, height: 1.5, backgroundColor: c.accent, opacity: 0.45, borderRadius: 1 },
+  note: { fontSize: 13, color: c.textMuted, marginTop: spacing.md, lineHeight: 19 },
 });

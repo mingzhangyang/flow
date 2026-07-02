@@ -1,8 +1,8 @@
 // Flow 编辑器。编辑“可以复杂”——这里可增删步骤、改类型、填 rationale（“为什么”，C2）。
 // 保存时经 library 提交为新修订（版本递增、旧版本入历史）。
 
-import { useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { useState, useMemo } from 'react';
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
 import { type Flow, type FlowNode, type NodeKind, type Recurrence, type ScheduledNode } from '../domain/types';
 import { addNode, updateNode, removeNode, moveNode, setMeta } from '../domain/editing';
 import { validateFlow } from '../domain/validate';
@@ -11,7 +11,7 @@ import { localDayIndex, weekdayOfDayIndex } from '../runtime/clock';
 import { systemTimeZone } from '../runtime/systemTimeZone';
 import { type Library } from '../session/library';
 import { fmtTimeOfDay } from './format';
-import { colors, spacing, radius } from './theme';
+import { paletteFor, type Palette, spacing, radius } from './theme';
 
 const newNodeId = (): string => `n-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
@@ -63,6 +63,8 @@ function toggleWeekday(node: ScheduledNode, d: number): Recurrence {
 }
 
 export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f: Flow) => void; onCancel: () => void }) {
+  const c = paletteFor(useColorScheme());
+  const styles = useMemo(() => createStyles(c), [c]);
   const [flow, setFlow] = useState<Flow>(props.draft);
   const [error, setError] = useState<string | null>(null);
   const isScheduled = flow.topology === 'scheduled';
@@ -122,14 +124,14 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
           value={flow.title}
           onChangeText={(t) => setFlow((f) => setMeta(f, { title: t }))}
           placeholder="流程名称"
-          placeholderTextColor={colors.pending}
+          placeholderTextColor={c.pending}
         />
         <TextInput
           style={styles.descInput}
           value={flow.description ?? ''}
           onChangeText={(t) => setFlow((f) => setMeta(f, { description: t }))}
           placeholder="一句话描述（可选）"
-          placeholderTextColor={colors.pending}
+          placeholderTextColor={c.pending}
         />
         {isScheduled ? (
           <TextInput
@@ -137,7 +139,7 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
             value={flow.timeZone ?? ''}
             onChangeText={(t) => { setFlow((f) => setMeta(f, { timeZone: t })); setError(null); }}
             placeholder="锚定时区（可选，如 Asia/Shanghai；留空跟随设备）"
-            placeholderTextColor={colors.pending}
+            placeholderTextColor={c.pending}
             autoCapitalize="none"
             autoCorrect={false}
           />
@@ -153,7 +155,7 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
                 value={node.label}
                 onChangeText={(t) => patch(node.id, { label: t })}
                 placeholder={isScheduled ? '事件（如：早餐后服药）' : '这一步做什么'}
-                placeholderTextColor={colors.pending}
+                placeholderTextColor={c.pending}
               />
             </View>
 
@@ -168,7 +170,7 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
                       if (m !== null) patch(node.id, { at: m });
                     }}
                     placeholder="08:00"
-                    placeholderTextColor={colors.pending}
+                    placeholderTextColor={c.pending}
                   />
                 </Row>
                 <Row label="重复">
@@ -253,7 +255,7 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
               value={node.rationale ?? ''}
               onChangeText={(t) => patch(node.id, { rationale: t || undefined })}
               placeholder="为什么（可选）"
-              placeholderTextColor={colors.pending}
+              placeholderTextColor={c.pending}
             />
 
             <View style={styles.nodeActions}>
@@ -281,67 +283,73 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
 }
 
 function Row(props: { label: string; children: React.ReactNode }) {
+  const c = paletteFor(useColorScheme());
   return (
-    <View style={styles.fieldRow}>
-      <Text style={styles.fieldLabel}>{props.label}</Text>
+    <View style={rowStyles.fieldRow}>
+      <Text style={[rowStyles.fieldLabel, { color: c.textMuted }]}>{props.label}</Text>
       {props.children}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
+const rowStyles = StyleSheet.create({
+  fieldRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  fieldLabel: { fontSize: 13, width: 64 },
+});
+
+const createStyles = (c: Palette) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: c.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
-  headerBtn: { fontSize: 16, color: colors.accent },
+  headerBtn: { fontSize: 16, color: c.accent },
   save: { fontWeight: '700' },
-  title: { fontSize: 16, fontWeight: '600', color: colors.text },
+  title: { fontSize: 16, fontWeight: '600', color: c.text },
   content: { padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xl },
   titleInput: {
-    fontSize: 22, fontWeight: '700', color: colors.text, backgroundColor: colors.surface,
-    borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: spacing.md,
+    fontSize: 22, fontWeight: '700', color: c.text, backgroundColor: c.surface,
+    borderRadius: radius.md, borderWidth: 1, borderColor: c.border, padding: spacing.md,
   },
   descInput: {
-    fontSize: 15, color: colors.text, backgroundColor: colors.surface,
-    borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, padding: spacing.md,
+    fontSize: 15, color: c.text, backgroundColor: c.surface,
+    borderRadius: radius.md, borderWidth: 1, borderColor: c.border, padding: spacing.md,
   },
-  sectionKicker: { fontSize: 13, color: colors.textMuted, letterSpacing: 1, marginTop: spacing.sm, marginLeft: spacing.xs },
+  sectionKicker: { fontSize: 13, color: c.textMuted, letterSpacing: 2, marginTop: spacing.sm, marginLeft: spacing.xs },
   nodeCard: {
-    backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: c.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border,
     padding: spacing.md, gap: spacing.sm,
   },
   nodeTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  nodeIndex: { fontSize: 13, color: colors.textMuted, width: 18 },
-  nodeLabel: { flex: 1, fontSize: 16, color: colors.text, paddingVertical: spacing.xs },
+  nodeIndex: { fontSize: 13, color: c.textMuted, width: 18 },
+  nodeLabel: { flex: 1, fontSize: 16, color: c.text, paddingVertical: spacing.xs },
   kindRow: { flexDirection: 'row', gap: spacing.xs },
   kindBtn: {
     paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radius.pill,
-    borderWidth: 1, borderColor: colors.border,
+    borderWidth: 1, borderColor: c.border,
   },
-  kindBtnOn: { backgroundColor: colors.accent, borderColor: colors.accent },
-  kindText: { fontSize: 13, color: colors.textMuted },
-  kindTextOn: { color: colors.accentText, fontWeight: '700' },
+  kindBtnOn: { backgroundColor: c.accent, borderColor: c.accent },
+  kindText: { fontSize: 13, color: c.textMuted },
+  kindTextOn: { color: c.accentText, fontWeight: '700' },
   fieldRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  fieldLabel: { fontSize: 13, color: colors.textMuted, width: 64 },
+  fieldLabel: { fontSize: 13, color: c.textMuted, width: 64 },
   smallInput: {
-    fontSize: 15, color: colors.text, backgroundColor: colors.bg,
-    borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border,
+    fontSize: 15, color: c.text, backgroundColor: c.bg,
+    borderRadius: radius.sm, borderWidth: 1, borderColor: c.border,
     paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, minWidth: 80,
   },
   rationaleInput: {
-    fontSize: 14, color: colors.textMuted, backgroundColor: colors.bg,
-    borderRadius: radius.sm, borderWidth: 1, borderColor: colors.border, padding: spacing.sm,
+    fontSize: 14, color: c.textMuted, backgroundColor: c.bg,
+    borderRadius: radius.sm, borderWidth: 1, borderColor: c.border, padding: spacing.sm,
   },
   nodeActions: { flexDirection: 'row', gap: spacing.lg, alignItems: 'center' },
-  action: { fontSize: 15, color: colors.accent },
-  actionOff: { color: colors.pending },
-  remove: { color: colors.warn },
+  action: { fontSize: 15, color: c.accent },
+  actionOff: { color: c.pending },
+  remove: { color: c.warn },
   addBtn: {
-    borderRadius: radius.md, borderWidth: 1, borderColor: colors.accent, borderStyle: 'dashed',
+    borderRadius: radius.md, borderWidth: 1, borderColor: c.accent, borderStyle: 'dashed',
     paddingVertical: spacing.md, alignItems: 'center', marginTop: spacing.xs,
   },
-  addText: { color: colors.accent, fontSize: 15, fontWeight: '600' },
-  error: { color: colors.warn, fontSize: 14, marginTop: spacing.sm },
+  addText: { color: c.accent, fontSize: 15, fontWeight: '600' },
+  error: { color: c.warn, fontSize: 14, marginTop: spacing.sm },
 });

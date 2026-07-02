@@ -3,7 +3,7 @@
 // 简单的状态机即导航（Constraint 0：先别引入路由库）。
 
 import { useMemo, useState } from 'react';
-import { SafeAreaView, StyleSheet } from 'react-native';
+import { SafeAreaView, StyleSheet, useColorScheme } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import {
   useFonts,
@@ -27,7 +27,7 @@ import { ExportScreen } from './src/ui/ExportScreen';
 import { ImportScreen } from './src/ui/ImportScreen';
 import { InsightScreen } from './src/ui/InsightScreen';
 import { GenerateScreen } from './src/ui/GenerateScreen';
-import { colors } from './src/ui/theme';
+import { paletteFor } from './src/ui/theme';
 
 const EXAMPLES: Flow[] = [coffeeFlow, medicationFlow];
 const newFlowId = (): string => `flow-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -44,6 +44,9 @@ type Screen =
 export default function App() {
   // 数字展示字体（时刻/倒计时专用）；加载极快，未就绪前不渲染以免字体跳变
   const [fontsLoaded] = useFonts({ IBMPlexMono_200ExtraLight, IBMPlexMono_500Medium });
+  // 跟随系统深/浅色模式（运行页除外——那是不随模式变的沉浸场景）
+  const scheme = useColorScheme();
+  const c = paletteFor(scheme);
   const storage = useMemo(() => createStorage(asyncStorageKV), []);
   const library = useMemo(() => createLibrary(storage), [storage]);
   const notifier = useMemo(() => createExpoNotifier(), []);
@@ -60,8 +63,8 @@ export default function App() {
   if (!fontsLoaded) return null;
 
   return (
-    <SafeAreaView style={styles.root}>
-      <StatusBar style="dark" />
+    <SafeAreaView style={[styles.root, { backgroundColor: c.bg }]}>
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       {screen.name === 'home' ? (
         <HomeScreen
           library={library}
@@ -102,5 +105,5 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg },
+  root: { flex: 1 },
 });

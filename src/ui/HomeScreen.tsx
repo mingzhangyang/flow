@@ -2,7 +2,7 @@
 // 卡片带由 id 派生的低饱和色线与拓扑图形徽章，库一多也有节奏而不吵。
 
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
 import { type Flow, type Topology } from '../domain/types';
 import { type Library } from '../session/library';
 import { nextEvents, type ScheduledOccurrence } from '../runtime/engine';
@@ -10,7 +10,7 @@ import { timeOfDay, MS_PER_DAY } from '../runtime/clock';
 import { systemTimeZone } from '../runtime/systemTimeZone';
 import { timeZoneForFlow } from '../runtime/ianaTimeZone';
 import { fmtTimeOfDay } from './format';
-import { colors, dark, spacing, radius, type, mono } from './theme';
+import { paletteFor, type Palette, dark, spacing, radius, type, mono } from './theme';
 
 /** 卡片色线的低饱和候选色；由 flow id 稳定派生。 */
 const STRIPES = ['#7A9E87', '#C2915C', '#8B9DB0', '#B08B9B', '#9AA05F', '#7FA6A0'];
@@ -54,6 +54,8 @@ export function HomeScreen(props: {
   onImport: () => void;
   onGenerate: () => void;
 }) {
+  const c = paletteFor(useColorScheme());
+  const styles = useMemo(() => createStyles(c), [c]);
   const [mine, setMine] = useState<Flow[]>([]);
   const reload = (): void => {
     props.library.list().then(setMine).catch(() => {});
@@ -87,9 +89,9 @@ export function HomeScreen(props: {
           <Text style={styles.cardTitle}>{flow.title}</Text>
           <View style={styles.badge}>
             {flow.topology === 'sequential' ? (
-              <SeqGlyph color={colors.textMuted} />
+              <SeqGlyph color={c.textMuted} />
             ) : (
-              <SchedGlyph color={colors.textMuted} />
+              <SchedGlyph color={c.textMuted} />
             )}
             {own ? <Text style={styles.badgeText}>v{flow.version ?? 1}</Text> : null}
           </View>
@@ -171,14 +173,14 @@ const glyph = StyleSheet.create({
   bead: { width: 5, height: 5, borderRadius: 2.5, marginTop: -3 },
 });
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
+const createStyles = (c: Palette) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: c.bg },
   header: {
     paddingHorizontal: spacing.lg, paddingTop: spacing.xl, paddingBottom: spacing.md,
     flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between',
   },
-  brand: { fontSize: type.display, fontWeight: '800', color: colors.text, letterSpacing: 4 },
-  date: { fontSize: type.body - 1, color: colors.textMuted, fontVariant: ['tabular-nums'] },
+  brand: { fontSize: type.display, fontWeight: '800', color: c.text, letterSpacing: 4 },
+  date: { fontSize: type.body - 1, color: c.textMuted, fontVariant: ['tabular-nums'] },
   content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
 
   next: {
@@ -198,31 +200,31 @@ const styles = StyleSheet.create({
 
   actions: { flexDirection: 'row', gap: spacing.sm },
   action: {
-    backgroundColor: colors.accent, borderRadius: radius.pill,
+    backgroundColor: c.accent, borderRadius: radius.pill,
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
-  actionText: { color: colors.accentText, fontSize: 14, fontWeight: '700' },
-  actionGhost: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
-  actionGhostText: { color: colors.text, fontSize: 14, fontWeight: '600' },
+  actionText: { color: c.accentText, fontSize: 14, fontWeight: '700' },
+  actionGhost: { backgroundColor: c.surface, borderWidth: 1, borderColor: c.border },
+  actionGhostText: { color: c.text, fontSize: 14, fontWeight: '600' },
   sectionKicker: {
-    fontSize: type.caption + 1, color: colors.textMuted, letterSpacing: 2,
+    fontSize: type.caption + 1, color: c.textMuted, letterSpacing: 2,
     marginLeft: spacing.xs, marginTop: spacing.sm,
   },
   card: {
-    backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: c.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border,
     padding: spacing.lg, gap: spacing.xs, overflow: 'hidden',
   },
   stripe: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, opacity: 0.8 },
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  cardTitle: { fontSize: type.title - 2, fontWeight: '700', color: colors.text },
+  cardTitle: { fontSize: type.title - 2, fontWeight: '700', color: c.text },
   badge: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  badgeText: { fontSize: type.caption, color: colors.textMuted },
-  cardDesc: { fontSize: type.body - 1, color: colors.textMuted },
-  cardMeta: { fontSize: type.caption + 1, color: colors.textMuted, marginTop: spacing.xs },
+  badgeText: { fontSize: type.caption, color: c.textMuted },
+  cardDesc: { fontSize: type.body - 1, color: c.textMuted },
+  cardMeta: { fontSize: type.caption + 1, color: c.textMuted, marginTop: spacing.xs },
   rowActions: {
     flexDirection: 'row', gap: spacing.lg, marginTop: spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border, paddingTop: spacing.sm,
   },
-  link: { fontSize: 14, color: colors.accent, fontWeight: '600' },
-  danger: { color: colors.warn },
+  link: { fontSize: 14, color: c.accent, fontWeight: '600' },
+  danger: { color: c.warn },
 });
