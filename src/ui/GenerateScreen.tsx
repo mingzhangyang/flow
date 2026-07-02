@@ -16,6 +16,8 @@ import {
 import { ANTHROPIC_DEFAULT_MODEL } from '../ai/model/anthropic';
 import { loadModelConfig, saveModelConfig } from '../ai/model/settings';
 import { type FetchLike } from '../ai/model/port';
+import { localDayIndex } from '../runtime/clock';
+import { systemTimeZone } from '../runtime/systemTimeZone';
 import { colors, spacing, radius } from './theme';
 
 const platformFetch: FetchLike = (url, init) =>
@@ -74,7 +76,10 @@ export function GenerateScreen(props: {
     setError(null);
     const cfg = config();
     saveModelConfig(props.kv, cfg).catch(() => {});
-    generateFlow(createModelPort(cfg, platformFetch), description, { id: props.newFlowId() })
+    generateFlow(createModelPort(cfg, platformFetch), description, {
+      id: props.newFlowId(),
+      todayDayIndex: localDayIndex(Date.now(), systemTimeZone), // everyNDays 的起算日（E3 显式注入）
+    })
       .then((res) => {
         if (res.ok) props.onDraft(res.flow);
         else setError(res.error);

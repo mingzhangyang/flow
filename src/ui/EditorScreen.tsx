@@ -3,10 +3,12 @@
 
 import { useState } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, StyleSheet } from 'react-native';
-import { type Flow, type FlowNode, type NodeKind } from '../domain/types';
+import { type Flow, type FlowNode, type NodeKind, type Recurrence, type ScheduledNode } from '../domain/types';
 import { addNode, updateNode, removeNode, moveNode, setMeta } from '../domain/editing';
 import { validateFlow } from '../domain/validate';
-import { isValidTimeZoneName } from '../runtime/ianaTimeZone';
+import { isValidTimeZoneName, timeZoneForFlow } from '../runtime/ianaTimeZone';
+import { localDayIndex, weekdayOfDayIndex } from '../runtime/clock';
+import { systemTimeZone } from '../runtime/systemTimeZone';
 import { type Library } from '../session/library';
 import { fmtTimeOfDay } from './format';
 import { colors, spacing, radius } from './theme';
@@ -22,7 +24,8 @@ function makeNode(kind: NodeKind, base: { id: string; label: string; rationale?:
     case 'instant':
       return { kind: 'instant', ...base };
     case 'scheduled':
-      return { kind: 'scheduled', ...base, at: 8 * 60, repeat: { kind: 'daily' } };
+      // 默认不重复（仅今天）——重复是显式选择，不是隐含假设。
+      return { kind: 'scheduled', ...base, at: 8 * 60, repeat: { kind: 'once' } };
     case 'parallel':
       return { kind: 'parallel', ...base, children: [] };
   }
@@ -43,6 +46,22 @@ const SEQ_KINDS: { kind: NodeKind; label: string }[] = [
   { kind: 'instant', label: '瞬时' },
 ];
 
+const REPEAT_KINDS: { kind: Recurrence['kind']; label: string }[] = [
+  { kind: 'once', label: '仅今天' },
+  { kind: 'daily', label: '每天' },
+  { kind: 'weekly', label: '每周' },
+  { kind: 'everyNDays', label: '隔 N 天' },
+];
+
+const WEEKDAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'];
+
+/** 切换周几：保持有序去重；清空交给保存时的校验拦截。 */
+function toggleWeekday(node: ScheduledNode, d: number): Recurrence {
+  const days = node.repeat.kind === 'weekly' ? node.repeat.days : [];
+  const next = days.includes(d) ? days.filter((x) => x !== d) : [...days, d].sort((a, b) => a - b);
+  return { kind: 'weekly', days: next };
+}
+
 export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f: Flow) => void; onCancel: () => void }) {
   const [flow, setFlow] = useState<Flow>(props.draft);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +77,22 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
   const add = (): void => {
     const base = { id: newNodeId(), label: '' };
     setFlow((f) => addNode(f, makeNode(isScheduled ? 'scheduled' : 'timed', base)));
+  };
+
+  // 切换重复方式时的初值：每周默认勾今天的星期，隔 N 天默认隔天、从今天起算。
+  // 「今天」按 flow 锚定的时区（无锚定则设备时区）计——与运行时口径一致。
+  const defaultRepeat = (kind: Recurrence['kind']): Recurrence => {
+    const today = localDayIndex(Date.now(), timeZoneForFlow(flow, systemTimeZone));
+    switch (kind) {
+      case 'once':
+        return { kind: 'once' };
+      case 'daily':
+        return { kind: 'daily' };
+      case 'weekly':
+        return { kind: 'weekly', days: [weekdayOfDayIndex(today)] };
+      case 'everyNDays':
+        return { kind: 'everyNDays', n: 2, fromDay: today };
+    }
   };
 
   const save = (): void => {
@@ -123,18 +158,66 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
             </View>
 
             {isScheduled && node.kind === 'scheduled' ? (
-              <Row label="时间">
-                <TextInput
-                  style={styles.smallInput}
-                  defaultValue={fmtTimeOfDay(node.at)}
-                  onChangeText={(t) => {
-                    const m = parseTimeOfDay(t);
-                    if (m !== null) patch(node.id, { at: m });
-                  }}
-                  placeholder="08:00"
-                  placeholderTextColor={colors.pending}
-                />
-              </Row>
+              <>
+                <Row label="时间">
+                  <TextInput
+                    style={styles.smallInput}
+                    defaultValue={fmtTimeOfDay(node.at)}
+                    onChangeText={(t) => {
+                      const m = parseTimeOfDay(t);
+                      if (m !== null) patch(node.id, { at: m });
+                    }}
+                    placeholder="08:00"
+                    placeholderTextColor={colors.pending}
+                  />
+                </Row>
+                <Row label="重复">
+                  <View style={styles.kindRow}>
+                    {REPEAT_KINDS.map((r) => (
+                      <Pressable
+                        key={r.kind}
+                        style={[styles.kindBtn, node.repeat.kind === r.kind && styles.kindBtnOn]}
+                        onPress={() => patch(node.id, { repeat: defaultRepeat(r.kind) })}
+                      >
+                        <Text style={[styles.kindText, node.repeat.kind === r.kind && styles.kindTextOn]}>{r.label}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </Row>
+                {node.repeat.kind === 'weekly' ? (
+                  <Row label="星期">
+                    <View style={styles.kindRow}>
+                      {WEEKDAY_NAMES.map((name, d) => {
+                        const on = node.repeat.kind === 'weekly' && node.repeat.days.includes(d);
+                        return (
+                          <Pressable
+                            key={name}
+                            style={[styles.kindBtn, on && styles.kindBtnOn]}
+                            onPress={() => patch(node.id, { repeat: toggleWeekday(node, d) })}
+                          >
+                            <Text style={[styles.kindText, on && styles.kindTextOn]}>{name}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </Row>
+                ) : null}
+                {node.repeat.kind === 'everyNDays' ? (
+                  <Row label="间隔(天)">
+                    <TextInput
+                      style={styles.smallInput}
+                      keyboardType="number-pad"
+                      defaultValue={String(node.repeat.n)}
+                      onChangeText={(t) => {
+                        const n = Number(t);
+                        if (Number.isInteger(n) && n >= 1 && node.repeat.kind === 'everyNDays') {
+                          patch(node.id, { repeat: { ...node.repeat, n } });
+                        }
+                      }}
+                    />
+                  </Row>
+                ) : null}
+              </>
             ) : null}
 
             {!isScheduled ? (

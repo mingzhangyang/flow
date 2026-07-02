@@ -95,6 +95,27 @@ test('校验失败返回问题列表（如空 nodes、未知 kind）', () => {
   assert.equal(badKind.ok, false);
 });
 
+test('repeat 整理：weekly/everyNDays 收下，缺省与未知回落 once（默认不重复）', () => {
+  const mk = (repeat?: unknown): string =>
+    JSON.stringify({
+      title: 't',
+      topology: 'scheduled',
+      nodes: [{ kind: 'scheduled', label: 'x', at: '08:00', ...(repeat !== undefined ? { repeat } : {}) }],
+    });
+  const rep = (text: string) => {
+    const res = parseGeneratedFlow(text, { id: 'f', todayDayIndex: 123 });
+    assert.ok(res.ok);
+    const node = res.flow.nodes[0];
+    assert.ok(node.kind === 'scheduled');
+    return node.repeat;
+  };
+  assert.deepEqual(rep(mk()), { kind: 'once' }); // 缺省 → 不重复
+  assert.deepEqual(rep(mk({ kind: 'monthly' })), { kind: 'once' }); // 未知 → 不重复
+  assert.deepEqual(rep(mk({ kind: 'daily' })), { kind: 'daily' });
+  assert.deepEqual(rep(mk({ kind: 'weekly', days: [3, 3, 9, 1] })), { kind: 'weekly', days: [3, 1] }); // 去重、滤越界
+  assert.deepEqual(rep(mk({ kind: 'everyNDays', n: 2 })), { kind: 'everyNDays', n: 2, fromDay: 123 }); // 起算日来自注入
+});
+
 test('日程型输出可携带锚定时区（timeZone 透传）', () => {
   const withTz = JSON.parse(scheduledJson);
   withTz.timeZone = 'Asia/Shanghai';

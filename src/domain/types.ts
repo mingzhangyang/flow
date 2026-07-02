@@ -10,8 +10,18 @@ export type SchemaVersion = typeof SCHEMA_VERSION;
 /** 相对时长，整数秒。 */
 export type DurationSec = number;
 
-/** 重复方式。v1 仅支持一次性与每日。 */
-export type Recurrence = { kind: 'once' } | { kind: 'daily' };
+/**
+ * 重复方式（加法演进，E5）。缺省应为 once——「不重复」是最保守的默认。
+ * - once：仅今天这一次（到点提醒，过时不候；运行时无状态，不跨日顺延）。
+ * - daily：每天。
+ * - weekly：每周指定的星期几（0=周日 … 6=周六，与 JS Date#getDay 一致）。
+ * - everyNDays：每 N 天一次，从 fromDay（本地日序号，见 runtime/clock 的 localDayIndex）起算。
+ */
+export type Recurrence =
+  | { kind: 'once' }
+  | { kind: 'daily' }
+  | { kind: 'weekly'; days: number[] }
+  | { kind: 'everyNDays'; n: number; fromDay: number };
 
 // ---- 节点（5 种，见 01-domain-model.md）----
 

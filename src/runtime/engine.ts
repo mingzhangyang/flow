@@ -11,6 +11,7 @@ import {
   localMidnight,
   MS_PER_MINUTE,
 } from './clock';
+import { occursOnDay } from './recurrence';
 
 export type RunStatus = 'idle' | 'running' | 'paused' | 'completed';
 
@@ -184,16 +185,25 @@ function collectScheduled(nodes: FlowNode[]): ScheduledNode[] {
   return acc;
 }
 
+/** 逐日扫描的上限：任何重复规则一年内必有下一次，否则视为无。 */
+const MAX_SCAN_DAYS = 366;
+
 function nextOccurrence(node: ScheduledNode, now: Instant, tz: TimeZoneLike): Instant | null {
-  // 墙钟时刻按「目标那一天」的偏移换算（DST 正确）。不能用 todayAt + 24h 推明天——
-  // 切换日的一天不是 24 小时。
-  const todayAt = instantAtTimeOfDay(now, node.at, tz);
-  if (node.repeat.kind === 'daily') {
-    if (todayAt >= now) return todayAt;
-    // 明天的锚点：今天开始 + 36h。本地一天长 23–25 小时，该点必落在明天之内。
-    const tomorrowAnchor = localMidnight(now, tz) + 36 * 60 * MS_PER_MINUTE;
-    return instantAtTimeOfDay(tomorrowAnchor, node.at, tz);
+  // once：仅今天这一次，过时不候（无状态运行时不跨日顺延）。
+  if (node.repeat.kind === 'once') {
+    const todayAt = instantAtTimeOfDay(now, node.at, tz);
+    return todayAt >= now ? todayAt : null;
   }
-  // once：仅当今天该时刻仍在未来时
-  return todayAt >= now ? todayAt : null;
+  // 重复型：从今天起逐日找第一个匹配日。墙钟时刻按「目标那一天」的偏移换算（DST 正确）——
+  // 不能用 todayAt + 24h 推明天，切换日的一天不是 24 小时。
+  let anchor: Instant = now;
+  for (let i = 0; i < MAX_SCAN_DAYS; i++) {
+    if (occursOnDay(node.repeat, anchor, tz)) {
+      const at = instantAtTimeOfDay(anchor, node.at, tz);
+      if (at >= now) return at;
+    }
+    // 次日锚点：当天开始 + 36h。本地一天长 23–25 小时，该点必落在下一天之内。
+    anchor = localMidnight(anchor, tz) + 36 * 60 * MS_PER_MINUTE;
+  }
+  return null;
 }

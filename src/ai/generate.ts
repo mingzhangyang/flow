@@ -3,7 +3,7 @@
 // generateFlow 只做编排，通过 ModelPort 调用任意供应商的模型（不绑定某一家）。
 // 生成结果只是「提议的草稿」：由用户在编辑器里审阅、保存为新版本（AI-C1、AI-C3）。
 
-import { SCHEMA_VERSION, type Flow, type FlowNode, type Topology } from '../domain/types';
+import { SCHEMA_VERSION, type Flow, type FlowNode, type Recurrence, type Topology } from '../domain/types';
 import { validateFlow, type ValidationIssue } from '../domain/validate';
 import type { ModelPort, ModelRequest } from './model/port';
 
@@ -22,9 +22,14 @@ JSON 结构：
   {"kind":"timed","label":"...","durationSec":240,"rationale":"..."}    计时步骤，durationSec 为正整数秒
   {"kind":"gate","label":"...","rationale":"..."}                        需要用户确认后才继续
   {"kind":"instant","label":"...","rationale":"..."}                     瞬时动作
-- "scheduled"（日程型，如每日服药）：节点钉在每天的墙钟时刻，互相独立。允许的节点：
-  {"kind":"scheduled","label":"...","at":"08:00","repeat":{"kind":"daily"},"rationale":"..."}
+- "scheduled"（日程型，如服药提醒）：节点钉在墙钟时刻，互相独立。允许的节点：
+  {"kind":"scheduled","label":"...","at":"08:00","repeat":{...},"rationale":"..."}
   {"kind":"parallel","label":"...","children":[ 若干 scheduled 节点 ]}    同一时刻的并行组
+  repeat 取值（用户没说就用默认）：
+    {"kind":"once"}                       仅今天一次（默认）
+    {"kind":"daily"}                      每天
+    {"kind":"weekly","days":[1,3,5]}      每周指定星期（0=周日 … 6=周六）
+    {"kind":"everyNDays","n":2}           每 N 天一次（隔天即 n=2）
 
 规则：
 - 每个节点尽量写 rationale（这一步「为什么」）——这是本应用的核心价值。
@@ -73,8 +78,27 @@ interface RawNode {
   children?: unknown;
 }
 
+/**
+ * 整理模型给出的 repeat：认识的原样收下，缺省/不认识回落 once（默认不重复）。
+ * everyNDays 的起算日由调用方注入（todayDayIndex，E3 显式注入——解析器保持纯函数）。
+ */
+function coerceRecurrence(raw: unknown, todayDayIndex: number): Recurrence {
+  if (typeof raw === 'object' && raw !== null) {
+    const r = raw as { kind?: unknown; days?: unknown; n?: unknown };
+    if (r.kind === 'daily') return { kind: 'daily' };
+    if (r.kind === 'weekly' && Array.isArray(r.days)) {
+      const days = [...new Set(r.days.filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))] as number[];
+      if (days.length > 0) return { kind: 'weekly', days };
+    }
+    if (r.kind === 'everyNDays' && Number.isInteger(r.n) && (r.n as number) >= 1) {
+      return { kind: 'everyNDays', n: r.n as number, fromDay: todayDayIndex };
+    }
+  }
+  return { kind: 'once' };
+}
+
 /** 把模型给出的节点整理成领域节点：分配 id、换算时刻、丢弃未知字段。 */
-function coerceNode(raw: RawNode, nextId: () => string): FlowNode {
+function coerceNode(raw: RawNode, nextId: () => string, todayDayIndex: number): FlowNode {
   const base = {
     id: nextId(),
     label: typeof raw.label === 'string' ? raw.label : '',
@@ -87,18 +111,20 @@ function coerceNode(raw: RawNode, nextId: () => string): FlowNode {
       return { ...base, kind: 'gate' };
     case 'instant':
       return { ...base, kind: 'instant' };
-    case 'scheduled': {
-      const repeat =
-        typeof raw.repeat === 'object' &&
-        raw.repeat !== null &&
-        (raw.repeat as { kind?: unknown }).kind === 'once'
-          ? ({ kind: 'once' } as const)
-          : ({ kind: 'daily' } as const);
-      return { ...base, kind: 'scheduled', at: coerceTimeOfDay(raw.at), repeat };
-    }
+    case 'scheduled':
+      return {
+        ...base,
+        kind: 'scheduled',
+        at: coerceTimeOfDay(raw.at),
+        repeat: coerceRecurrence(raw.repeat, todayDayIndex),
+      };
     case 'parallel': {
       const children = Array.isArray(raw.children) ? (raw.children as RawNode[]) : [];
-      return { ...base, kind: 'parallel', children: children.map((c) => coerceNode(c, nextId)) };
+      return {
+        ...base,
+        kind: 'parallel',
+        children: children.map((c) => coerceNode(c, nextId, todayDayIndex)),
+      };
     }
     default:
       // 未知 kind：保留为 instant 会掩盖问题，改为构造一个必然过不了校验的节点。
@@ -106,8 +132,15 @@ function coerceNode(raw: RawNode, nextId: () => string): FlowNode {
   }
 }
 
-/** 把模型输出解析为合法 Flow；任何问题都以结果值返回（不抛错），便于 UI 呈现。 */
-export function parseGeneratedFlow(text: string, opts: { id: string }): GenerateResult {
+/**
+ * 把模型输出解析为合法 Flow；任何问题都以结果值返回（不抛错），便于 UI 呈现。
+ * @param opts.todayDayIndex 「今天」的本地日序号（runtime/clock 的 localDayIndex），
+ *   作 everyNDays 的起算日；纯函数因此保持确定性（E3/E4）。
+ */
+export function parseGeneratedFlow(
+  text: string,
+  opts: { id: string; todayDayIndex?: number },
+): GenerateResult {
   const json = extractJson(text);
   if (!json) return { ok: false, error: '模型输出中找不到 JSON 对象' };
 
@@ -140,7 +173,7 @@ export function parseGeneratedFlow(text: string, opts: { id: string }): Generate
       ? { timeZone: payload.timeZone.trim() }
       : {}),
     topology: payload.topology as Topology,
-    nodes: rawNodes.map((n) => coerceNode(n, nextId)),
+    nodes: rawNodes.map((n) => coerceNode(n, nextId, opts.todayDayIndex ?? 0)),
   };
 
   const issues = validateFlow(flow);
@@ -155,7 +188,7 @@ export function parseGeneratedFlow(text: string, opts: { id: string }): Generate
 export async function generateFlow(
   port: ModelPort,
   description: string,
-  opts: { id: string },
+  opts: { id: string; todayDayIndex?: number },
 ): Promise<GenerateResult> {
   const res = await port.complete(buildGenerationRequest(description));
   const parsed = parseGeneratedFlow(res.text, opts);

@@ -90,3 +90,14 @@ export function instantAtTimeOfDay(anchor: Instant, tod: TimeOfDay, tzLike: Time
 export function localMidnight(at: Instant, tzLike: TimeZoneLike): Instant {
   return instantAtTimeOfDay(at, 0, tzLike);
 }
+
+/** at 所在的本地日序号（自 1970-01-01 起的天数）。重复规则（每周/隔 N 天）以此为坐标。 */
+export function localDayIndex(at: Instant, tzLike: TimeZoneLike): number {
+  const tz = asTimeZone(tzLike);
+  return Math.floor(localMs(at, tz) / MS_PER_DAY);
+}
+
+/** 本地日序号 → 星期几（0=周日 … 6=周六）。1970-01-01（日序号 0）是周四。 */
+export function weekdayOfDayIndex(dayIndex: number): number {
+  return (((dayIndex + 4) % 7) + 7) % 7;
+}

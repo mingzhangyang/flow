@@ -3,6 +3,7 @@
 // 这是“解释器”版本：不调用任何外部模型；将来接入真实模型时，这里是它要达到或超过的基线。
 
 import { type Flow, type FlowNode } from '../domain/types';
+import { describeRecurrence } from '../runtime/recurrence';
 
 export function fmtDuration(totalSec: number): string {
   const s = Math.max(0, Math.floor(totalSec));
@@ -33,7 +34,7 @@ function describeNode(node: FlowNode, index: number): string {
       meta = '（即时）';
       break;
     case 'scheduled':
-      meta = `（每天 ${fmtClock(node.at)}）`;
+      meta = `（${describeRecurrence(node.repeat)} ${fmtClock(node.at)}）`;
       break;
     case 'parallel':
       meta = `（并行 ${node.children.length} 项）`;
@@ -63,11 +64,15 @@ export function explain(flow: Flow): string[] {
     if (total > 0) lines.push(`预计计时约 ${fmtDuration(total)}（不含手动操作与确认等待的时间）。`);
     if (gates > 0) lines.push(`其中有 ${gates} 处需要你确认后才继续。`);
   } else {
-    const times = flow.nodes
-      .filter((n): n is Extract<FlowNode, { kind: 'scheduled' }> => n.kind === 'scheduled')
-      .map((n) => fmtClock(n.at))
-      .sort();
-    if (times.length > 0) lines.push(`每天在这些时间提醒：${times.join('、')}。各事件相互独立，漏一次不影响其它。`);
+    const scheduled = flow.nodes.filter(
+      (n): n is Extract<FlowNode, { kind: 'scheduled' }> => n.kind === 'scheduled',
+    );
+    const times = scheduled.map((n) => fmtClock(n.at)).sort();
+    const allDaily = scheduled.every((n) => n.repeat.kind === 'daily');
+    if (times.length > 0) {
+      const prefix = allDaily ? '每天在这些时间提醒' : '将在这些时间提醒（重复方式见各条）';
+      lines.push(`${prefix}：${times.join('、')}。各事件相互独立，漏一次不影响其它。`);
+    }
   }
 
   lines.push('步骤：');

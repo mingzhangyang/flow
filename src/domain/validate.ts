@@ -1,6 +1,6 @@
 // Flow 校验。保证一份定义结构合法、节点类型与拓扑相容。
 
-import { SCHEMA_VERSION, type Flow, type FlowNode, type Topology } from './types';
+import { SCHEMA_VERSION, type Flow, type FlowNode, type Recurrence, type Topology } from './types';
 import { MINUTES_PER_DAY } from '../runtime/clock';
 
 export interface ValidationIssue {
@@ -71,6 +71,7 @@ function validateNode(
       if (!(node.at >= 0 && node.at < MINUTES_PER_DAY)) {
         issues.push({ path: `${path}.at`, message: `at must be within [0, ${MINUTES_PER_DAY}) minutes` });
       }
+      validateRecurrence(node.repeat, `${path}.repeat`, issues);
       break;
     case 'parallel':
       if (node.children.length === 0) {
@@ -80,6 +81,36 @@ function validateNode(
         validateNode(child, `${path}.children[${j}]`, topology, seenIds, issues),
       );
       break;
+  }
+}
+
+function validateRecurrence(repeat: Recurrence, path: string, issues: ValidationIssue[]): void {
+  switch (repeat?.kind) {
+    case 'once':
+    case 'daily':
+      break;
+    case 'weekly': {
+      const days = repeat.days;
+      const valid =
+        Array.isArray(days) &&
+        days.length > 0 &&
+        days.every((d) => Number.isInteger(d) && d >= 0 && d <= 6) &&
+        new Set(days).size === days.length;
+      if (!valid) {
+        issues.push({ path: `${path}.days`, message: 'weekly days must be unique integers within 0..6, at least one' });
+      }
+      break;
+    }
+    case 'everyNDays':
+      if (!(Number.isInteger(repeat.n) && repeat.n >= 1)) {
+        issues.push({ path: `${path}.n`, message: 'everyNDays n must be an integer >= 1' });
+      }
+      if (!Number.isInteger(repeat.fromDay)) {
+        issues.push({ path: `${path}.fromDay`, message: 'everyNDays fromDay must be an integer (local day index)' });
+      }
+      break;
+    default:
+      issues.push({ path, message: `unknown recurrence kind "${String((repeat as { kind?: unknown })?.kind)}"` });
   }
 }
 
