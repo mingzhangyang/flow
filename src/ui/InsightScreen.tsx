@@ -9,12 +9,14 @@ import { type Library } from '../session/library';
 import { explain } from '../ai/explain';
 import { analyze, type Finding } from '../ai/analyze';
 import { diffFlows, describeChange, type Change } from '../ai/diff';
+import { useI18n } from './i18n';
 import { paletteFor, type Palette, spacing, radius } from './theme';
 
 export function InsightScreen(props: { flow: Flow; library: Library; onExit: () => void; onChanged: () => void }) {
   const { flow } = props;
   const c = paletteFor(useColorScheme());
   const styles = useMemo(() => createStyles(c), [c]);
+  const { locale, t } = useI18n();
   const [previous, setPrevious] = useState<Flow | null>(null);
 
   useEffect(() => {
@@ -28,8 +30,8 @@ export function InsightScreen(props: { flow: Flow; library: Library; onExit: () 
     };
   }, [flow]);
 
-  const lines = explain(flow);
-  const findings = analyze(flow);
+  const lines = explain(flow, locale);
+  const findings = analyze(flow, locale);
   const changes: Change[] = previous ? diffFlows(previous, flow) : [];
 
   const restore = (): void => {
@@ -40,23 +42,23 @@ export function InsightScreen(props: { flow: Flow; library: Library; onExit: () 
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={props.onExit} hitSlop={12}><Text style={styles.back}>‹ 返回</Text></Pressable>
-        <Text style={styles.title}>AI 助手</Text>
+        <Pressable onPress={props.onExit} hitSlop={12}><Text style={styles.back}>{t.back}</Text></Pressable>
+        <Text style={styles.title}>{t.insightTitle}</Text>
         <View style={{ width: 48 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.sectionKicker}>解读</Text>
+        <Text style={styles.sectionKicker}>{t.insightReading}</Text>
         <View style={styles.card}>
           {lines.map((l, i) => (
             <Text key={i} style={i === 0 ? styles.lead : styles.line}>{l}</Text>
           ))}
         </View>
 
-        <Text style={styles.sectionKicker}>洞察</Text>
+        <Text style={styles.sectionKicker}>{t.insightFindings}</Text>
         <View style={styles.card}>
           {findings.length === 0 ? (
-            <Text style={styles.line}>没有发现明显问题 👍</Text>
+            <Text style={styles.line}>{t.insightNoFindings}</Text>
           ) : (
             findings.map((f: Finding) => (
               <View key={f.id} style={styles.finding}>
@@ -72,23 +74,21 @@ export function InsightScreen(props: { flow: Flow; library: Library; onExit: () 
 
         {previous ? (
           <>
-            <Text style={styles.sectionKicker}>与上一版（v{previous.version ?? 1}）的差异</Text>
+            <Text style={styles.sectionKicker}>{t.insightDiffTitle(previous.version ?? 1)}</Text>
             <View style={styles.card}>
               {changes.length === 0 ? (
-                <Text style={styles.line}>与上一版没有差异。</Text>
+                <Text style={styles.line}>{t.insightNoDiff}</Text>
               ) : (
-                changes.map((c, i) => <Text key={i} style={styles.change}>{describeChange(c)}</Text>)
+                changes.map((c, i) => <Text key={i} style={styles.change}>{describeChange(c, locale)}</Text>)
               )}
               <Pressable style={styles.restore} onPress={restore}>
-                <Text style={styles.restoreText}>回到上一版</Text>
+                <Text style={styles.restoreText}>{t.insightRestore}</Text>
               </Pressable>
             </View>
           </>
         ) : null}
 
-        <Text style={styles.note}>
-          以上由本地解释器生成，不含真实模型。AI 永远只提议与解释，改动由你决定、可回退。
-        </Text>
+        <Text style={styles.note}>{t.insightNote}</Text>
       </ScrollView>
     </View>
   );

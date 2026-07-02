@@ -20,3 +20,19 @@ export const medicationFlow: Flow = {
     { kind: 'scheduled', id: 'evening', label: '睡前：他汀 1 片', at: hm(22, 0), rationale: '夜间胆固醇合成最活跃' },
   ],
 };
+
+/** 同一条示例的英文版：id 与结构一致（打卡记录按 nodeId + 时刻关联，语言切换不丢数据）。 */
+export const medicationFlowEn: Flow = {
+  schemaVersion: SCHEMA_VERSION,
+  version: 1,
+  id: 'example.medication',
+  title: 'Daily medication reminders',
+  description: 'A sample medication schedule; follow your own prescription.',
+  topology: 'scheduled',
+  repeat: { kind: 'daily' },
+  nodes: [
+    { kind: 'scheduled', id: 'morning', label: 'After breakfast: blood pressure pill', at: hm(8, 0), rationale: 'taking it with food reduces stomach irritation' },
+    { kind: 'scheduled', id: 'noon', label: 'After lunch: metformin', at: hm(14, 0) },
+    { kind: 'scheduled', id: 'evening', label: 'Before bed: statin', at: hm(22, 0), rationale: 'cholesterol synthesis peaks at night' },
+  ],
+};

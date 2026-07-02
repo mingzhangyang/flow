@@ -2,6 +2,7 @@
 // 供 engine（排下一次触发）与 adherence（今日清单过滤）共用；时区显式注入（E3）。
 
 import { type Recurrence } from '../domain/types';
+import { type Locale } from '../i18n/locale';
 import { type Instant, type TimeZoneLike, localDayIndex, weekdayOfDayIndex } from './clock';
 
 /**
@@ -23,18 +24,24 @@ export function occursOnDay(repeat: Recurrence, anchor: Instant, tz: TimeZoneLik
   }
 }
 
-const WEEKDAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'];
+const WEEKDAY_NAMES: Record<Locale, string[]> = {
+  zh: ['日', '一', '二', '三', '四', '五', '六'],
+  en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+};
 
-/** 重复方式的一句话描述（编辑器与解读共用）。 */
-export function describeRecurrence(repeat: Recurrence): string {
+/** 重复方式的一句话描述（编辑器与解读共用）。语言显式注入（同 E3 思路）。 */
+export function describeRecurrence(repeat: Recurrence, locale: Locale): string {
+  const days = (ds: number[]): string =>
+    [...ds].sort((a, b) => a - b).map((d) => WEEKDAY_NAMES[locale][d]).join(locale === 'zh' ? '、' : ', ');
   switch (repeat.kind) {
     case 'once':
-      return '仅今天';
+      return locale === 'zh' ? '仅今天' : 'today only';
     case 'daily':
-      return '每天';
+      return locale === 'zh' ? '每天' : 'every day';
     case 'weekly':
-      return `每周${[...repeat.days].sort((a, b) => a - b).map((d) => WEEKDAY_NAMES[d]).join('、')}`;
+      return locale === 'zh' ? `每周${days(repeat.days)}` : `weekly on ${days(repeat.days)}`;
     case 'everyNDays':
-      return repeat.n === 2 ? '隔天' : `每 ${repeat.n} 天`;
+      if (locale === 'zh') return repeat.n === 2 ? '隔天' : `每 ${repeat.n} 天`;
+      return repeat.n === 2 ? 'every other day' : `every ${repeat.n} days`;
   }
 }

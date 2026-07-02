@@ -12,8 +12,7 @@ import {
 } from '@expo-google-fonts/ibm-plex-mono';
 import { type Flow, type Topology } from './src/domain/types';
 import { createFlow } from './src/domain/editing';
-import { coffeeFlow } from './src/examples/coffee';
-import { medicationFlow } from './src/examples/medication';
+import { examplesFor } from './src/examples';
 import { createStorage } from './src/storage/storage';
 import { asyncStorageKV } from './src/storage/asyncStorageKv';
 import { secureKV } from './src/storage/secureKv';
@@ -30,9 +29,9 @@ import { ExportScreen } from './src/ui/ExportScreen';
 import { ImportScreen } from './src/ui/ImportScreen';
 import { InsightScreen } from './src/ui/InsightScreen';
 import { GenerateScreen } from './src/ui/GenerateScreen';
+import { useI18n } from './src/ui/i18n';
 import { paletteFor } from './src/ui/theme';
 
-const EXAMPLES: Flow[] = [coffeeFlow, medicationFlow];
 const newFlowId = (): string => `flow-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
 type Screen =
@@ -50,6 +49,9 @@ export default function App() {
   // 跟随系统深/浅色模式（运行页除外——那是不随模式变的沉浸场景）
   const scheme = useColorScheme();
   const c = paletteFor(scheme);
+  // 语言在此读取一次，向下显式传递；示例内容随语言切换（id 不变，记录不丢）
+  const { locale } = useI18n();
+  const examples = useMemo(() => examplesFor(locale), [locale]);
   const storage = useMemo(() => createStorage(asyncStorageKV), []);
   const library = useMemo(() => createLibrary(storage), [storage]);
   const notifier = useMemo(() => createExpoNotifier(), []);
@@ -71,13 +73,13 @@ export default function App() {
         rescheduleReminders({
           kv: asyncStorageKV,
           notifier,
-          flows: [...EXAMPLES, ...flows],
+          flows: [...examples, ...flows],
           now: Date.now(),
           deviceTz: systemTimeZone,
         }),
       )
       .catch(() => {});
-  }, [library, notifier]);
+  }, [library, notifier, examples]);
 
   useEffect(() => {
     refreshReminders();
@@ -95,7 +97,7 @@ export default function App() {
       {screen.name === 'home' ? (
         <HomeScreen
           library={library}
-          examples={EXAMPLES}
+          examples={examples}
           refreshKey={refreshKey}
           onRun={(flow) => setScreen({ name: 'run', flow })}
           onNew={(topology: Topology) => setScreen({ name: 'edit', flow: createFlow({ id: newFlowId(), title: '', topology }) })}

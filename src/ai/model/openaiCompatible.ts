@@ -2,8 +2,10 @@
 // OpenAI、DeepSeek、Kimi（Moonshot）、通义千问、智谱、本地 Ollama、Gemini 兼容端点等。
 // 只做协议翻译，不含业务逻辑。
 
+import { type Locale } from '../../i18n/locale';
 import {
   describeHttpError,
+  MODEL_ERRORS,
   type FetchLike,
   type ModelPort,
   type ModelRequest,
@@ -26,6 +28,7 @@ interface ChatCompletionsResponse {
 export function createOpenAICompatiblePort(
   config: OpenAICompatibleConfig,
   fetchFn: FetchLike,
+  locale: Locale,
 ): ModelPort {
   const base = config.baseUrl.trim().replace(/\/+$/, '');
   return {
@@ -49,11 +52,13 @@ export function createOpenAICompatiblePort(
         }),
       });
       const raw = await res.text();
-      if (!res.ok) throw new Error(describeHttpError('模型服务', res.status, raw));
+      if (!res.ok) {
+        throw new Error(describeHttpError(locale === 'zh' ? '模型服务' : 'Model service', res.status, raw, locale));
+      }
 
       const data = JSON.parse(raw) as ChatCompletionsResponse;
       const text = data.choices?.[0]?.message?.content ?? '';
-      if (!text) throw new Error('模型没有返回文本内容');
+      if (!text) throw new Error(MODEL_ERRORS[locale].empty);
       return { text, model: data.model ?? config.model };
     },
   };

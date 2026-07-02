@@ -5,6 +5,7 @@
 
 import { SCHEMA_VERSION, type Flow, type FlowNode, type Recurrence, type Topology } from '../domain/types';
 import { validateFlow, type ValidationIssue } from '../domain/validate';
+import type { Locale } from '../i18n/locale';
 import type { ModelPort, ModelRequest } from './model/port';
 
 const SYSTEM_PROMPT = `你是「准时」应用的 flow 编辑助手。用户用自然语言描述一个时间模式，你把它转写成一个 JSON 对象。只输出这一个 JSON 对象——不要 markdown 代码块，不要任何解释文字。
@@ -32,10 +33,24 @@ JSON 结构：
 
 规则：
 - 每个节点尽量写 rationale（这一步「为什么」）——这是本应用的核心价值。
+- title、description、label、rationale 一律使用用户描述所用的语言（用户用英文描述就输出英文，用中文就输出中文）。
 - 日程型：若用户明确要求按某地/某时区提醒，可在顶层加 "timeZone": "Asia/Shanghai"（IANA 时区名）；否则省略（跟随设备时区）。
 - 不要输出 id、schemaVersion、version 字段，应用会自动分配。
 - 时长换算成秒；时刻用 24 小时制 "HH:MM"。
 - 医疗相关内容只做描述性转写，不提供医疗建议。`;
+
+const GENERATE_ERRORS: Record<Locale, { noJson: string; badJson: string; invalid: (detail: string) => string }> = {
+  zh: {
+    noJson: '模型输出中找不到 JSON 对象',
+    badJson: '模型输出不是合法 JSON，请重试',
+    invalid: (detail) => `生成的 flow 未通过校验：${detail}`,
+  },
+  en: {
+    noJson: 'No JSON object found in the model output',
+    badJson: 'The model output is not valid JSON — please retry',
+    invalid: (detail) => `The generated flow failed validation: ${detail}`,
+  },
+};
 
 export function buildGenerationRequest(description: string): ModelRequest {
   return {
@@ -131,13 +146,15 @@ function coerceNode(raw: RawNode, nextId: () => string): FlowNode {
  * 把模型输出解析为合法 Flow；任何问题都以结果值返回（不抛错），便于 UI 呈现。
  * @param opts.todayDayIndex 「今天」的本地日序号（runtime/clock 的 localDayIndex），
  *   作 everyNDays 的起算日；纯函数因此保持确定性（E3/E4）。
+ * @param opts.locale 错误文案的语言（显式注入，同 E3 思路）。
  */
 export function parseGeneratedFlow(
   text: string,
-  opts: { id: string; todayDayIndex?: number },
+  opts: { id: string; locale: Locale; todayDayIndex?: number },
 ): GenerateResult {
+  const errors = GENERATE_ERRORS[opts.locale];
   const json = extractJson(text);
-  if (!json) return { ok: false, error: '模型输出中找不到 JSON 对象' };
+  if (!json) return { ok: false, error: errors.noJson };
 
   let payload: {
     title?: unknown;
@@ -150,7 +167,7 @@ export function parseGeneratedFlow(
   try {
     payload = JSON.parse(json) as typeof payload;
   } catch {
-    return { ok: false, error: '模型输出不是合法 JSON，请重试' };
+    return { ok: false, error: errors.badJson };
   }
 
   let counter = 0;
@@ -181,8 +198,8 @@ export function parseGeneratedFlow(
 
   const issues = validateFlow(flow);
   if (issues.length > 0) {
-    const detail = issues.map((i) => `${i.path}: ${i.message}`).join('；');
-    return { ok: false, error: `生成的 flow 未通过校验：${detail}`, issues };
+    const detail = issues.map((i) => `${i.path}: ${i.message}`).join(opts.locale === 'zh' ? '；' : '; ');
+    return { ok: false, error: errors.invalid(detail), issues };
   }
   return { ok: true, flow };
 }
@@ -191,7 +208,7 @@ export function parseGeneratedFlow(
 export async function generateFlow(
   port: ModelPort,
   description: string,
-  opts: { id: string; todayDayIndex?: number },
+  opts: { id: string; locale: Locale; todayDayIndex?: number },
 ): Promise<GenerateResult> {
   const res = await port.complete(buildGenerationRequest(description));
   const parsed = parseGeneratedFlow(res.text, opts);

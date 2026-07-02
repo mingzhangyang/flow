@@ -23,7 +23,11 @@
       },
       "predictiveBackGestureEnabled": false
     },
-    "plugins": ["expo-notifications", "expo-secure-store"],
+    "plugins": ["expo-notifications", "expo-secure-store", "expo-localization"],
+    "locales": {
+      "zh": "./locales/zh.json",
+      "en": "./locales/en.json"
+    },
     "web": {
       "favicon": "./assets/favicon.png"
     }

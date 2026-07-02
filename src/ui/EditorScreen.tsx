@@ -11,6 +11,8 @@ import { localDayIndex, weekdayOfDayIndex } from '../runtime/clock';
 import { systemTimeZone } from '../runtime/systemTimeZone';
 import { type Library } from '../session/library';
 import { fmtTimeOfDay } from './format';
+import { useI18n } from './i18n';
+import { type Strings } from './strings';
 import { paletteFor, type Palette, spacing, radius } from './theme';
 
 const newNodeId = (): string => `n-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -40,20 +42,18 @@ function parseTimeOfDay(text: string): number | null {
   return h * 60 + min;
 }
 
-const SEQ_KINDS: { kind: NodeKind; label: string }[] = [
-  { kind: 'timed', label: '计时' },
-  { kind: 'gate', label: '确认' },
-  { kind: 'instant', label: '瞬时' },
+const seqKinds = (t: Strings): { kind: NodeKind; label: string }[] => [
+  { kind: 'timed', label: t.editorKindTimed },
+  { kind: 'gate', label: t.editorKindGate },
+  { kind: 'instant', label: t.editorKindInstant },
 ];
 
-const REPEAT_KINDS: { kind: Recurrence['kind']; label: string }[] = [
-  { kind: 'once', label: '仅今天' },
-  { kind: 'daily', label: '每天' },
-  { kind: 'weekly', label: '每周' },
-  { kind: 'everyNDays', label: '隔 N 天' },
+const repeatKinds = (t: Strings): { kind: Recurrence['kind']; label: string }[] => [
+  { kind: 'once', label: t.editorRepeatOnce },
+  { kind: 'daily', label: t.editorRepeatDaily },
+  { kind: 'weekly', label: t.editorRepeatWeekly },
+  { kind: 'everyNDays', label: t.editorRepeatEveryN },
 ];
-
-const WEEKDAY_NAMES = ['日', '一', '二', '三', '四', '五', '六'];
 
 /** 切换周几：保持有序去重；清空交给保存时的校验拦截。 */
 function toggleWeekday(repeat: Recurrence, d: number): Recurrence {
@@ -65,6 +65,7 @@ function toggleWeekday(repeat: Recurrence, d: number): Recurrence {
 export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f: Flow) => void; onCancel: () => void }) {
   const c = paletteFor(useColorScheme());
   const styles = useMemo(() => createStyles(c), [c]);
+  const { t } = useI18n();
   const [flow, setFlow] = useState<Flow>(props.draft);
   const [error, setError] = useState<string | null>(null);
   const isScheduled = flow.topology === 'scheduled';
@@ -104,7 +105,7 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
       return;
     }
     if (flow.timeZone && !isValidTimeZoneName(flow.timeZone)) {
-      setError(`时区名无效：${flow.timeZone}（应为 IANA 名，如 Asia/Shanghai）`);
+      setError(t.editorInvalidTimeZone(flow.timeZone));
       return;
     }
     props.library.commit(flow).then(props.onSaved).catch((e) => setError(String(e)));
@@ -113,24 +114,24 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={props.onCancel} hitSlop={12}><Text style={styles.headerBtn}>取消</Text></Pressable>
-        <Text style={styles.title}>编辑</Text>
-        <Pressable onPress={save} hitSlop={12}><Text style={[styles.headerBtn, styles.save]}>保存</Text></Pressable>
+        <Pressable onPress={props.onCancel} hitSlop={12}><Text style={styles.headerBtn}>{t.cancel}</Text></Pressable>
+        <Text style={styles.title}>{t.editorTitle}</Text>
+        <Pressable onPress={save} hitSlop={12}><Text style={[styles.headerBtn, styles.save]}>{t.save}</Text></Pressable>
       </View>
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <TextInput
           style={styles.titleInput}
           value={flow.title}
-          onChangeText={(t) => setFlow((f) => setMeta(f, { title: t }))}
-          placeholder="流程名称"
+          onChangeText={(text) => setFlow((f) => setMeta(f, { title: text }))}
+          placeholder={t.editorFlowName}
           placeholderTextColor={c.pending}
         />
         <TextInput
           style={styles.descInput}
           value={flow.description ?? ''}
-          onChangeText={(t) => setFlow((f) => setMeta(f, { description: t }))}
-          placeholder="一句话描述（可选）"
+          onChangeText={(text) => setFlow((f) => setMeta(f, { description: text }))}
+          placeholder={t.editorDescription}
           placeholderTextColor={c.pending}
         />
         {isScheduled ? (
@@ -138,17 +139,17 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
             <TextInput
               style={styles.descInput}
               value={flow.timeZone ?? ''}
-              onChangeText={(t) => { setFlow((f) => setMeta(f, { timeZone: t })); setError(null); }}
-              placeholder="锚定时区（可选，如 Asia/Shanghai；留空跟随设备）"
+              onChangeText={(text) => { setFlow((f) => setMeta(f, { timeZone: text })); setError(null); }}
+              placeholder={t.editorTimeZone}
               placeholderTextColor={c.pending}
               autoCapitalize="none"
               autoCorrect={false}
             />
             {/* 重复节律属于整个模式（flow 级），不属于单个事件 */}
             <View style={styles.repeatCard}>
-              <Row label="重复">
+              <Row label={t.editorRepeat}>
                 <View style={styles.kindRow}>
-                  {REPEAT_KINDS.map((r) => {
+                  {repeatKinds(t).map((r) => {
                     const on = (flow.repeat ?? { kind: 'once' }).kind === r.kind;
                     return (
                       <Pressable
@@ -163,9 +164,9 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
                 </View>
               </Row>
               {flow.repeat?.kind === 'weekly' ? (
-                <Row label="星期">
+                <Row label={t.editorWeekdaysLabel}>
                   <View style={styles.kindRow}>
-                    {WEEKDAY_NAMES.map((name, d) => {
+                    {t.weekdayNames.map((name, d) => {
                       const on = flow.repeat?.kind === 'weekly' && flow.repeat.days.includes(d);
                       return (
                         <Pressable
@@ -183,7 +184,7 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
                 </Row>
               ) : null}
               {flow.repeat?.kind === 'everyNDays' ? (
-                <Row label="间隔(天)">
+                <Row label={t.editorEveryNDays}>
                   <TextInput
                     style={styles.smallInput}
                     keyboardType="number-pad"
@@ -203,7 +204,7 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
           </>
         ) : null}
 
-        <Text style={styles.sectionKicker}>{isScheduled ? '定时事件' : '步骤'}</Text>
+        <Text style={styles.sectionKicker}>{isScheduled ? t.editorSectionScheduled : t.editorSectionSteps}</Text>
         {flow.nodes.map((node, i) => (
           <View key={node.id} style={styles.nodeCard}>
             <View style={styles.nodeTop}>
@@ -211,19 +212,19 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
               <TextInput
                 style={styles.nodeLabel}
                 value={node.label}
-                onChangeText={(t) => patch(node.id, { label: t })}
-                placeholder={isScheduled ? '事件（如：早餐后服药）' : '这一步做什么'}
+                onChangeText={(text) => patch(node.id, { label: text })}
+                placeholder={isScheduled ? t.editorEventPlaceholder : t.editorStepPlaceholder}
                 placeholderTextColor={c.pending}
               />
             </View>
 
             {isScheduled && node.kind === 'scheduled' ? (
-              <Row label="时间">
+              <Row label={t.editorTime}>
                 <TextInput
                   style={styles.smallInput}
                   defaultValue={fmtTimeOfDay(node.at)}
-                  onChangeText={(t) => {
-                    const m = parseTimeOfDay(t);
+                  onChangeText={(text) => {
+                    const m = parseTimeOfDay(text);
                     if (m !== null) patch(node.id, { at: m });
                   }}
                   placeholder="08:00"
@@ -234,7 +235,7 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
 
             {!isScheduled ? (
               <View style={styles.kindRow}>
-                {SEQ_KINDS.map((k) => (
+                {seqKinds(t).map((k) => (
                   <Pressable
                     key={k.kind}
                     style={[styles.kindBtn, node.kind === k.kind && styles.kindBtnOn]}
@@ -247,13 +248,13 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
             ) : null}
 
             {node.kind === 'timed' ? (
-              <Row label="时长(秒)">
+              <Row label={t.editorDuration}>
                 <TextInput
                   style={styles.smallInput}
                   keyboardType="number-pad"
                   defaultValue={String(node.durationSec)}
-                  onChangeText={(t) => {
-                    const s = Number(t);
+                  onChangeText={(text) => {
+                    const s = Number(text);
                     if (Number.isFinite(s) && s > 0) patch(node.id, { durationSec: Math.floor(s) });
                   }}
                 />
@@ -263,8 +264,8 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
             <TextInput
               style={styles.rationaleInput}
               value={node.rationale ?? ''}
-              onChangeText={(t) => patch(node.id, { rationale: t || undefined })}
-              placeholder="为什么（可选）"
+              onChangeText={(text) => patch(node.id, { rationale: text || undefined })}
+              placeholder={t.editorWhy}
               placeholderTextColor={c.pending}
             />
 
@@ -276,14 +277,14 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
                 <Text style={[styles.action, i === flow.nodes.length - 1 && styles.actionOff]}>↓</Text>
               </Pressable>
               <Pressable onPress={() => setFlow((f) => removeNode(f, node.id))}>
-                <Text style={[styles.action, styles.remove]}>删除</Text>
+                <Text style={[styles.action, styles.remove]}>{t.delete}</Text>
               </Pressable>
             </View>
           </View>
         ))}
 
         <Pressable style={styles.addBtn} onPress={add}>
-          <Text style={styles.addText}>＋ 添加{isScheduled ? '事件' : '步骤'}</Text>
+          <Text style={styles.addText}>{isScheduled ? t.editorAddEvent : t.editorAddStep}</Text>
         </Pressable>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}

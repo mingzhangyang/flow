@@ -2,6 +2,7 @@
 // 与运行时一样，时钟显式注入（E3），结果确定、可测。真正的下发交给 Notifier 适配器。
 
 import { type Flow, type RunEvent } from '../domain/types';
+import { type Locale } from '../i18n/locale';
 import { type Instant, type TimeZoneLike } from '../runtime/clock';
 import { project, upcomingEvents } from '../runtime/engine';
 
@@ -21,6 +22,7 @@ export function planSequentialReminder(
   events: RunEvent[],
   now: Instant,
   runId: string,
+  locale: Locale,
 ): Reminder | null {
   if (flow.topology !== 'sequential') return null;
   const s = project(flow, events, now);
@@ -31,7 +33,7 @@ export function planSequentialReminder(
     id: runId, // 每个运行实例仅保留一个“下一步计时”提醒，便于替换/取消
     at: now + s.remainingSec * 1000,
     title: flow.title,
-    body: `“${node.label}”计时完成`,
+    body: locale === 'zh' ? `“${node.label}”计时完成` : `"${node.label}" — time's up`,
   };
 }
 

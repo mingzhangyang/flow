@@ -16,24 +16,27 @@ test('计时步进行中 → 生成结束时刻的提醒', () => {
     { type: 'started', at: T0 },
     { type: 'stepCompleted', index: 0, at: T0 }, // 进入 steep(240s)
   ];
-  const r = planSequentialReminder(coffeeFlow, events, T0, 'run-1');
+  const r = planSequentialReminder(coffeeFlow, events, T0, 'run-1', 'zh');
   assert.ok(r);
   assert.equal(r.at, T0 + 240_000);
   assert.equal(r.id, 'run-1');
   assert.match(r.body, /浸泡/);
+  const en = planSequentialReminder(coffeeFlow, events, T0, 'run-1', 'en');
+  assert.ok(en);
+  assert.match(en.body, /time's up/);
 });
 
 test('非计时步 / 未开始 / 已到点 → 无提醒', () => {
   // 未开始
-  assert.equal(planSequentialReminder(coffeeFlow, [], T0, 'r'), null);
+  assert.equal(planSequentialReminder(coffeeFlow, [], T0, 'r', 'zh'), null);
   // 停在 instant(water)
-  assert.equal(planSequentialReminder(coffeeFlow, [{ type: 'started', at: T0 }], T0, 'r'), null);
+  assert.equal(planSequentialReminder(coffeeFlow, [{ type: 'started', at: T0 }], T0, 'r', 'zh'), null);
   // 计时已到点
   const events: RunEvent[] = [
     { type: 'started', at: T0 },
     { type: 'stepCompleted', index: 0, at: T0 },
   ];
-  assert.equal(planSequentialReminder(coffeeFlow, events, T0 + 240_000, 'r'), null);
+  assert.equal(planSequentialReminder(coffeeFlow, events, T0 + 240_000, 'r', 'zh'), null);
 });
 
 test('日程型 → 为每个 scheduled 事件生成提醒（id 含触发时刻）', () => {

@@ -42,7 +42,7 @@ test('anthropic：请求形状正确（端点、鉴权头、body）', async () =
   const { fn, calls } = fakeFetch({
     body: { model: 'claude-opus-4-8', content: [{ type: 'text', text: '你好' }] },
   });
-  const port = createModelPort(anthropicCfg, fn);
+  const port = createModelPort(anthropicCfg, fn, 'zh');
   const res = await port.complete({ system: 'S', prompt: 'P', maxTokens: 100 });
 
   assert.equal(calls.length, 1);
@@ -63,20 +63,20 @@ test('anthropic：拼接多个 text 块，忽略非 text 块', async () => {
   const { fn } = fakeFetch({
     body: { content: [{ type: 'thinking', text: 'x' }, { type: 'text', text: 'A' }, { type: 'text', text: 'B' }] },
   });
-  const port = createModelPort(anthropicCfg, fn);
+  const port = createModelPort(anthropicCfg, fn, 'zh');
   const res = await port.complete({ prompt: 'P' });
   assert.equal(res.text, 'AB');
 });
 
 test('anthropic：HTTP 错误给出可读信息', async () => {
   const { fn } = fakeFetch({ status: 401, body: { error: { message: 'invalid x-api-key' } } });
-  const port = createModelPort(anthropicCfg, fn);
+  const port = createModelPort(anthropicCfg, fn, 'zh');
   await assert.rejects(() => port.complete({ prompt: 'P' }), /401.*invalid x-api-key/s);
 });
 
 test('anthropic：refusal 视为错误', async () => {
   const { fn } = fakeFetch({ body: { stop_reason: 'refusal', content: [] } });
-  const port = createModelPort(anthropicCfg, fn);
+  const port = createModelPort(anthropicCfg, fn, 'zh');
   await assert.rejects(() => port.complete({ prompt: 'P' }), /拒绝/);
 });
 
@@ -86,7 +86,7 @@ test('openai-compatible：请求形状正确（端点、Bearer、messages）', a
   const { fn, calls } = fakeFetch({
     body: { model: 'deepseek-chat', choices: [{ message: { content: '好的' } }] },
   });
-  const port = createModelPort(openaiCfg, fn);
+  const port = createModelPort(openaiCfg, fn, 'zh');
   const res = await port.complete({ system: 'S', prompt: 'P', maxTokens: 50 });
 
   assert.equal(calls[0].url, 'https://api.deepseek.com/v1/chat/completions'); // 末尾斜杠已归一
@@ -102,28 +102,28 @@ test('openai-compatible：请求形状正确（端点、Bearer、messages）', a
 
 test('openai-compatible：无 system 时只发 user 消息', async () => {
   const { fn, calls } = fakeFetch({ body: { choices: [{ message: { content: 'x' } }] } });
-  await createModelPort(openaiCfg, fn).complete({ prompt: 'P' });
+  await createModelPort(openaiCfg, fn, 'zh').complete({ prompt: 'P' });
   assert.deepEqual(JSON.parse(calls[0].init.body).messages, [{ role: 'user', content: 'P' }]);
 });
 
 test('openai-compatible：HTTP 错误给出可读信息', async () => {
   const { fn } = fakeFetch({ status: 429, body: { error: { message: 'rate limited' } } });
-  await assert.rejects(() => createModelPort(openaiCfg, fn).complete({ prompt: 'P' }), /429.*rate limited/s);
+  await assert.rejects(() => createModelPort(openaiCfg, fn, 'zh').complete({ prompt: 'P' }), /429.*rate limited/s);
 });
 
 test('空响应视为错误（两种适配器）', async () => {
   const a = fakeFetch({ body: { content: [] } });
-  await assert.rejects(() => createModelPort(anthropicCfg, a.fn).complete({ prompt: 'P' }), /没有返回文本/);
+  await assert.rejects(() => createModelPort(anthropicCfg, a.fn, 'zh').complete({ prompt: 'P' }), /没有返回文本/);
   const o = fakeFetch({ body: { choices: [] } });
-  await assert.rejects(() => createModelPort(openaiCfg, o.fn).complete({ prompt: 'P' }), /没有返回文本/);
+  await assert.rejects(() => createModelPort(openaiCfg, o.fn, 'zh').complete({ prompt: 'P' }), /没有返回文本/);
 });
 
 // ---- 端口标识（用于 provenance）----
 
 test('port.id 标明供应商与模型', async () => {
   const { fn } = fakeFetch({ body: {} });
-  assert.equal(createModelPort(anthropicCfg, fn).id, 'anthropic/claude-opus-4-8');
-  assert.equal(createModelPort(openaiCfg, fn).id, 'openai-compatible/deepseek-chat');
+  assert.equal(createModelPort(anthropicCfg, fn, 'zh').id, 'anthropic/claude-opus-4-8');
+  assert.equal(createModelPort(openaiCfg, fn, 'zh').id, 'openai-compatible/deepseek-chat');
 });
 
 // ---- 配置持久化 ----

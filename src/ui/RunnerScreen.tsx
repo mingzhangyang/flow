@@ -10,6 +10,7 @@ import { usePersistentRun } from './usePersistentRun';
 import { Timeline } from './Timeline';
 import { ProgressRing } from './ProgressRing';
 import { fmtDuration } from './format';
+import { useI18n } from './i18n';
 import { dark, spacing, radius, type, mono } from './theme';
 
 const RING = 268;
@@ -21,7 +22,8 @@ export function RunnerScreen(props: {
   onExit: () => void;
 }) {
   const { flow } = props;
-  const run = usePersistentRun(flow, props.storage, props.notifier);
+  const { locale, t } = useI18n();
+  const run = usePersistentRun(flow, props.storage, props.notifier, locale);
   const state = run.state;
   const node = state.currentIndex < flow.nodes.length ? flow.nodes[state.currentIndex] : null;
   const running = state.status === 'running' || state.status === 'paused';
@@ -38,7 +40,7 @@ export function RunnerScreen(props: {
     <View style={styles.screen}>
       <View style={styles.header}>
         <Pressable onPress={props.onExit} hitSlop={12}>
-          <Text style={styles.back}>‹ 返回</Text>
+          <Text style={styles.back}>{t.back}</Text>
         </Pressable>
         <Text style={styles.title} numberOfLines={1}>{flow.title}</Text>
         <View style={{ width: 48 }} />
@@ -48,10 +50,10 @@ export function RunnerScreen(props: {
         <View style={styles.stage}>
           <Text style={styles.kicker}>
             {state.status === 'completed'
-              ? '已完成'
+              ? t.runDone
               : state.status === 'idle'
-                ? `共 ${flow.nodes.length} 步`
-                : `第 ${state.currentIndex + 1} / ${flow.nodes.length} 步${paused ? ' · 已暂停' : ''}`}
+                ? t.runTotalSteps(flow.nodes.length)
+                : t.runStepOf(state.currentIndex + 1, flow.nodes.length, paused)}
           </Text>
 
           <ProgressRing size={RING} progress={state.status === 'completed' ? 1 : progress} beadColor={beadColor}>
@@ -61,14 +63,14 @@ export function RunnerScreen(props: {
               totalSec > 0 ? (
                 <Text style={styles.clock}>{fmtDuration(totalSec)}</Text>
               ) : (
-                <Text style={styles.centerHint}>随时开始</Text>
+                <Text style={styles.centerHint}>{t.runStartAnytime}</Text>
               )
             ) : timed ? (
               <Text style={[styles.clock, paused && styles.clockPaused, closing && styles.clockClosing]}>
                 {fmtDuration(state.remainingSec)}
               </Text>
             ) : (
-              <Text style={styles.centerHint}>{node?.kind === 'gate' ? '完成后确认' : '完成即过'}</Text>
+              <Text style={styles.centerHint}>{node?.kind === 'gate' ? t.runGateHint : t.runInstantHint}</Text>
             )}
           </ProgressRing>
 
@@ -78,13 +80,13 @@ export function RunnerScreen(props: {
               {flow.description ? <Text style={styles.rationale}>{flow.description}</Text> : null}
             </>
           ) : state.status === 'completed' ? (
-            <Text style={styles.stepLabel}>这条 flow 走完了</Text>
+            <Text style={styles.stepLabel}>{t.runFlowFinished}</Text>
           ) : node ? (
             <>
               <Text style={styles.stepLabel}>{node.label}</Text>
               {node.rationale ? <Text style={styles.rationale}>{node.rationale}</Text> : null}
               {timed && state.remainingSec === 0 ? (
-                <Text style={styles.timeUp}>计时完成，可进入下一步</Text>
+                <Text style={styles.timeUp}>{t.runTimeUp}</Text>
               ) : null}
             </>
           ) : null}
@@ -92,21 +94,21 @@ export function RunnerScreen(props: {
 
         {state.status === 'completed' ? (
           <Pressable style={styles.primary} onPress={run.reset}>
-            <Text style={styles.primaryText}>重新开始</Text>
+            <Text style={styles.primaryText}>{t.runRestart}</Text>
           </Pressable>
         ) : (
           <Pressable style={styles.primary} onPress={state.status === 'idle' ? run.start : run.complete}>
             <Text style={styles.primaryText}>
-              {state.status === 'idle' ? '开始' : node?.kind === 'gate' ? '确认' : '完成本步'}
+              {state.status === 'idle' ? t.runStart : node?.kind === 'gate' ? t.runConfirm : t.runCompleteStep}
             </Text>
           </Pressable>
         )}
 
         {running ? (
           <View style={styles.controls}>
-            <GhostButton label="上一步" disabled={state.currentIndex === 0} onPress={run.back} />
-            <GhostButton label={paused ? '恢复' : '暂停'} onPress={paused ? run.resume : run.pause} />
-            <GhostButton label="跳过" onPress={run.skip} />
+            <GhostButton label={t.runPrev} disabled={state.currentIndex === 0} onPress={run.back} />
+            <GhostButton label={paused ? t.runResume : t.runPause} onPress={paused ? run.resume : run.pause} />
+            <GhostButton label={t.runSkip} onPress={run.skip} />
           </View>
         ) : null}
 

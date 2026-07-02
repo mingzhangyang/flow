@@ -82,6 +82,20 @@ Flow 的**编辑器**，不是主人（见 `02-ai-principles.md`）。
 - **Editor**：可以复杂。
 - **Runner + Timeline Renderer**：必须极简，"打开即可开始"（C4）；只读 Runtime 状态并派发用户事件（暂停/跳过/确认/回退，C5）。
 
+## 多语言（i18n）
+
+语言与时钟/时区同一哲学（E3）：**locale 是显式注入的输入**，纯逻辑层绝不隐读环境。
+
+- `src/i18n/locale.ts`：`Locale`（`'zh' | 'en'`）与偏好解析 `resolveLocale`，纯函数。
+- **产出人读文本的纯函数一律接收 locale 参数**（`describeRecurrence`、`explain`、`analyze`、
+  `describeChange`、`buildShareText`、`planSequentialReminder`、模型适配器错误……），
+  译文随各自模块存放（C10 模块自洽）；同一输入 + 同一 locale 必得同一输出（E4）。
+- **UI 文案**集中在 `src/ui/strings.ts`（类型化文案表）；设备语言只在 UI 边界读一次
+  （`src/ui/i18n.ts`，expo-localization），向下全部显式传递。
+- **数据语言无关**：Flow 定义只存用户内容；diff 的字段名是稳定标识（译文在 describeChange）；
+  分享文案的**分界线按语言**、导入端识别所有已知分界线——跨语言分享照常导入（C6/E5）。
+- **示例**按语言各有一份内容等价、id 相同的定义（`examplesFor(locale)`）——切换语言不丢运行记录。
+
 ## 契约测试约定
 每个模块在其目录下维护 `*.contract.test.ts`，只针对**公开接口**断言。
 重构一个模块的内部实现时，契约测试 + Runtime 黄金测试必须仍绿。
