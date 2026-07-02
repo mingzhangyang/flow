@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="432" height="432" viewBox="0 0 432 432">
+  <!-- Android 13+ 主题图标（monochrome）：纯白剪影，系统自行着色。 -->
+  <g transform="translate(216 216) scale(0.38) translate(-512 -512)">
+    <g fill="none" stroke="#FFFFFF" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M594.69 223.62 A300 300 0 1 1 429.31 223.62" stroke-width="64"/>
+      <path d="M368 530 L478 640 L688 410" stroke-width="68"/>
+    </g>
+    <circle cx="512" cy="212" r="44" fill="#FFFFFF"/>
+  </g>
+</svg>
