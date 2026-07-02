@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { type Flow } from '../domain/types';
 import { type Library } from '../session/library';
+import { extractFlowJson } from '../sharing/share';
 import { colors, spacing, radius } from './theme';
 
 export function ImportScreen(props: { library: Library; onImported: (f: Flow) => void; onCancel: () => void }) {
@@ -11,8 +12,14 @@ export function ImportScreen(props: { library: Library; onImported: (f: Flow) =>
   const [error, setError] = useState<string | null>(null);
 
   const doImport = (): void => {
+    // 既接受纯 JSON，也接受「分享全文」——从中提取数据部分再导入。
+    const json = extractFlowJson(text);
+    if (!json) {
+      setError('没有找到可导入的 flow 数据，请粘贴分享全文或 JSON');
+      return;
+    }
     props.library
-      .importFlow(text, Date.now())
+      .importFlow(json, Date.now())
       .then(props.onImported)
       .catch((e) => setError(String(e)));
   };
@@ -25,7 +32,7 @@ export function ImportScreen(props: { library: Library; onImported: (f: Flow) =>
         <View style={{ width: 48 }} />
       </View>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.hint}>把一份 flow 的 JSON 粘贴到下面，导入到你的库。</Text>
+        <Text style={styles.hint}>把朋友分享的全文（或 flow 的 JSON）粘贴到下面，导入到你的库。</Text>
         <TextInput
           style={styles.input}
           value={text}

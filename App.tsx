@@ -13,6 +13,7 @@ import { createStorage } from './src/storage/storage';
 import { asyncStorageKV } from './src/storage/asyncStorageKv';
 import { createLibrary } from './src/session/library';
 import { createExpoNotifier } from './src/notifications/expoNotifier';
+import { systemSharer } from './src/sharing/systemSharer';
 import { HomeScreen } from './src/ui/HomeScreen';
 import { RunnerScreen } from './src/ui/RunnerScreen';
 import { ScheduleScreen } from './src/ui/ScheduleScreen';
@@ -74,7 +75,7 @@ export default function App() {
       ) : screen.name === 'edit' ? (
         <EditorScreen draft={screen.flow} library={library} onSaved={homeRefreshed} onCancel={home} />
       ) : screen.name === 'export' ? (
-        <ExportScreen flow={screen.flow} onDone={home} />
+        <ExportScreen flow={screen.flow} sharer={systemSharer} onDone={home} />
       ) : screen.name === 'insight' ? (
         <InsightScreen flow={screen.flow} library={library} onExit={home} onChanged={homeRefreshed} />
       ) : screen.name === 'generate' ? (

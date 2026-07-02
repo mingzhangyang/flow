@@ -49,6 +49,7 @@
 - [x] Flow 编辑器：增删/重排节点、切换类型、填 rationale（"为什么"）　`C2`
 - [x] 版本化：`library.commit` 提交为新修订，旧版本入历史（`saveRevisions`）　`AI-C3 的前置`
 - [x] 导出 / 导入 / 分享（开放格式 JSON，带 schemaVersion 与 provenance.importedAt）　`C6,E5,E6`
+- [x] 分享的社交面：可读分享文案（解读 + 「为什么」+ 日程型医疗免责）+ 署名入 provenance + 系统分享面板（原生 Share / Web Share / 剪贴板回退）；导入端接受整段分享全文（自动提取数据）　`E6,AI-C2,C6,C10`
 
 **验收**：✅ 新建顺序型 flow → 填步骤与 rationale → 保存（"我的 · v1"）→ 运行；导出为合法 JSON → 改 id/标题后导入 → 库中新增一条（Playwright 全程验证，无报错）。
 

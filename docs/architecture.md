@@ -59,7 +59,13 @@ Flow 的**编辑器**，不是主人（见 `02-ai-principles.md`）。
   - 配置（供应商、端点、模型、密钥）经 `KVStore` 只存本机（C6）；生成产物带 `provenance.source = "ai:<provider>/<model>"`（E6）。
   - 管线纯函数化：`buildGenerationRequest` / `parseGeneratedFlow`（解析、校验、分配 id）确定性可测；`generateFlow` 仅编排。
 
-### 6. UI（`src/ui/` 或 `app/`）
+### 6. Sharing（`src/sharing/`）
+分享的社交面：把 Flow 组装成「人读的文案 + 可导入的数据」。
+- 纯逻辑 `share.ts`：`buildShareText`（标题 + 解读/为什么 + 日程型医疗免责 + 数据分界线 + JSON）、`buildSharePayload`（署名与来源入 provenance，E6）、`extractFlowJson`（从整段分享文本提取数据，供导入端）。
+- `Sharer` 端口 + `systemSharer` 适配器（原生 Share 面板 / Web Share / 剪贴板回退）。
+- **不变式**：分享的是 Flow 定义（知识），绝不带 Run 状态；数据部分始终是开放格式（C6/E5）。
+
+### 7. UI（`src/ui/` 或 `app/`）
 - **Editor**：可以复杂。
 - **Runner + Timeline Renderer**：必须极简，"打开即可开始"（C4）；只读 Runtime 状态并派发用户事件（暂停/跳过/确认/回退，C5）。
 
