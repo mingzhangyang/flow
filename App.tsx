@@ -5,6 +5,11 @@
 import { useMemo, useState } from 'react';
 import { SafeAreaView, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import {
+  useFonts,
+  IBMPlexMono_200ExtraLight,
+  IBMPlexMono_500Medium,
+} from '@expo-google-fonts/ibm-plex-mono';
 import { type Flow, type Topology } from './src/domain/types';
 import { createFlow } from './src/domain/editing';
 import { coffeeFlow } from './src/examples/coffee';
@@ -37,6 +42,8 @@ type Screen =
   | { name: 'generate' };
 
 export default function App() {
+  // 数字展示字体（时刻/倒计时专用）；加载极快，未就绪前不渲染以免字体跳变
+  const [fontsLoaded] = useFonts({ IBMPlexMono_200ExtraLight, IBMPlexMono_500Medium });
   const storage = useMemo(() => createStorage(asyncStorageKV), []);
   const library = useMemo(() => createLibrary(storage), [storage]);
   const notifier = useMemo(() => createExpoNotifier(), []);
@@ -49,6 +56,8 @@ export default function App() {
     setRefreshKey((k) => k + 1);
     home();
   };
+
+  if (!fontsLoaded) return null;
 
   return (
     <SafeAreaView style={styles.root}>
