@@ -33,6 +33,14 @@ export function validateFlow(flow: Flow): ValidationIssue[] {
   if (flow.timeZone !== undefined && !(typeof flow.timeZone === 'string' && flow.timeZone.trim() !== '')) {
     issues.push({ path: 'timeZone', message: 'timeZone must be a non-empty IANA name when present' });
   }
+  // 重复节律在 Flow 级：仅日程型有意义（缺省 = 仅今天）。
+  if (flow.repeat !== undefined) {
+    if (flow.topology !== 'scheduled') {
+      issues.push({ path: 'repeat', message: 'repeat only applies to scheduled flows' });
+    } else {
+      validateRecurrence(flow.repeat, 'repeat', issues);
+    }
+  }
 
   const seenIds = new Set<string>();
   flow.nodes.forEach((node, i) => validateNode(node, `nodes[${i}]`, flow.topology, seenIds, issues));
@@ -71,7 +79,6 @@ function validateNode(
       if (!(node.at >= 0 && node.at < MINUTES_PER_DAY)) {
         issues.push({ path: `${path}.at`, message: `at must be within [0, ${MINUTES_PER_DAY}) minutes` });
       }
-      validateRecurrence(node.repeat, `${path}.repeat`, issues);
       break;
     case 'parallel':
       if (node.children.length === 0) {

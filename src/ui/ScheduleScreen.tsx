@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet, Animated, useColorScheme } from 'react-native';
-import { type Flow, type FlowNode, type Recurrence } from '../domain/types';
+import { type Flow } from '../domain/types';
 import { timeOfDay, MS_PER_DAY } from '../runtime/clock';
 import { systemTimeZone } from '../runtime/systemTimeZone';
 import { timeZoneForFlow } from '../runtime/ianaTimeZone';
@@ -21,6 +21,7 @@ import {
 import { type Storage } from '../storage/storage';
 import { type Notifier } from '../notifications/notifier';
 import { planScheduledReminders } from '../notifications/plan';
+import { nextEvents } from '../runtime/engine';
 import { fmtTimeOfDay } from './format';
 import { paletteFor, type Palette, spacing, radius, type, mono } from './theme';
 
@@ -40,21 +41,6 @@ const statusColors = (c: Palette): Record<DoseStatus, string> => ({
   missed: c.warn,
 });
 
-/** 收集所有 scheduled 节点的重复方式，非每天的在行内标注。 */
-function repeatLabels(nodes: FlowNode[]): Map<string, string> {
-  const map = new Map<string, string>();
-  const walk = (list: FlowNode[]): void => {
-    for (const n of list) {
-      if (n.kind === 'scheduled' && n.repeat.kind !== 'daily') {
-        map.set(n.id, describeRecurrence(n.repeat as Recurrence));
-      } else if (n.kind === 'parallel') {
-        walk(n.children);
-      }
-    }
-  };
-  walk(nodes);
-  return map;
-}
 
 type Styles = ReturnType<typeof createStyles>;
 type BeadStyles = ReturnType<typeof createBeadStyles>;
@@ -109,7 +95,9 @@ export function ScheduleScreen(props: {
   }, []);
 
   const doses = todayDoses(flow, checkIns, now, tz, GRACE_MINUTES);
-  const labels = repeatLabels(flow.nodes);
+  // 节律在 flow 级：今天不在节律上时给出下一次的日子
+  const cadence = describeRecurrence(flow.repeat ?? { kind: 'once' });
+  const [nextOcc] = doses.length === 0 ? nextEvents(flow, now, tz, 400 * MS_PER_DAY) : [];
   const nowMinutes = timeOfDay(now, tz);
   // 「现在」游标插在哪两剂之间
   const cursorIndex = doses.findIndex((d) => timeOfDay(d.scheduledFor, tz) > nowMinutes);
@@ -136,10 +124,15 @@ export function ScheduleScreen(props: {
 
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.sectionKicker}>
-          今天{flow.timeZone ? ` · 按 ${flow.timeZone} 时区` : ''}
+          今天 · {cadence}{flow.timeZone ? ` · 按 ${flow.timeZone} 时区` : ''}
         </Text>
 
         <View style={styles.card}>
+          {doses.length === 0 ? (
+            <Text style={styles.empty}>
+              今天不在节律上{nextOcc ? `，下一次：${new Date(nextOcc.at).getMonth() + 1} 月 ${new Date(nextOcc.at).getDate()} 日 ${fmtTimeOfDay(timeOfDay(nextOcc.at, tz))}` : ''}。
+            </Text>
+          ) : null}
           {doses.map((d, i) => (
             <View key={d.nodeId}>
               {i === cursorAt ? <NowCursor minutes={nowMinutes} s={styles} /> : null}
@@ -159,7 +152,6 @@ export function ScheduleScreen(props: {
                   <Text style={[styles.status, { color: statusColors(c)[d.status] }]}>
                     {STATUS_LABEL[d.status]}
                     {d.status === 'taken' && d.takenAt !== null ? ` · ${fmtTimeOfDay(timeOfDay(d.takenAt, tz))}` : ''}
-                    {labels.has(d.nodeId) ? ` · ${labels.get(d.nodeId)}` : ''}
                   </Text>
                 </View>
                 {d.status === 'taken' ? (
@@ -248,5 +240,6 @@ const createStyles = (c: Palette) => StyleSheet.create({
   cursorRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 2 },
   cursorLabel: { fontSize: type.caption, color: c.accent, fontWeight: '700', fontVariant: ['tabular-nums'] },
   cursorLine: { flex: 1, height: 1.5, backgroundColor: c.accent, opacity: 0.45, borderRadius: 1 },
+  empty: { fontSize: type.body - 1, color: c.textMuted, paddingVertical: spacing.md },
   note: { fontSize: 13, color: c.textMuted, marginTop: spacing.md, lineHeight: 19 },
 });

@@ -48,9 +48,9 @@ export function todayDoses(
   if (flow.topology !== 'scheduled') return [];
   const graceMs = graceMinutes * MS_PER_MINUTE;
 
-  // 只列今天真的会发生的剂量（每周/隔 N 天的节点在不匹配的日子不出现）。
-  const todays = scheduledNodes(flow.nodes).filter((node) => occursOnDay(node.repeat, now, tz));
-  const doses = todays.map((node): DoseState => {
+  // 重复节律在 Flow 级：今天不在节律上，整条 flow 今天就没有剂量。
+  if (!occursOnDay(flow.repeat ?? { kind: 'once' }, now, tz)) return [];
+  const doses = scheduledNodes(flow.nodes).map((node): DoseState => {
     // 逐节点按墙钟换算（DST 正确）：切换日"午夜 + at 分钟"会偏一小时。
     const scheduledFor = instantAtTimeOfDay(now, node.at, tz);
     const ci = checkIns.find((c) => c.nodeId === node.id && c.scheduledFor === scheduledFor);

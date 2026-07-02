@@ -48,12 +48,13 @@ test('instantAtTimeOfDay 配合 IANA 时区：出现两次的 01:30 取第一次
 
 test('nextEvents 用 IANA 时区跨切换日：提醒钉在墙钟 08:00', () => {
   const flow: Flow = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'ny-med',
     title: '纽约服药',
     topology: 'scheduled',
     timeZone: 'America/New_York',
-    nodes: [{ kind: 'scheduled', id: 'a', label: '早餐药', at: 480, repeat: { kind: 'daily' } }],
+    repeat: { kind: 'daily' },
+    nodes: [{ kind: 'scheduled', id: 'a', label: '早餐药', at: 480 }],
   };
   const tz = timeZoneForFlow(flow, fixedTimeZone(0));
   // now = 3 月 7 日当地 09:00 EST（14:00Z），当天 08:00 已过
@@ -82,12 +83,13 @@ test('isValidTimeZoneName', () => {
 // ---- 领域侧：字段校验、编辑与序列化 round-trip ----
 
 const anchored: Flow = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'f',
   title: 't',
   topology: 'scheduled',
   timeZone: 'Asia/Shanghai',
-  nodes: [{ kind: 'scheduled', id: 'a', label: 'A', at: 480, repeat: { kind: 'daily' } }],
+  repeat: { kind: 'daily' },
+  nodes: [{ kind: 'scheduled', id: 'a', label: 'A', at: 480 }],
 };
 
 test('validateFlow：timeZone 形状校验（空串非法、缺省合法）', () => {

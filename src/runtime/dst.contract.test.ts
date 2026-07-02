@@ -73,11 +73,12 @@ test('instantAtTimeOfDay：出现两次的 02:30 取第一次', () => {
 // ---- 日程推进跨切换日 ----
 
 const medFlow: Flow = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'med',
   title: '服药',
   topology: 'scheduled',
-  nodes: [{ kind: 'scheduled', id: 'a', label: '早餐药', at: 480, repeat: { kind: 'daily' } }],
+  repeat: { kind: 'daily' },
+  nodes: [{ kind: 'scheduled', id: 'a', label: '早餐药', at: 480 }],
 };
 
 test('nextEvents：每天 08:00 跨春令时——次日提醒仍在墙钟 08:00（绝对间隔 23h）', () => {
@@ -127,7 +128,7 @@ test('todayDoses：被跳过的时刻（02:30）当天顺延到 03:00，不会�
   const skipFlow: Flow = {
     ...medFlow,
     id: 'skip',
-    nodes: [{ kind: 'scheduled', id: 's', label: '夜间药', at: 150, repeat: { kind: 'daily' } }],
+    nodes: [{ kind: 'scheduled', id: 's', label: '夜间药', at: 150 }],
   };
   // now = 本地 01:50（切换前）：02:30 不存在，剂量顺延到 03:00，仍是待服
   const [dose] = todayDoses(skipFlow, [], M + 110 * MIN, springZone, 120);

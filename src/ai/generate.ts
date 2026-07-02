@@ -23,10 +23,9 @@ JSON 结构：
   {"kind":"gate","label":"...","rationale":"..."}                        需要用户确认后才继续
   {"kind":"instant","label":"...","rationale":"..."}                     瞬时动作
 - "scheduled"（日程型，如服药提醒）：节点钉在墙钟时刻，互相独立。允许的节点：
-  {"kind":"scheduled","label":"...","at":"08:00","repeat":{...},"rationale":"..."}
+  {"kind":"scheduled","label":"...","at":"08:00","rationale":"..."}
   {"kind":"parallel","label":"...","children":[ 若干 scheduled 节点 ]}    同一时刻的并行组
-  repeat 取值（用户没说就用默认）：
-    {"kind":"once"}                       仅今天一次（默认）
+  日程型可在顶层加 "repeat" 描述整个模式的重复节律（用户没说就省略 = 仅今天一次）：
     {"kind":"daily"}                      每天
     {"kind":"weekly","days":[1,3,5]}      每周指定星期（0=周日 … 6=周六）
     {"kind":"everyNDays","n":2}           每 N 天一次（隔天即 n=2）
@@ -79,10 +78,10 @@ interface RawNode {
 }
 
 /**
- * 整理模型给出的 repeat：认识的原样收下，缺省/不认识回落 once（默认不重复）。
+ * 整理模型给出的顶层 repeat：认识的原样收下，缺省/不认识回落 undefined（= 仅今天，默认不重复）。
  * everyNDays 的起算日由调用方注入（todayDayIndex，E3 显式注入——解析器保持纯函数）。
  */
-function coerceRecurrence(raw: unknown, todayDayIndex: number): Recurrence {
+function coerceRecurrence(raw: unknown, todayDayIndex: number): Recurrence | undefined {
   if (typeof raw === 'object' && raw !== null) {
     const r = raw as { kind?: unknown; days?: unknown; n?: unknown };
     if (r.kind === 'daily') return { kind: 'daily' };
@@ -93,12 +92,13 @@ function coerceRecurrence(raw: unknown, todayDayIndex: number): Recurrence {
     if (r.kind === 'everyNDays' && Number.isInteger(r.n) && (r.n as number) >= 1) {
       return { kind: 'everyNDays', n: r.n as number, fromDay: todayDayIndex };
     }
+    if (r.kind === 'once') return { kind: 'once' };
   }
-  return { kind: 'once' };
+  return undefined;
 }
 
 /** 把模型给出的节点整理成领域节点：分配 id、换算时刻、丢弃未知字段。 */
-function coerceNode(raw: RawNode, nextId: () => string, todayDayIndex: number): FlowNode {
+function coerceNode(raw: RawNode, nextId: () => string): FlowNode {
   const base = {
     id: nextId(),
     label: typeof raw.label === 'string' ? raw.label : '',
@@ -112,18 +112,13 @@ function coerceNode(raw: RawNode, nextId: () => string, todayDayIndex: number): 
     case 'instant':
       return { ...base, kind: 'instant' };
     case 'scheduled':
-      return {
-        ...base,
-        kind: 'scheduled',
-        at: coerceTimeOfDay(raw.at),
-        repeat: coerceRecurrence(raw.repeat, todayDayIndex),
-      };
+      return { ...base, kind: 'scheduled', at: coerceTimeOfDay(raw.at) };
     case 'parallel': {
       const children = Array.isArray(raw.children) ? (raw.children as RawNode[]) : [];
       return {
         ...base,
         kind: 'parallel',
-        children: children.map((c) => coerceNode(c, nextId, todayDayIndex)),
+        children: children.map((c) => coerceNode(c, nextId)),
       };
     }
     default:
@@ -149,6 +144,7 @@ export function parseGeneratedFlow(
     description?: unknown;
     topology?: unknown;
     timeZone?: unknown;
+    repeat?: unknown;
     nodes?: unknown;
   };
   try {
@@ -173,8 +169,15 @@ export function parseGeneratedFlow(
       ? { timeZone: payload.timeZone.trim() }
       : {}),
     topology: payload.topology as Topology,
-    nodes: rawNodes.map((n) => coerceNode(n, nextId, opts.todayDayIndex ?? 0)),
+    nodes: rawNodes.map((n) => coerceNode(n, nextId)),
   };
+
+  // 重复节律在 Flow 级；容错：模型若按旧习惯把 repeat 写在节点上，取第一个节点的
+  if (flow.topology === 'scheduled') {
+    const nodeRepeat = rawNodes.find((n) => n.repeat !== undefined)?.repeat;
+    const repeat = coerceRecurrence(payload.repeat ?? nodeRepeat, opts.todayDayIndex ?? 0);
+    if (repeat && repeat.kind !== 'once') flow.repeat = repeat;
+  }
 
   const issues = validateFlow(flow);
   if (issues.length > 0) {

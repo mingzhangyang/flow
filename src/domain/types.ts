@@ -3,8 +3,12 @@
 
 import type { Instant, TimeOfDay } from '../runtime/clock';
 
-/** 当前 Flow 文件格式版本。格式只能加法演进或带迁移（E5）。 */
-export const SCHEMA_VERSION = 1;
+/**
+ * 当前 Flow 文件格式版本。格式只能加法演进或带迁移（E5）。
+ * v2：重复方式从节点上移到 Flow（重复描述的是整个时间模式的节律，见 ADR-0003）；
+ *     v1 数据在反序列化时自动迁移（serialize.ts）。
+ */
+export const SCHEMA_VERSION = 2;
 export type SchemaVersion = typeof SCHEMA_VERSION;
 
 /** 相对时长，整数秒。 */
@@ -38,11 +42,10 @@ export interface TimedNode extends NodeBase {
   durationSec: DurationSec;
 }
 
-/** 绝对时刻：钉在墙钟时间上，属日程型拓扑，可重复、可并行独立。 */
+/** 绝对时刻：钉在墙钟时间上，属日程型拓扑，可并行独立。重复节律在 Flow 级（Flow.repeat）。 */
 export interface ScheduledNode extends NodeBase {
   kind: 'scheduled';
   at: TimeOfDay;
-  repeat: Recurrence;
 }
 
 /** 手动确认：等待用户确认后才继续（C5）。 */
@@ -93,6 +96,11 @@ export interface Flow {
    * 加法演进（E5）：旧数据无此字段，行为不变。
    */
   timeZone?: string;
+  /**
+   * 日程型 flow 的重复节律（整个模式一起重复；缺省 = 仅今天，默认不重复）。
+   * 只对 topology === 'scheduled' 有意义；顺序型 flow 由用户随时手动运行。
+   */
+  repeat?: Recurrence;
   nodes: FlowNode[];
   /** 内容修订号，编辑提交时递增（缺省视为 1）。 */
   version?: number;

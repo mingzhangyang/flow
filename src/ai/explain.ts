@@ -34,7 +34,7 @@ function describeNode(node: FlowNode, index: number): string {
       meta = '（即时）';
       break;
     case 'scheduled':
-      meta = `（${describeRecurrence(node.repeat)} ${fmtClock(node.at)}）`;
+      meta = `（${fmtClock(node.at)}）`;
       break;
     case 'parallel':
       meta = `（并行 ${node.children.length} 项）`;
@@ -68,10 +68,10 @@ export function explain(flow: Flow): string[] {
       (n): n is Extract<FlowNode, { kind: 'scheduled' }> => n.kind === 'scheduled',
     );
     const times = scheduled.map((n) => fmtClock(n.at)).sort();
-    const allDaily = scheduled.every((n) => n.repeat.kind === 'daily');
     if (times.length > 0) {
-      const prefix = allDaily ? '每天在这些时间提醒' : '将在这些时间提醒（重复方式见各条）';
-      lines.push(`${prefix}：${times.join('、')}。各事件相互独立，漏一次不影响其它。`);
+      // 重复节律在 Flow 级（缺省 = 仅今天）
+      const cadence = describeRecurrence(flow.repeat ?? { kind: 'once' });
+      lines.push(`${cadence}在这些时间提醒：${times.join('、')}。各事件相互独立，漏一次不影响其它。`);
     }
   }
 

@@ -8,7 +8,7 @@ import { occursOnDay, describeRecurrence } from './recurrence';
 import { localDayIndex, weekdayOfDayIndex, MS_PER_DAY, MS_PER_MINUTE } from './clock';
 import { nextEvents } from './engine';
 import { todayDoses } from './adherence';
-import { type Flow, type Recurrence, type ScheduledNode } from '../domain/types';
+import { type Flow, type Recurrence } from '../domain/types';
 import { validateFlow } from '../domain/validate';
 
 const MIN = MS_PER_MINUTE;
@@ -55,16 +55,17 @@ test('describeRecurrence：人类可读', () => {
 
 // ---- engine 集成：下一次触发跳到正确的日子 ----
 
-const scheduledFlow = (node: Partial<ScheduledNode> & { repeat: Recurrence }): Flow => ({
-  schemaVersion: 1,
+const scheduledFlow = (repeat: Recurrence): Flow => ({
+  schemaVersion: 2,
   id: 'f',
   title: 't',
   topology: 'scheduled',
-  nodes: [{ kind: 'scheduled', id: 'a', label: 'A', at: 480, repeat: node.repeat }],
+  repeat,
+  nodes: [{ kind: 'scheduled', id: 'a', label: 'A', at: 480 }],
 });
 
 test('nextEvents：weekly 跳到下一个匹配的星期（周四 09:00 → 下周四 08:00）', () => {
-  const flow = scheduledFlow({ repeat: { kind: 'weekly', days: [4] } });
+  const flow = scheduledFlow({ kind: 'weekly', days: [4] });
   const now = THURSDAY_NOON - 3 * 60 * MIN; // 周四 09:00（当天 08:00 已过）
   const [occ] = nextEvents(flow, now, TZ, 8 * MS_PER_DAY);
   assert.equal(localDayIndex(occ.at, TZ), 7); // 下周四
@@ -72,14 +73,14 @@ test('nextEvents：weekly 跳到下一个匹配的星期（周四 09:00 → 下�
 });
 
 test('nextEvents：everyNDays 隔天推进', () => {
-  const flow = scheduledFlow({ repeat: { kind: 'everyNDays', n: 2, fromDay: 0 } });
+  const flow = scheduledFlow({ kind: 'everyNDays', n: 2, fromDay: 0 });
   const now = THURSDAY_NOON; // 日序号 0 匹配，但 08:00 已过 → 下一次是日序号 2
   const [occ] = nextEvents(flow, now, TZ, 8 * MS_PER_DAY);
   assert.equal(localDayIndex(occ.at, TZ), 2);
 });
 
 test('nextEvents：once 过时不候（不排明天）', () => {
-  const flow = scheduledFlow({ repeat: { kind: 'once' } });
+  const flow = scheduledFlow({ kind: 'once' });
   const past = nextEvents(flow, THURSDAY_NOON, TZ, 8 * MS_PER_DAY); // 08:00 已过
   assert.deepEqual(past, []);
   const early = nextEvents(flow, THURSDAY_NOON - 5 * 60 * MIN, TZ, MS_PER_DAY); // 07:00
@@ -89,28 +90,29 @@ test('nextEvents：once 过时不候（不排明天）', () => {
 
 // ---- adherence 集成：今日清单只列今天会发生的 ----
 
-test('todayDoses：weekly 节点在不匹配的日子不出现', () => {
+test('todayDoses：节律在 flow 级——周四节律的 flow 周四有剂量、周五整条为空', () => {
   const flow: Flow = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'f',
     title: 't',
     topology: 'scheduled',
+    repeat: { kind: 'weekly', days: [4] },
     nodes: [
-      { kind: 'scheduled', id: 'thu', label: '周四药', at: 480, repeat: { kind: 'weekly', days: [4] } },
-      { kind: 'scheduled', id: 'day', label: '每日药', at: 540, repeat: { kind: 'daily' } },
+      { kind: 'scheduled', id: 'a', label: '周四药 A', at: 480 },
+      { kind: 'scheduled', id: 'b', label: '周四药 B', at: 540 },
     ],
   };
   const thursday = todayDoses(flow, [], THURSDAY_NOON, TZ, 120);
-  assert.deepEqual(thursday.map((d) => d.nodeId), ['thu', 'day']);
+  assert.deepEqual(thursday.map((d) => d.nodeId), ['a', 'b']);
   const friday = todayDoses(flow, [], THURSDAY_NOON + MS_PER_DAY, TZ, 120);
-  assert.deepEqual(friday.map((d) => d.nodeId), ['day']);
+  assert.deepEqual(friday, []);
 });
 
 // ---- 校验 ----
 
 test('validateFlow：weekly 空数组 / 越界 / 重复 与 everyNDays n<1 均被拒', () => {
   const bad = (repeat: unknown): boolean =>
-    validateFlow(scheduledFlow({ repeat: repeat as Recurrence })).length > 0;
+    validateFlow(scheduledFlow(repeat as Recurrence)).length > 0;
   assert.equal(bad({ kind: 'weekly', days: [] }), true);
   assert.equal(bad({ kind: 'weekly', days: [7] }), true);
   assert.equal(bad({ kind: 'weekly', days: [1, 1] }), true);

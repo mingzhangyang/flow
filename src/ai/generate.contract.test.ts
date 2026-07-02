@@ -20,14 +20,15 @@ const sequentialJson = JSON.stringify({
 const scheduledJson = JSON.stringify({
   title: '每日服药',
   topology: 'scheduled',
+  repeat: { kind: 'daily' },
   nodes: [
-    { kind: 'scheduled', label: '早餐药', at: '08:00', repeat: { kind: 'daily' } },
+    { kind: 'scheduled', label: '早餐药', at: '08:00' },
     {
       kind: 'parallel',
       label: '晚间药组',
       children: [
-        { kind: 'scheduled', label: 'A 药', at: '22:00', repeat: { kind: 'daily' } },
-        { kind: 'scheduled', label: 'B 药', at: '22:00', repeat: { kind: 'daily' } },
+        { kind: 'scheduled', label: 'A 药', at: '22:00' },
+        { kind: 'scheduled', label: 'B 药', at: '22:00' },
       ],
     },
   ],
@@ -51,7 +52,7 @@ test('解析顺序型输出：分配 id、保留 rationale、通过校验', () =
   const res = parseGeneratedFlow(sequentialJson, { id: 'flow-1' });
   assert.ok(res.ok);
   assert.equal(res.flow.id, 'flow-1');
-  assert.equal(res.flow.schemaVersion, 1);
+  assert.equal(res.flow.schemaVersion, 2);
   assert.equal(res.flow.nodes.length, 3);
   assert.deepEqual(res.flow.nodes.map((n) => n.id), ['n1', 'n2', 'n3']);
   assert.equal(res.flow.nodes[1].kind, 'timed');
@@ -95,25 +96,26 @@ test('校验失败返回问题列表（如空 nodes、未知 kind）', () => {
   assert.equal(badKind.ok, false);
 });
 
-test('repeat 整理：weekly/everyNDays 收下，缺省与未知回落 once（默认不重复）', () => {
-  const mk = (repeat?: unknown): string =>
+test('repeat 整理（flow 级）：weekly/everyNDays 收下，缺省与未知回落不重复', () => {
+  const mk = (repeat?: unknown, onNode = false): string =>
     JSON.stringify({
       title: 't',
       topology: 'scheduled',
-      nodes: [{ kind: 'scheduled', label: 'x', at: '08:00', ...(repeat !== undefined ? { repeat } : {}) }],
+      ...(repeat !== undefined && !onNode ? { repeat } : {}),
+      nodes: [{ kind: 'scheduled', label: 'x', at: '08:00', ...(repeat !== undefined && onNode ? { repeat } : {}) }],
     });
   const rep = (text: string) => {
     const res = parseGeneratedFlow(text, { id: 'f', todayDayIndex: 123 });
     assert.ok(res.ok);
-    const node = res.flow.nodes[0];
-    assert.ok(node.kind === 'scheduled');
-    return node.repeat;
+    return res.flow.repeat;
   };
-  assert.deepEqual(rep(mk()), { kind: 'once' }); // 缺省 → 不重复
-  assert.deepEqual(rep(mk({ kind: 'monthly' })), { kind: 'once' }); // 未知 → 不重复
+  assert.equal(rep(mk()), undefined); // 缺省 → 不重复（仅今天）
+  assert.equal(rep(mk({ kind: 'monthly' })), undefined); // 未知 → 不重复
   assert.deepEqual(rep(mk({ kind: 'daily' })), { kind: 'daily' });
   assert.deepEqual(rep(mk({ kind: 'weekly', days: [3, 3, 9, 1] })), { kind: 'weekly', days: [3, 1] }); // 去重、滤越界
   assert.deepEqual(rep(mk({ kind: 'everyNDays', n: 2 })), { kind: 'everyNDays', n: 2, fromDay: 123 }); // 起算日来自注入
+  // 容错：模型按旧习惯把 repeat 写在节点上 → 提升为 flow 级
+  assert.deepEqual(rep(mk({ kind: 'daily' }, true)), { kind: 'daily' });
 });
 
 test('日程型输出可携带锚定时区（timeZone 透传）', () => {
