@@ -24,24 +24,59 @@ export function occursOnDay(repeat: Recurrence, anchor: Instant, tz: TimeZoneLik
   }
 }
 
-const WEEKDAY_NAMES: Record<Locale, string[]> = {
-  zh: ['日', '一', '二', '三', '四', '五', '六'],
-  en: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+interface RecurrenceText {
+  weekdays: string[];
+  dayJoiner: string;
+  once: string;
+  daily: string;
+  weekly: (days: string) => string;
+  everyOther: string;
+  everyN: (n: number) => string;
+}
+
+const TEXT: Record<Locale, RecurrenceText> = {
+  zh: {
+    weekdays: ['日', '一', '二', '三', '四', '五', '六'],
+    dayJoiner: '、',
+    once: '仅今天',
+    daily: '每天',
+    weekly: (days) => `每周${days}`,
+    everyOther: '隔天',
+    everyN: (n) => `每 ${n} 天`,
+  },
+  'zh-Hant': {
+    weekdays: ['日', '一', '二', '三', '四', '五', '六'],
+    dayJoiner: '、',
+    once: '僅今天',
+    daily: '每天',
+    weekly: (days) => `每週${days}`,
+    everyOther: '隔天',
+    everyN: (n) => `每 ${n} 天`,
+  },
+  en: {
+    weekdays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+    dayJoiner: ', ',
+    once: 'today only',
+    daily: 'every day',
+    weekly: (days) => `weekly on ${days}`,
+    everyOther: 'every other day',
+    everyN: (n) => `every ${n} days`,
+  },
 };
 
 /** 重复方式的一句话描述（编辑器与解读共用）。语言显式注入（同 E3 思路）。 */
 export function describeRecurrence(repeat: Recurrence, locale: Locale): string {
-  const days = (ds: number[]): string =>
-    [...ds].sort((a, b) => a - b).map((d) => WEEKDAY_NAMES[locale][d]).join(locale === 'zh' ? '、' : ', ');
+  const t = TEXT[locale];
   switch (repeat.kind) {
     case 'once':
-      return locale === 'zh' ? '仅今天' : 'today only';
+      return t.once;
     case 'daily':
-      return locale === 'zh' ? '每天' : 'every day';
+      return t.daily;
     case 'weekly':
-      return locale === 'zh' ? `每周${days(repeat.days)}` : `weekly on ${days(repeat.days)}`;
+      return t.weekly(
+        [...repeat.days].sort((a, b) => a - b).map((d) => t.weekdays[d]).join(t.dayJoiner),
+      );
     case 'everyNDays':
-      if (locale === 'zh') return repeat.n === 2 ? '隔天' : `每 ${repeat.n} 天`;
-      return repeat.n === 2 ? 'every other day' : `every ${repeat.n} days`;
+      return repeat.n === 2 ? t.everyOther : t.everyN(repeat.n);
   }
 }

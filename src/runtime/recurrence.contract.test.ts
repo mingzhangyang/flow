@@ -53,6 +53,12 @@ test('describeRecurrence：人类可读（中文）', () => {
   assert.equal(describeRecurrence({ kind: 'everyNDays', n: 3, fromDay: 0 }, 'zh'), '每 3 天');
 });
 
+test('describeRecurrence：人类可读（繁体）', () => {
+  assert.equal(describeRecurrence({ kind: 'once' }, 'zh-Hant'), '僅今天');
+  assert.equal(describeRecurrence({ kind: 'weekly', days: [5, 1] }, 'zh-Hant'), '每週一、五');
+  assert.equal(describeRecurrence({ kind: 'everyNDays', n: 3, fromDay: 0 }, 'zh-Hant'), '每 3 天');
+});
+
 test('describeRecurrence：人类可读（英文）', () => {
   assert.equal(describeRecurrence({ kind: 'once' }, 'en'), 'today only');
   assert.equal(describeRecurrence({ kind: 'daily' }, 'en'), 'every day');

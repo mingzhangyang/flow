@@ -45,6 +45,11 @@ const GENERATE_ERRORS: Record<Locale, { noJson: string; badJson: string; invalid
     badJson: '模型输出不是合法 JSON，请重试',
     invalid: (detail) => `生成的 flow 未通过校验：${detail}`,
   },
+  'zh-Hant': {
+    noJson: '模型輸出中找不到 JSON 物件',
+    badJson: '模型輸出不是合法 JSON，請重試',
+    invalid: (detail) => `生成的 flow 未通過校驗：${detail}`,
+  },
   en: {
     noJson: 'No JSON object found in the model output',
     badJson: 'The model output is not valid JSON — please retry',
@@ -198,7 +203,7 @@ export function parseGeneratedFlow(
 
   const issues = validateFlow(flow);
   if (issues.length > 0) {
-    const detail = issues.map((i) => `${i.path}: ${i.message}`).join(opts.locale === 'zh' ? '；' : '; ');
+    const detail = issues.map((i) => `${i.path}: ${i.message}`).join(opts.locale === 'en' ? '; ' : '；');
     return { ok: false, error: errors.invalid(detail), issues };
   }
   return { ok: true, flow };

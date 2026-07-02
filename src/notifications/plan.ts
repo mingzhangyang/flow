@@ -29,11 +29,16 @@ export function planSequentialReminder(
   if (s.status !== 'running') return null;
   const node = flow.nodes[s.currentIndex];
   if (node.kind !== 'timed' || s.remainingSec <= 0) return null;
+  const body: Record<Locale, string> = {
+    zh: `“${node.label}”计时完成`,
+    'zh-Hant': `「${node.label}」計時完成`,
+    en: `"${node.label}" — time's up`,
+  };
   return {
     id: runId, // 每个运行实例仅保留一个“下一步计时”提醒，便于替换/取消
     at: now + s.remainingSec * 1000,
     title: flow.title,
-    body: locale === 'zh' ? `“${node.label}”计时完成` : `"${node.label}" — time's up`,
+    body: body[locale],
   };
 }
 

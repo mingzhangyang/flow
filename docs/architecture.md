@@ -86,7 +86,9 @@ Flow 的**编辑器**，不是主人（见 `02-ai-principles.md`）。
 
 语言与时钟/时区同一哲学（E3）：**locale 是显式注入的输入**，纯逻辑层绝不隐读环境。
 
-- `src/i18n/locale.ts`：`Locale`（`'zh' | 'en'`）与偏好解析 `resolveLocale`，纯函数。
+- `src/i18n/locale.ts`：`Locale`（`'zh' | 'zh-Hant' | 'en'`）与偏好解析 `resolveLocale`，纯函数；
+  中文按脚本/地区分简繁（Hant / 台港澳 → 繁体，未指明脚本按简体）。
+  译文一律用 `Record<Locale, …>` 表——新增语言时漏译即编译错误。
 - **产出人读文本的纯函数一律接收 locale 参数**（`describeRecurrence`、`explain`、`analyze`、
   `describeChange`、`buildShareText`、`planSequentialReminder`、模型适配器错误……），
   译文随各自模块存放（C10 模块自洽）；同一输入 + 同一 locale 必得同一输出（E4）。

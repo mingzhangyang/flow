@@ -53,7 +53,8 @@ export function createOpenAICompatiblePort(
       });
       const raw = await res.text();
       if (!res.ok) {
-        throw new Error(describeHttpError(locale === 'zh' ? '模型服务' : 'Model service', res.status, raw, locale));
+        const provider = { zh: '模型服务', 'zh-Hant': '模型服務', en: 'Model service' }[locale];
+        throw new Error(describeHttpError(provider, res.status, raw, locale));
       }
 
       const data = JSON.parse(raw) as ChatCompletionsResponse;

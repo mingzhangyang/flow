@@ -3,9 +3,15 @@
 
 import { type Flow } from '../domain/types';
 import { type Locale } from '../i18n/locale';
-import { coffeeFlow, coffeeFlowEn } from './coffee';
-import { medicationFlow, medicationFlowEn } from './medication';
+import { coffeeFlow, coffeeFlowHant, coffeeFlowEn } from './coffee';
+import { medicationFlow, medicationFlowHant, medicationFlowEn } from './medication';
+
+const EXAMPLES: Record<Locale, Flow[]> = {
+  zh: [coffeeFlow, medicationFlow],
+  'zh-Hant': [coffeeFlowHant, medicationFlowHant],
+  en: [coffeeFlowEn, medicationFlowEn],
+};
 
 export function examplesFor(locale: Locale): Flow[] {
-  return locale === 'zh' ? [coffeeFlow, medicationFlow] : [coffeeFlowEn, medicationFlowEn];
+  return EXAMPLES[locale];
 }

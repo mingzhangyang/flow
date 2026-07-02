@@ -56,6 +56,7 @@ export function describeHttpError(
     detail = rawBody.slice(0, 200);
   }
   if (locale === 'zh') return `${provider} 请求失败（HTTP ${status}）${detail ? `：${detail}` : ''}`;
+  if (locale === 'zh-Hant') return `${provider} 請求失敗（HTTP ${status}）${detail ? `：${detail}` : ''}`;
   return `${provider} request failed (HTTP ${status})${detail ? `: ${detail}` : ''}`;
 }
 
@@ -64,6 +65,10 @@ export const MODEL_ERRORS: Record<Locale, { refusal: string; empty: string }> = 
   zh: {
     refusal: '模型拒绝了这次请求（refusal），请调整描述后重试',
     empty: '模型没有返回文本内容',
+  },
+  'zh-Hant': {
+    refusal: '模型拒絕了這次請求（refusal），請調整描述後重試',
+    empty: '模型沒有回傳文字內容',
   },
   en: {
     refusal: 'The model refused this request — adjust the description and retry',

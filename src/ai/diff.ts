@@ -64,31 +64,64 @@ function changedFields(a: FlowNode, b: FlowNode): NodeField[] {
   return fields;
 }
 
-const FIELD_NAMES: Record<Locale, Record<NodeField, string>> = {
-  zh: { kind: '类型', label: '名称', rationale: '为什么', duration: '时长', time: '时间' },
-  en: { kind: 'type', label: 'name', rationale: 'why', duration: 'duration', time: 'time' },
+interface DiffText {
+  fieldNames: Record<NodeField, string>;
+  fieldJoiner: string;
+  unnamed: string;
+  meta: (field: 'title' | 'description', to: string | undefined) => string;
+  added: (label: string) => string;
+  removed: (label: string) => string;
+  changed: (label: string, fields: string) => string;
+  moved: (label: string, from: number, to: number) => string;
+}
+
+const TEXT: Record<Locale, DiffText> = {
+  zh: {
+    fieldNames: { kind: '类型', label: '名称', rationale: '为什么', duration: '时长', time: '时间' },
+    fieldJoiner: '、',
+    unnamed: '（未命名）',
+    meta: (field, to) => `${field === 'title' ? '标题' : '描述'} 改为「${to ?? '（空）'}」`,
+    added: (label) => `新增　${label}`,
+    removed: (label) => `删除　${label}`,
+    changed: (label, fields) => `修改　${label}（${fields}）`,
+    moved: (label, from, to) => `移动　${label}（第 ${from + 1} → 第 ${to + 1}）`,
+  },
+  'zh-Hant': {
+    fieldNames: { kind: '類型', label: '名稱', rationale: '為什麼', duration: '時長', time: '時間' },
+    fieldJoiner: '、',
+    unnamed: '（未命名）',
+    meta: (field, to) => `${field === 'title' ? '標題' : '描述'} 改為「${to ?? '（空）'}」`,
+    added: (label) => `新增　${label}`,
+    removed: (label) => `刪除　${label}`,
+    changed: (label, fields) => `修改　${label}（${fields}）`,
+    moved: (label, from, to) => `移動　${label}（第 ${from + 1} → 第 ${to + 1}）`,
+  },
+  en: {
+    fieldNames: { kind: 'type', label: 'name', rationale: 'why', duration: 'duration', time: 'time' },
+    fieldJoiner: ', ',
+    unnamed: '(unnamed)',
+    meta: (field, to) => `${field === 'title' ? 'Title' : 'Description'} changed to "${to ?? '(empty)'}"`,
+    added: (label) => `Added ${label}`,
+    removed: (label) => `Removed ${label}`,
+    changed: (label, fields) => `Changed ${label} (${fields})`,
+    moved: (label, from, to) => `Moved ${label} (#${from + 1} → #${to + 1})`,
+  },
 };
 
 /** 一条差异的人类可读描述。语言显式注入（同 E3 思路）。 */
 export function describeChange(c: Change, locale: Locale): string {
-  const zh = locale === 'zh';
-  const unnamed = zh ? '（未命名）' : '(unnamed)';
-  const fields = (fs: NodeField[]): string =>
-    fs.map((f) => FIELD_NAMES[locale][f]).join(zh ? '、' : ', ');
+  const t = TEXT[locale];
+  const fields = (fs: NodeField[]): string => fs.map((f) => t.fieldNames[f]).join(t.fieldJoiner);
   switch (c.kind) {
-    case 'meta': {
-      if (zh) return `${c.field === 'title' ? '标题' : '描述'} 改为「${c.to ?? '（空）'}」`;
-      return `${c.field === 'title' ? 'Title' : 'Description'} changed to "${c.to ?? '(empty)'}"`;
-    }
+    case 'meta':
+      return t.meta(c.field, c.to);
     case 'nodeAdded':
-      return zh ? `新增　${c.label || unnamed}` : `Added ${c.label || unnamed}`;
+      return t.added(c.label || t.unnamed);
     case 'nodeRemoved':
-      return zh ? `删除　${c.label || unnamed}` : `Removed ${c.label || unnamed}`;
+      return t.removed(c.label || t.unnamed);
     case 'nodeChanged':
-      return zh ? `修改　${c.label}（${fields(c.fields)}）` : `Changed ${c.label} (${fields(c.fields)})`;
+      return t.changed(c.label, fields(c.fields));
     case 'nodeMoved':
-      return zh
-        ? `移动　${c.label}（第 ${c.from + 1} → 第 ${c.to + 1}）`
-        : `Moved ${c.label} (#${c.from + 1} → #${c.to + 1})`;
+      return t.moved(c.label, c.from, c.to);
   }
 }

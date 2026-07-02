@@ -140,6 +140,128 @@ const zh = {
 
 export type Strings = typeof zh;
 
+// 繁体（zh-Hant）：用词按台湾/香港惯例（儲存、匯入/匯出、設定、裝置、資料）。
+const zhHant: Strings = {
+  back: '‹ 返回',
+  cancel: '取消',
+  save: '儲存',
+  delete: '刪除',
+
+  brand: '準時',
+  headerDate: (month, day, weekday) =>
+    `${month} 月 ${day} 日 · 週${'日一二三四五六'[weekday]}`,
+  upNext: '接下來',
+  newSequential: '＋ 順序',
+  newScheduled: '＋ 日程',
+  aiGenerate: '✨ AI 生成',
+  importAction: '匯入',
+  sectionMine: '我的',
+  sectionExamples: '範例',
+  cardMeta: (n, topology) => `${n} ${topology === 'sequential' ? '步' : '個時刻'} · 點按執行`,
+  linkInsight: '解讀',
+  linkEdit: '編輯',
+  linkShare: '分享',
+
+  runDone: '已完成',
+  runTotalSteps: (n) => `共 ${n} 步`,
+  runStepOf: (i, n, paused) => `第 ${i} / ${n} 步${paused ? ' · 已暫停' : ''}`,
+  runStartAnytime: '隨時開始',
+  runGateHint: '完成後確認',
+  runInstantHint: '完成即過',
+  runFlowFinished: '這條 flow 走完了',
+  runTimeUp: '計時完成，可進入下一步',
+  runRestart: '重新開始',
+  runStart: '開始',
+  runConfirm: '確認',
+  runCompleteStep: '完成本步',
+  runPrev: '上一步',
+  runResume: '繼續',
+  runPause: '暫停',
+  runSkip: '跳過',
+
+  nodeNeedsConfirm: '需確認',
+  nodeInstant: '即時',
+
+  doseUpcoming: '待服',
+  doseDue: '可服用',
+  doseTaken: '已服',
+  doseMissed: '漏服',
+  scheduleToday: (cadence, timeZone) =>
+    `今天 · ${cadence}${timeZone ? ` · 按 ${timeZone} 時區` : ''}`,
+  scheduleOffDay: (next) =>
+    `今天不在節律上${next ? `，下一次：${next.month} 月 ${next.day} 日 ${next.time}` : ''}。`,
+  scheduleNow: (time) => `現在 ${time}`,
+  checkIn: '打卡',
+  undo: '復原',
+  scheduleNote: '本表僅作提醒之用，不構成醫療處方或診斷；請以醫囑為準。',
+
+  editorTitle: '編輯',
+  editorFlowName: '流程名稱',
+  editorDescription: '一句話描述（可選）',
+  editorTimeZone: '錨定時區（可選，如 Asia/Taipei；留空跟隨裝置）',
+  editorRepeat: '重複',
+  editorWeekdaysLabel: '星期',
+  editorEveryNDays: '間隔(天)',
+  editorSectionScheduled: '定時事件',
+  editorSectionSteps: '步驟',
+  editorKindTimed: '計時',
+  editorKindGate: '確認',
+  editorKindInstant: '瞬時',
+  editorRepeatOnce: '僅今天',
+  editorRepeatDaily: '每天',
+  editorRepeatWeekly: '每週',
+  editorRepeatEveryN: '隔 N 天',
+  weekdayNames: ['日', '一', '二', '三', '四', '五', '六'],
+  editorTime: '時間',
+  editorDuration: '時長(秒)',
+  editorWhy: '為什麼（可選）',
+  editorEventPlaceholder: '事件（如：早餐後服藥）',
+  editorStepPlaceholder: '這一步做什麼',
+  editorAddEvent: '＋ 新增事件',
+  editorAddStep: '＋ 新增步驟',
+  editorInvalidTimeZone: (name) => `時區名無效：${name}（應為 IANA 名，如 Asia/Taipei）`,
+
+  exportTitle: '分享 · 匯出',
+  exportHint:
+    '分享全文 = 一段人能讀懂的做法說明 + 可匯入的資料。對方把全文貼進「準時」的匯入框，就收下了這條 flow。',
+  exportAuthor: '署名（可選，隨分享一起標註來源）',
+  exportPreview: '預覽',
+  exportShareFull: '分享全文…',
+  exportDataOnly: '僅資料（JSON）',
+  exportShareData: '只分享資料',
+  shareOutcomeShared: '已喚起分享 ✓',
+  shareOutcomeCopied: '已複製全文，去貼給朋友吧 ✓',
+  shareOutcomeUnavailable: '此環境不支援分享或剪貼簿',
+
+  importTitle: '匯入',
+  importHint: '把朋友分享的全文（或 flow 的 JSON）貼到下面，匯入到你的庫。',
+  importNotFound: '沒有找到可匯入的 flow 資料，請貼上分享全文或 JSON',
+  importConfirm: '確認匯入',
+
+  insightTitle: 'AI 助手',
+  insightReading: '解讀',
+  insightFindings: '洞察',
+  insightNoFindings: '沒有發現明顯問題 👍',
+  insightDiffTitle: (version) => `與上一版（v${version}）的差異`,
+  insightNoDiff: '與上一版沒有差異。',
+  insightRestore: '回到上一版',
+  insightNote: '以上由本機解讀器產生，不含真實模型。AI 永遠只提議與解釋，改動由你決定、可復原。',
+
+  generateTitle: 'AI 生成',
+  generateHint: '用一句話描述你的時間模式，AI 會轉寫成一條 flow 草稿，由你審閱後儲存。',
+  generatePlaceholder: '例：法壓咖啡——倒 92 度熱水，浸泡 4 分鐘，壓下壓桿再倒出',
+  generateModelSettings: '模型設定',
+  generateProviderOpenAI: 'OpenAI 相容',
+  generateBaseUrl: '端點（Base URL）',
+  generateModel: '模型',
+  generateModelPlaceholder: '如 deepseek-chat',
+  generateApiKey: 'API Key（只儲存在本機）',
+  generateKeyOptional: '本機服務（Ollama）可留空',
+  generateBusy: '生成中…',
+  generateSubmit: '生成草稿',
+  generateFootnote: '生成後會進入編輯器，確認無誤再儲存；儲存即產生可復原的新版本。',
+};
+
 const en: Strings = {
   back: '‹ Back',
   cancel: 'Cancel',
@@ -265,4 +387,4 @@ const en: Strings = {
   generateFootnote: 'The draft opens in the editor; saving creates a new, restorable version.',
 };
 
-export const STRINGS: Record<Locale, Strings> = { zh, en };
+export const STRINGS: Record<Locale, Strings> = { zh, 'zh-Hant': zhHant, en };

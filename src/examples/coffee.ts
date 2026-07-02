@@ -19,6 +19,23 @@ export const coffeeFlow: Flow = {
   ],
 };
 
+/** 同一条示例的繁体版：id 与结构一致（运行记录按 id 关联，语言切换不丢数据）。 */
+export const coffeeFlowHant: Flow = {
+  schemaVersion: SCHEMA_VERSION,
+  version: 1,
+  id: 'example.coffee',
+  title: '法壓咖啡',
+  description: '一杯基礎法壓壺咖啡的沖泡流程。',
+  topology: 'sequential',
+  nodes: [
+    { kind: 'instant', id: 'water', label: '加入熱水' },
+    { kind: 'timed', id: 'steep', label: '浸泡', durationSec: 240, rationale: '讓咖啡粉充分萃取' },
+    { kind: 'instant', id: 'stir', label: '攪拌' },
+    { kind: 'timed', id: 'settle', label: '靜置', durationSec: 30, rationale: '讓粉末沉降，減少入口的苦澀' },
+    { kind: 'gate', id: 'press', label: '緩慢壓桿', rationale: '過快下壓會過度萃取' },
+  ],
+};
+
 /** 同一条示例的英文版：id 与结构一致（运行记录/打卡按 id 关联，语言切换不丢数据）。 */
 export const coffeeFlowEn: Flow = {
   schemaVersion: SCHEMA_VERSION,

@@ -57,11 +57,16 @@ test('analyze 提示缺失的“为什么”', () => {
   assert.ok(analyze(f, 'zh').some((x) => x.id === 'missing-why'));
 });
 
-test('analyze 两种语言给出同样的发现（id 一致，仅文案不同）', () => {
-  assert.deepEqual(
-    analyze(coffeeFlow, 'zh').map((x) => x.id),
-    analyze(coffeeFlow, 'en').map((x) => x.id),
-  );
+test('analyze 各语言给出同样的发现（id 一致，仅文案不同）', () => {
+  const ids = analyze(coffeeFlow, 'zh').map((x) => x.id);
+  assert.deepEqual(analyze(coffeeFlow, 'en').map((x) => x.id), ids);
+  assert.deepEqual(analyze(coffeeFlow, 'zh-Hant').map((x) => x.id), ids);
+});
+
+test('explain 繁体输出：繁体措辞', () => {
+  const lines = explain(coffeeFlow, 'zh-Hant');
+  assert.match(lines[0], /順序型/);
+  assert.ok(lines.some((l) => /因為/.test(l)));
 });
 
 test('analyze 是确定性的', () => {

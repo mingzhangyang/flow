@@ -14,16 +14,37 @@ export const SHARE_SOURCE = 'zhunshi';
 
 /** 分享文案里，人读部分与数据部分的分界线（按语言）。 */
 export const DATA_DIVIDER = '——以下是可导入「准时」的 flow 数据——';
+const DATA_DIVIDER_HANT = '——以下是可匯入「準時」的 flow 資料——';
 const DATA_DIVIDER_EN = '—— flow data for Zhunshi (paste the full text into the app to import) ——';
 
-const DIVIDERS: Record<Locale, string> = { zh: DATA_DIVIDER, en: DATA_DIVIDER_EN };
+const DIVIDERS: Record<Locale, string> = {
+  zh: DATA_DIVIDER,
+  'zh-Hant': DATA_DIVIDER_HANT,
+  en: DATA_DIVIDER_EN,
+};
 
 /** 导入端认识的全部分界线（含历史与各语言版本——格式只能加法演进，E5）。 */
-const KNOWN_DIVIDERS = [DATA_DIVIDER, DATA_DIVIDER_EN];
+const KNOWN_DIVIDERS = [DATA_DIVIDER, DATA_DIVIDER_HANT, DATA_DIVIDER_EN];
 
 const MEDICAL_DISCLAIMER: Record<Locale, string> = {
   zh: '⚠️ 以上仅描述分享者自己的安排，不构成医疗处方或诊断；涉及用药请遵医嘱。',
+  'zh-Hant': '⚠️ 以上僅描述分享者自己的安排，不構成醫療處方或診斷；涉及用藥請遵醫囑。',
   en: '⚠️ The above only describes the sharer\'s own arrangement. It is not a medical prescription or diagnosis; follow your clinician\'s advice on any medication.',
+};
+
+const SHARE_HEADER: Record<Locale, { title: (t: string) => string; sharedBy: (a: string) => string }> = {
+  zh: {
+    title: (t) => `《${t || '未命名'}》—— 来自「准时」的时间模式分享`,
+    sharedBy: (a) => `分享者：${a}`,
+  },
+  'zh-Hant': {
+    title: (t) => `《${t || '未命名'}》—— 來自「準時」的時間模式分享`,
+    sharedBy: (a) => `分享者：${a}`,
+  },
+  en: {
+    title: (t) => `"${t || 'Untitled'}" — a temporal pattern shared from Zhunshi`,
+    sharedBy: (a) => `Shared by: ${a}`,
+  },
 };
 
 /**
@@ -48,17 +69,13 @@ export function buildSharePayload(flow: Flow, opts: { author?: string } = {}): F
  */
 export function buildShareText(flow: Flow, opts: { author?: string; locale: Locale }): string {
   const { locale } = opts;
-  const zh = locale === 'zh';
+  const header = SHARE_HEADER[locale];
   const payload = buildSharePayload(flow, opts);
   const lines: string[] = [];
 
-  lines.push(
-    zh
-      ? `《${flow.title || '未命名'}》—— 来自「准时」的时间模式分享`
-      : `"${flow.title || 'Untitled'}" — a temporal pattern shared from Zhunshi`,
-  );
+  lines.push(header.title(flow.title));
   if (payload.provenance?.author) {
-    lines.push(zh ? `分享者：${payload.provenance.author}` : `Shared by: ${payload.provenance.author}`);
+    lines.push(header.sharedBy(payload.provenance.author));
   }
   lines.push('');
   lines.push(...explain(flow, locale));

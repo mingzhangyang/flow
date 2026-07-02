@@ -67,9 +67,12 @@ test('闭环：分享全文 → 提取 → 反序列化 == 盖章后的 payload'
   assert.deepEqual(back, buildSharePayload(medicationFlow, { author: '老杨' }));
 });
 
-test('跨语言闭环：英文分享全文在导入端同样可提取（C6）', () => {
-  const text = buildShareText(medicationFlow, { author: 'Yang', locale: 'en' });
-  const json = extractFlowJson(text);
-  assert.ok(json);
-  assert.deepEqual(deserializeFlow(json), buildSharePayload(medicationFlow, { author: 'Yang' }));
+test('跨语言闭环：英文/繁体分享全文在导入端同样可提取（C6）', () => {
+  for (const locale of ['en', 'zh-Hant'] as const) {
+    const text = buildShareText(medicationFlow, { author: 'Yang', locale });
+    const json = extractFlowJson(text);
+    assert.ok(json, `divider for ${locale} should be recognized`);
+    assert.deepEqual(deserializeFlow(json), buildSharePayload(medicationFlow, { author: 'Yang' }));
+  }
+  assert.match(buildShareText(medicationFlow, { locale: 'zh-Hant' }), /不構成醫療處方/);
 });

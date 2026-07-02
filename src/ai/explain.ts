@@ -11,14 +11,15 @@ export function fmtDuration(totalSec: number, locale: Locale): string {
   const s = Math.max(0, Math.floor(totalSec));
   const m = Math.floor(s / 60);
   const r = s % 60;
-  if (locale === 'zh') {
-    if (m === 0) return `${r} 秒`;
-    if (r === 0) return `${m} 分`;
-    return `${m} 分 ${r} 秒`;
+  if (locale === 'en') {
+    if (m === 0) return `${r} sec`;
+    if (r === 0) return `${m} min`;
+    return `${m} min ${r} sec`;
   }
-  if (m === 0) return `${r} sec`;
-  if (r === 0) return `${m} min`;
-  return `${m} min ${r} sec`;
+  // 简繁同形：分 / 秒
+  if (m === 0) return `${r} 秒`;
+  if (r === 0) return `${m} 分`;
+  return `${m} 分 ${r} 秒`;
 }
 
 function fmtClock(minutes: number): string {
@@ -27,30 +28,97 @@ function fmtClock(minutes: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
+interface ExplainText {
+  overview: (title: string, isSeq: boolean, n: number) => string;
+  timedTotal: (dur: string) => string;
+  gates: (n: number) => string;
+  reminders: (cadence: string, times: string[]) => string;
+  stepsHeading: string;
+  unnamed: string;
+  because: (rationale: string) => string;
+  metaTimed: (dur: string) => string;
+  metaGate: string;
+  metaInstant: string;
+  metaScheduled: (clock: string) => string;
+  metaParallel: (n: number) => string;
+}
+
+const TEXT: Record<Locale, ExplainText> = {
+  zh: {
+    overview: (title, isSeq, n) =>
+      `「${title || '未命名'}」是一条${isSeq ? '顺序型' : '日程型'} flow，共 ${n} ${isSeq ? '步' : '个定时事件'}。`,
+    timedTotal: (dur) => `预计计时约 ${dur}（不含手动操作与确认等待的时间）。`,
+    gates: (n) => `其中有 ${n} 处需要你确认后才继续。`,
+    reminders: (cadence, times) =>
+      `${cadence}在这些时间提醒：${times.join('、')}。各事件相互独立，漏一次不影响其它。`,
+    stepsHeading: '步骤：',
+    unnamed: '（未命名）',
+    because: (r) => ` —— 因为${r}`,
+    metaTimed: (dur) => `（计时 ${dur}）`,
+    metaGate: '（需确认）',
+    metaInstant: '（即时）',
+    metaScheduled: (clock) => `（${clock}）`,
+    metaParallel: (n) => `（并行 ${n} 项）`,
+  },
+  'zh-Hant': {
+    overview: (title, isSeq, n) =>
+      `「${title || '未命名'}」是一條${isSeq ? '順序型' : '日程型'} flow，共 ${n} ${isSeq ? '步' : '個定時事件'}。`,
+    timedTotal: (dur) => `預計計時約 ${dur}（不含手動操作與確認等待的時間）。`,
+    gates: (n) => `其中有 ${n} 處需要你確認後才繼續。`,
+    reminders: (cadence, times) =>
+      `${cadence}在這些時間提醒：${times.join('、')}。各事件相互獨立，漏一次不影響其它。`,
+    stepsHeading: '步驟：',
+    unnamed: '（未命名）',
+    because: (r) => ` —— 因為${r}`,
+    metaTimed: (dur) => `（計時 ${dur}）`,
+    metaGate: '（需確認）',
+    metaInstant: '（即時）',
+    metaScheduled: (clock) => `（${clock}）`,
+    metaParallel: (n) => `（並行 ${n} 項）`,
+  },
+  en: {
+    overview: (title, isSeq, n) => {
+      const unit = n === 1 ? (isSeq ? 'step' : 'timed event') : isSeq ? 'steps' : 'timed events';
+      return `"${title || 'Untitled'}" is a ${isSeq ? 'sequential' : 'scheduled'} flow with ${n} ${unit}.`;
+    },
+    timedTotal: (dur) => `Estimated timed duration ≈ ${dur} (excluding manual steps and confirmations).`,
+    gates: (n) => `${n} ${n === 1 ? 'step waits' : 'steps wait'} for your confirmation before continuing.`,
+    reminders: (cadence, times) =>
+      `Reminders (${cadence}) at: ${times.join(', ')}. Each event is independent — missing one doesn't affect the others.`,
+    stepsHeading: 'Steps:',
+    unnamed: '(unnamed)',
+    because: (r) => ` — because ${r}`,
+    metaTimed: (dur) => ` (timed ${dur})`,
+    metaGate: ' (needs confirmation)',
+    metaInstant: ' (instant)',
+    metaScheduled: (clock) => ` (${clock})`,
+    metaParallel: (n) => ` (${n} in parallel)`,
+  },
+};
+
 /** 一个节点的一句话说明（含“为什么”）。 */
 function describeNode(node: FlowNode, index: number, locale: Locale): string {
-  const zh = locale === 'zh';
+  const t = TEXT[locale];
   let meta = '';
   switch (node.kind) {
     case 'timed':
-      meta = zh ? `（计时 ${fmtDuration(node.durationSec, locale)}）` : ` (timed ${fmtDuration(node.durationSec, locale)})`;
+      meta = t.metaTimed(fmtDuration(node.durationSec, locale));
       break;
     case 'gate':
-      meta = zh ? '（需确认）' : ' (needs confirmation)';
+      meta = t.metaGate;
       break;
     case 'instant':
-      meta = zh ? '（即时）' : ' (instant)';
+      meta = t.metaInstant;
       break;
     case 'scheduled':
-      meta = zh ? `（${fmtClock(node.at)}）` : ` (${fmtClock(node.at)})`;
+      meta = t.metaScheduled(fmtClock(node.at));
       break;
     case 'parallel':
-      meta = zh ? `（并行 ${node.children.length} 项）` : ` (${node.children.length} in parallel)`;
+      meta = t.metaParallel(node.children.length);
       break;
   }
-  const unnamed = zh ? '（未命名）' : '(unnamed)';
-  const why = node.rationale ? (zh ? ` —— 因为${node.rationale}` : ` — because ${node.rationale}`) : '';
-  return `${index + 1}. ${node.label || unnamed}${meta}${why}`;
+  const why = node.rationale ? t.because(node.rationale) : '';
+  return `${index + 1}. ${node.label || t.unnamed}${meta}${why}`;
 }
 
 /** 顺序型中所有计时步的总时长（秒）。 */
@@ -60,36 +128,18 @@ export function totalTimedSeconds(flow: Flow): number {
 
 /** 返回若干段说明文本。 */
 export function explain(flow: Flow, locale: Locale): string[] {
-  const zh = locale === 'zh';
+  const t = TEXT[locale];
   const lines: string[] = [];
   const isSeq = flow.topology === 'sequential';
 
-  if (zh) {
-    const unit = isSeq ? '步' : '个定时事件';
-    lines.push(`「${flow.title || '未命名'}」是一条${isSeq ? '顺序型' : '日程型'} flow，共 ${flow.nodes.length} ${unit}。`);
-  } else {
-    const unit = flow.nodes.length === 1 ? (isSeq ? 'step' : 'timed event') : isSeq ? 'steps' : 'timed events';
-    lines.push(`"${flow.title || 'Untitled'}" is a ${isSeq ? 'sequential' : 'scheduled'} flow with ${flow.nodes.length} ${unit}.`);
-  }
+  lines.push(t.overview(flow.title, isSeq, flow.nodes.length));
   if (flow.description) lines.push(flow.description);
 
   if (isSeq) {
     const total = totalTimedSeconds(flow);
     const gates = flow.nodes.filter((n) => n.kind === 'gate').length;
-    if (total > 0) {
-      lines.push(
-        zh
-          ? `预计计时约 ${fmtDuration(total, locale)}（不含手动操作与确认等待的时间）。`
-          : `Estimated timed duration ≈ ${fmtDuration(total, locale)} (excluding manual steps and confirmations).`,
-      );
-    }
-    if (gates > 0) {
-      lines.push(
-        zh
-          ? `其中有 ${gates} 处需要你确认后才继续。`
-          : `${gates} ${gates === 1 ? 'step waits' : 'steps wait'} for your confirmation before continuing.`,
-      );
-    }
+    if (total > 0) lines.push(t.timedTotal(fmtDuration(total, locale)));
+    if (gates > 0) lines.push(t.gates(gates));
   } else {
     const scheduled = flow.nodes.filter(
       (n): n is Extract<FlowNode, { kind: 'scheduled' }> => n.kind === 'scheduled',
@@ -98,15 +148,11 @@ export function explain(flow: Flow, locale: Locale): string[] {
     if (times.length > 0) {
       // 重复节律在 Flow 级（缺省 = 仅今天）
       const cadence = describeRecurrence(flow.repeat ?? { kind: 'once' }, locale);
-      lines.push(
-        zh
-          ? `${cadence}在这些时间提醒：${times.join('、')}。各事件相互独立，漏一次不影响其它。`
-          : `Reminders (${cadence}) at: ${times.join(', ')}. Each event is independent — missing one doesn't affect the others.`,
-      );
+      lines.push(t.reminders(cadence, times));
     }
   }
 
-  lines.push(zh ? '步骤：' : 'Steps:');
+  lines.push(t.stepsHeading);
   flow.nodes.forEach((n, i) => lines.push(describeNode(n, i, locale)));
   return lines;
 }

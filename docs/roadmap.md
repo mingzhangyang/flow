@@ -77,7 +77,7 @@
 - [x] 隐私政策草稿：`docs/privacy-policy.md`（本地优先、无账号、无遥测、AI BYOK；待托管 URL、生效日期、联系方式）　`C6,E6`
 - [x] 提醒不断档：日程提醒多日排入（7 天窗口、上限 48）+ 启动/回前台/库变更时重排——App 几天不开，服药提醒也到点　`C5,E3`
 - [x] 加固（项目审查修复）：导入同 id 不再静默覆盖（旧版本入历史）；AI 密钥入系统安全存储（Keychain/Keystore，旧数据自动搬迁）；持久数据读入前迁移 + 校验（Run 日志重放即校验）；历史修订设上限　`C6,AI-C3,E4,E5`
-- [x] 多语言（zh / en）：locale 显式注入贯穿纯逻辑层（解读/洞察/差异/分享/提醒文案），UI 文案表 + 设备语言探测（expo-localization），示例双语同 id，跨语言分享可导入　`C2,C6,E3,E4`
+- [x] 多语言（zh / zh-Hant / en）：locale 显式注入贯穿纯逻辑层（解读/洞察/差异/分享/提醒文案），UI 文案表 + 设备语言探测（expo-localization），繁体按台/港惯例用词，示例各语言同 id，跨语言分享可导入　`C2,C6,E3,E4`
 - [ ] 真机验证本地推送（iOS 权限时机、Android 13+ 通知权限与渠道、后台到点）——需真机
 - [ ] 品牌资产：替换占位 icon / adaptive icon / splash / favicon
 - [ ] EAS：`eas init` + `eas.json`、签名（Apple Developer 账号、Android keystore 备份）、TestFlight / internal testing 内测

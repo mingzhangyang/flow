@@ -21,6 +21,22 @@ export const medicationFlow: Flow = {
   ],
 };
 
+/** 同一条示例的繁体版：id 与结构一致（打卡记录按 nodeId + 时刻关联，语言切换不丢数据）。 */
+export const medicationFlowHant: Flow = {
+  schemaVersion: SCHEMA_VERSION,
+  version: 1,
+  id: 'example.medication',
+  title: '每日服藥提醒',
+  description: '範例用藥日程；請以醫囑為準。',
+  topology: 'scheduled',
+  repeat: { kind: 'daily' },
+  nodes: [
+    { kind: 'scheduled', id: 'morning', label: '早餐後：降壓藥 1 片', at: hm(8, 0), rationale: '隨餐服用可減少胃部刺激' },
+    { kind: 'scheduled', id: 'noon', label: '午餐後：二甲雙胍 1 片', at: hm(14, 0) },
+    { kind: 'scheduled', id: 'evening', label: '睡前：他汀 1 片', at: hm(22, 0), rationale: '夜間膽固醇合成最活躍' },
+  ],
+};
+
 /** 同一条示例的英文版：id 与结构一致（打卡记录按 nodeId + 时刻关联，语言切换不丢数据）。 */
 export const medicationFlowEn: Flow = {
   schemaVersion: SCHEMA_VERSION,
