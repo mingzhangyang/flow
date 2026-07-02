@@ -7,6 +7,7 @@ import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
 import { type Flow } from '../domain/types';
 import { timeOfDay, MS_PER_DAY } from '../runtime/clock';
 import { systemTimeZone } from '../runtime/systemTimeZone';
+import { timeZoneForFlow } from '../runtime/ianaTimeZone';
 import {
   todayDoses,
   recordCheckIn,
@@ -37,7 +38,8 @@ export function ScheduleScreen(props: {
   onExit: () => void;
 }) {
   const { flow, storage, notifier } = props;
-  const tz = systemTimeZone; // 显式注入设备时区（E3）；偏移按时刻取值，跨 DST 切换日正确
+  // 显式注入时区（E3）：flow 锚定了 IANA 时区则按锚定时区，否则跟随设备；偏移按时刻取值，跨 DST 正确
+  const tz = timeZoneForFlow(flow, systemTimeZone);
   const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
   const [now, setNow] = useState<number>(() => Date.now());
 
@@ -78,7 +80,9 @@ export function ScheduleScreen(props: {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.sectionKicker}>今天</Text>
+        <Text style={styles.sectionKicker}>
+          今天{flow.timeZone ? ` · 按 ${flow.timeZone} 时区` : ''}
+        </Text>
         <View style={styles.card}>
           {doses.map((d, i) => (
             <View key={d.nodeId} style={[styles.row, i > 0 && styles.rowDivider]}>

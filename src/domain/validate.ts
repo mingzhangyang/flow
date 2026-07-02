@@ -29,6 +29,10 @@ export function validateFlow(flow: Flow): ValidationIssue[] {
   if (flow.version !== undefined && !(Number.isInteger(flow.version) && flow.version >= 1)) {
     issues.push({ path: 'version', message: 'version must be an integer >= 1' });
   }
+  // 只做形状校验；IANA 名是否真实存在由运行时适配器判定（domain 不触宿主 API）。
+  if (flow.timeZone !== undefined && !(typeof flow.timeZone === 'string' && flow.timeZone.trim() !== '')) {
+    issues.push({ path: 'timeZone', message: 'timeZone must be a non-empty IANA name when present' });
+  }
 
   const seenIds = new Set<string>();
   flow.nodes.forEach((node, i) => validateNode(node, `nodes[${i}]`, flow.topology, seenIds, issues));

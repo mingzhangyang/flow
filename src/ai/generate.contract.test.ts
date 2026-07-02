@@ -95,6 +95,17 @@ test('校验失败返回问题列表（如空 nodes、未知 kind）', () => {
   assert.equal(badKind.ok, false);
 });
 
+test('日程型输出可携带锚定时区（timeZone 透传）', () => {
+  const withTz = JSON.parse(scheduledJson);
+  withTz.timeZone = 'Asia/Shanghai';
+  const res = parseGeneratedFlow(JSON.stringify(withTz), { id: 'f' });
+  assert.ok(res.ok);
+  assert.equal(res.flow.timeZone, 'Asia/Shanghai');
+  // 未提及时区则不带该字段
+  const plain = parseGeneratedFlow(scheduledJson, { id: 'f' });
+  assert.ok(plain.ok && plain.flow.timeZone === undefined);
+});
+
 // ---- generateFlow（经由 ModelPort，供应商无关）----
 
 function stubPort(text: string): ModelPort {

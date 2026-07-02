@@ -28,6 +28,7 @@ JSON 结构：
 
 规则：
 - 每个节点尽量写 rationale（这一步「为什么」）——这是本应用的核心价值。
+- 日程型：若用户明确要求按某地/某时区提醒，可在顶层加 "timeZone": "Asia/Shanghai"（IANA 时区名）；否则省略（跟随设备时区）。
 - 不要输出 id、schemaVersion、version 字段，应用会自动分配。
 - 时长换算成秒；时刻用 24 小时制 "HH:MM"。
 - 医疗相关内容只做描述性转写，不提供医疗建议。`;
@@ -114,6 +115,7 @@ export function parseGeneratedFlow(text: string, opts: { id: string }): Generate
     title?: unknown;
     description?: unknown;
     topology?: unknown;
+    timeZone?: unknown;
     nodes?: unknown;
   };
   try {
@@ -132,6 +134,10 @@ export function parseGeneratedFlow(text: string, opts: { id: string }): Generate
     title: typeof payload.title === 'string' ? payload.title : '',
     ...(typeof payload.description === 'string' && payload.description
       ? { description: payload.description }
+      : {}),
+    // IANA 名是否真实存在由编辑器保存时校验（isValidTimeZoneName）；这里保持纯函数只做形状透传
+    ...(typeof payload.timeZone === 'string' && payload.timeZone.trim()
+      ? { timeZone: payload.timeZone.trim() }
       : {}),
     topology: payload.topology as Topology,
     nodes: rawNodes.map((n) => coerceNode(n, nextId)),

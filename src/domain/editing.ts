@@ -21,11 +21,16 @@ export function createFlow(params: {
   };
 }
 
-export function setMeta(flow: Flow, meta: { title?: string; description?: string }): Flow {
+export function setMeta(
+  flow: Flow,
+  meta: { title?: string; description?: string; timeZone?: string },
+): Flow {
   return {
     ...flow,
     title: meta.title ?? flow.title,
     description: meta.description ?? flow.description,
+    // 传空串表示清除锚定（回到跟随设备）；未传则保持原值。
+    timeZone: meta.timeZone !== undefined ? meta.timeZone.trim() || undefined : flow.timeZone,
   };
 }
 

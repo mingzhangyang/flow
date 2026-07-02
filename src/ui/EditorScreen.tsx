@@ -6,6 +6,7 @@ import { View, Text, TextInput, Pressable, ScrollView, StyleSheet } from 'react-
 import { type Flow, type FlowNode, type NodeKind } from '../domain/types';
 import { addNode, updateNode, removeNode, moveNode, setMeta } from '../domain/editing';
 import { validateFlow } from '../domain/validate';
+import { isValidTimeZoneName } from '../runtime/ianaTimeZone';
 import { type Library } from '../session/library';
 import { fmtTimeOfDay } from './format';
 import { colors, spacing, radius } from './theme';
@@ -65,6 +66,10 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
       setError(issues[0].path + ': ' + issues[0].message);
       return;
     }
+    if (flow.timeZone && !isValidTimeZoneName(flow.timeZone)) {
+      setError(`时区名无效：${flow.timeZone}（应为 IANA 名，如 Asia/Shanghai）`);
+      return;
+    }
     props.library.commit(flow).then(props.onSaved).catch((e) => setError(String(e)));
   };
 
@@ -91,6 +96,17 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
           placeholder="一句话描述（可选）"
           placeholderTextColor={colors.pending}
         />
+        {isScheduled ? (
+          <TextInput
+            style={styles.descInput}
+            value={flow.timeZone ?? ''}
+            onChangeText={(t) => { setFlow((f) => setMeta(f, { timeZone: t })); setError(null); }}
+            placeholder="锚定时区（可选，如 Asia/Shanghai；留空跟随设备）"
+            placeholderTextColor={colors.pending}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        ) : null}
 
         <Text style={styles.sectionKicker}>{isScheduled ? '定时事件' : '步骤'}</Text>
         {flow.nodes.map((node, i) => (

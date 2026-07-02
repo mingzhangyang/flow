@@ -36,7 +36,7 @@
   - `project(flow: Flow, log: RunEvent[], now: Instant): RunState` — 由日志重建状态（E2）。
   - `nextEvents(flow, state, now): ScheduledEvent[]` — 供通知层调度。
 - **不变式**：无隐式 `now()`、无隐藏内存；同一输入必得同一输出（E4）。
-- **时区**：与时钟同为显式注入。`TimeZone.offsetAt(instant)` 表达「偏移随时刻变化」，因此 DST 切换日也正确（固定偏移标量仍兼容）；墙钟 → Instant 的换算集中在 `instantAtTimeOfDay`——被跳过的时刻取切换后第一个时刻，重复的时刻取第一次。应用侧注入 `systemTimeZone`（按被询问时刻取设备偏移），测试注入固定或阶跃时区。
+- **时区**：与时钟同为显式注入。`TimeZone.offsetAt(instant)` 表达「偏移随时刻变化」，因此 DST 切换日也正确（固定偏移标量仍兼容）；墙钟 → Instant 的换算集中在 `instantAtTimeOfDay`——被跳过的时刻取切换后第一个时刻，重复的时刻取第一次。适配器有二：`systemTimeZone`（按被询问时刻取设备偏移）与 `ianaTimeZone(name)`（按 IANA 时区名，供 `Flow.timeZone` 锚定非设备时区——出差时仍按家里的时区提醒）；`timeZoneForFlow(flow, fallback)` 做选择与坏名回退。测试注入固定或阶跃时区，IANA 适配器用真实 DST 切换点验证。
 - **黄金测试**：一批 `(flow, injected clock, event log) → expected event sequence` 用例；DST 契约测试用自构造阶跃时区覆盖春/秋令时。
 
 ### 3. Storage（`src/storage/`）

@@ -77,6 +77,12 @@ export interface Flow {
   title: string;
   description?: string;
   topology: Topology;
+  /**
+   * 可选的锚定时区（IANA 名，如 "Asia/Shanghai"）。设置后，日程型节点的墙钟
+   * 时刻按此时区换算而非设备时区——出差时仍按家里的时区提醒。缺省跟随设备。
+   * 加法演进（E5）：旧数据无此字段，行为不变。
+   */
+  timeZone?: string;
   nodes: FlowNode[];
   /** 内容修订号，编辑提交时递增（缺省视为 1）。 */
   version?: number;
