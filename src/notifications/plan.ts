@@ -2,7 +2,7 @@
 // 与运行时一样，时钟显式注入（E3），结果确定、可测。真正的下发交给 Notifier 适配器。
 
 import { type Flow, type RunEvent } from '../domain/types';
-import { type Instant } from '../runtime/clock';
+import { type Instant, type TimeZoneLike } from '../runtime/clock';
 import { project, nextEvents } from '../runtime/engine';
 
 export interface Reminder {
@@ -39,10 +39,10 @@ export function planSequentialReminder(
 export function planScheduledReminders(
   flow: Flow,
   now: Instant,
-  tzOffsetMinutes: number,
+  tz: TimeZoneLike,
   horizonMs: number,
 ): Reminder[] {
-  return nextEvents(flow, now, tzOffsetMinutes, horizonMs).map((o) => ({
+  return nextEvents(flow, now, tz, horizonMs).map((o) => ({
     id: `${flow.id}:${o.nodeId}`,
     at: o.at,
     title: flow.title,

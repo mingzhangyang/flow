@@ -13,9 +13,10 @@ export const medicationFlow: Flow = {
   title: '每日服药提醒',
   description: '示例用药日程；请以医嘱为准。',
   topology: 'scheduled',
+  repeat: { kind: 'daily' },
   nodes: [
-    { kind: 'scheduled', id: 'morning', label: '早餐后：降压药 1 片', at: hm(8, 0), repeat: { kind: 'daily' }, rationale: '随餐服用可减少胃部刺激' },
-    { kind: 'scheduled', id: 'noon', label: '午餐后：二甲双胍 1 片', at: hm(14, 0), repeat: { kind: 'daily' } },
-    { kind: 'scheduled', id: 'evening', label: '睡前：他汀 1 片', at: hm(22, 0), repeat: { kind: 'daily' }, rationale: '夜间胆固醇合成最活跃' },
+    { kind: 'scheduled', id: 'morning', label: '早餐后：降压药 1 片', at: hm(8, 0), rationale: '随餐服用可减少胃部刺激' },
+    { kind: 'scheduled', id: 'noon', label: '午餐后：二甲双胍 1 片', at: hm(14, 0) },
+    { kind: 'scheduled', id: 'evening', label: '睡前：他汀 1 片', at: hm(22, 0), rationale: '夜间胆固醇合成最活跃' },
   ],
 };

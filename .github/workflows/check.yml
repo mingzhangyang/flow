@@ -1,0 +1,23 @@
+# CI：每次 push / PR 跑完整检查（双 typecheck + 全部契约/黄金测试）。
+# 与本地 `npm run check` 完全一致——CI 不引入本地没有的行为（C10 的工程面）。
+name: check
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check

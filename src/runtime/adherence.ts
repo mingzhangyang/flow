@@ -3,7 +3,8 @@
 // 时钟显式注入（E3），确定性可测（E4）。真正的持久化交给 Storage、下发交给 Notifier。
 
 import { type Flow, type FlowNode, type ScheduledNode } from '../domain/types';
-import { type Instant, localMidnight, MS_PER_MINUTE } from './clock';
+import { type Instant, type TimeZoneLike, instantAtTimeOfDay, MS_PER_MINUTE } from './clock';
+import { occursOnDay } from './recurrence';
 
 export type DoseStatus =
   | 'upcoming' // 未到点
@@ -41,15 +42,17 @@ export function todayDoses(
   flow: Flow,
   checkIns: CheckIn[],
   now: Instant,
-  tzOffsetMinutes: number,
+  tz: TimeZoneLike,
   graceMinutes: number,
 ): DoseState[] {
   if (flow.topology !== 'scheduled') return [];
-  const midnight = localMidnight(now, tzOffsetMinutes);
   const graceMs = graceMinutes * MS_PER_MINUTE;
 
+  // 重复节律在 Flow 级：今天不在节律上，整条 flow 今天就没有剂量。
+  if (!occursOnDay(flow.repeat ?? { kind: 'once' }, now, tz)) return [];
   const doses = scheduledNodes(flow.nodes).map((node): DoseState => {
-    const scheduledFor = midnight + node.at * MS_PER_MINUTE;
+    // 逐节点按墙钟换算（DST 正确）：切换日"午夜 + at 分钟"会偏一小时。
+    const scheduledFor = instantAtTimeOfDay(now, node.at, tz);
     const ci = checkIns.find((c) => c.nodeId === node.id && c.scheduledFor === scheduledFor);
 
     let status: DoseStatus;

@@ -2,17 +2,19 @@
 // AI 永远只“提议与解释”，由用户决定（AI-C1）；任何改动都能先看差异、可回退（AI-C3）。
 // 不调用任何外部模型——全部由本地纯函数生成。
 
-import { useEffect, useState } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
+import { useEffect, useState, useMemo } from 'react';
+import { View, Text, ScrollView, Pressable, StyleSheet, useColorScheme } from 'react-native';
 import { type Flow } from '../domain/types';
 import { type Library } from '../session/library';
 import { explain } from '../ai/explain';
 import { analyze, type Finding } from '../ai/analyze';
 import { diffFlows, describeChange, type Change } from '../ai/diff';
-import { colors, spacing, radius } from './theme';
+import { paletteFor, type Palette, spacing, radius } from './theme';
 
 export function InsightScreen(props: { flow: Flow; library: Library; onExit: () => void; onChanged: () => void }) {
   const { flow } = props;
+  const c = paletteFor(useColorScheme());
+  const styles = useMemo(() => createStyles(c), [c]);
   const [previous, setPrevious] = useState<Flow | null>(null);
 
   useEffect(() => {
@@ -92,34 +94,34 @@ export function InsightScreen(props: { flow: Flow; library: Library; onExit: () 
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
+const createStyles = (c: Palette) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: c.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
-  back: { fontSize: 16, color: colors.accent, width: 48 },
-  title: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '600', color: colors.text },
+  back: { fontSize: 16, color: c.accent, width: 48 },
+  title: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '600', color: c.text },
   content: { padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xl },
-  sectionKicker: { fontSize: 13, color: colors.textMuted, letterSpacing: 1, marginLeft: spacing.xs, marginTop: spacing.sm },
+  sectionKicker: { fontSize: 13, color: c.textMuted, letterSpacing: 2, marginLeft: spacing.xs, marginTop: spacing.sm },
   card: {
-    backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: c.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border,
     padding: spacing.md, gap: spacing.xs,
   },
-  lead: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: spacing.xs },
-  line: { fontSize: 14, color: colors.text, lineHeight: 21 },
+  lead: { fontSize: 16, fontWeight: '700', color: c.text, marginBottom: spacing.xs },
+  line: { fontSize: 14, color: c.text, lineHeight: 21 },
   finding: { flexDirection: 'row', gap: spacing.sm, paddingVertical: spacing.xs },
   dot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
-  dotWarn: { backgroundColor: colors.warn },
-  dotInfo: { backgroundColor: colors.accent },
-  findingTitle: { fontSize: 15, fontWeight: '600', color: colors.text },
-  findingDetail: { fontSize: 13, color: colors.textMuted, lineHeight: 19, marginTop: 2 },
-  change: { fontSize: 14, color: colors.text, paddingVertical: 2 },
+  dotWarn: { backgroundColor: c.warn },
+  dotInfo: { backgroundColor: c.accent },
+  findingTitle: { fontSize: 15, fontWeight: '600', color: c.text },
+  findingDetail: { fontSize: 13, color: c.textMuted, lineHeight: 19, marginTop: 2 },
+  change: { fontSize: 14, color: c.text, paddingVertical: 2 },
   restore: {
     marginTop: spacing.sm, alignSelf: 'flex-start',
-    borderWidth: 1, borderColor: colors.accent, borderRadius: radius.pill,
+    borderWidth: 1, borderColor: c.accent, borderRadius: radius.pill,
     paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
   },
-  restoreText: { color: colors.accent, fontSize: 14, fontWeight: '600' },
-  note: { fontSize: 12, color: colors.textMuted, marginTop: spacing.md, lineHeight: 18 },
+  restoreText: { color: c.accent, fontSize: 14, fontWeight: '600' },
+  note: { fontSize: 12, color: c.textMuted, marginTop: spacing.md, lineHeight: 18 },
 });

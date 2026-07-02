@@ -3,8 +3,13 @@
 // 简单的状态机即导航（Constraint 0：先别引入路由库）。
 
 import { useMemo, useState } from 'react';
-import { SafeAreaView, StyleSheet } from 'react-native';
+import { SafeAreaView, StyleSheet, useColorScheme } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import {
+  useFonts,
+  IBMPlexMono_200ExtraLight,
+  IBMPlexMono_500Medium,
+} from '@expo-google-fonts/ibm-plex-mono';
 import { type Flow, type Topology } from './src/domain/types';
 import { createFlow } from './src/domain/editing';
 import { coffeeFlow } from './src/examples/coffee';
@@ -13,6 +18,7 @@ import { createStorage } from './src/storage/storage';
 import { asyncStorageKV } from './src/storage/asyncStorageKv';
 import { createLibrary } from './src/session/library';
 import { createExpoNotifier } from './src/notifications/expoNotifier';
+import { systemSharer } from './src/sharing/systemSharer';
 import { HomeScreen } from './src/ui/HomeScreen';
 import { RunnerScreen } from './src/ui/RunnerScreen';
 import { ScheduleScreen } from './src/ui/ScheduleScreen';
@@ -20,7 +26,8 @@ import { EditorScreen } from './src/ui/EditorScreen';
 import { ExportScreen } from './src/ui/ExportScreen';
 import { ImportScreen } from './src/ui/ImportScreen';
 import { InsightScreen } from './src/ui/InsightScreen';
-import { colors } from './src/ui/theme';
+import { GenerateScreen } from './src/ui/GenerateScreen';
+import { paletteFor } from './src/ui/theme';
 
 const EXAMPLES: Flow[] = [coffeeFlow, medicationFlow];
 const newFlowId = (): string => `flow-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -31,9 +38,15 @@ type Screen =
   | { name: 'edit'; flow: Flow }
   | { name: 'export'; flow: Flow }
   | { name: 'insight'; flow: Flow }
-  | { name: 'import' };
+  | { name: 'import' }
+  | { name: 'generate' };
 
 export default function App() {
+  // 数字展示字体（时刻/倒计时专用）；加载极快，未就绪前不渲染以免字体跳变
+  const [fontsLoaded] = useFonts({ IBMPlexMono_200ExtraLight, IBMPlexMono_500Medium });
+  // 跟随系统深/浅色模式（运行页除外——那是不随模式变的沉浸场景）
+  const scheme = useColorScheme();
+  const c = paletteFor(scheme);
   const storage = useMemo(() => createStorage(asyncStorageKV), []);
   const library = useMemo(() => createLibrary(storage), [storage]);
   const notifier = useMemo(() => createExpoNotifier(), []);
@@ -47,9 +60,11 @@ export default function App() {
     home();
   };
 
+  if (!fontsLoaded) return null;
+
   return (
-    <SafeAreaView style={styles.root}>
-      <StatusBar style="dark" />
+    <SafeAreaView style={[styles.root, { backgroundColor: c.bg }]}>
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       {screen.name === 'home' ? (
         <HomeScreen
           library={library}
@@ -61,6 +76,7 @@ export default function App() {
           onExport={(flow) => setScreen({ name: 'export', flow })}
           onInsight={(flow) => setScreen({ name: 'insight', flow })}
           onImport={() => setScreen({ name: 'import' })}
+          onGenerate={() => setScreen({ name: 'generate' })}
         />
       ) : screen.name === 'run' ? (
         screen.flow.topology === 'scheduled' ? (
@@ -71,9 +87,16 @@ export default function App() {
       ) : screen.name === 'edit' ? (
         <EditorScreen draft={screen.flow} library={library} onSaved={homeRefreshed} onCancel={home} />
       ) : screen.name === 'export' ? (
-        <ExportScreen flow={screen.flow} onDone={home} />
+        <ExportScreen flow={screen.flow} sharer={systemSharer} onDone={home} />
       ) : screen.name === 'insight' ? (
         <InsightScreen flow={screen.flow} library={library} onExit={home} onChanged={homeRefreshed} />
+      ) : screen.name === 'generate' ? (
+        <GenerateScreen
+          kv={asyncStorageKV}
+          newFlowId={newFlowId}
+          onDraft={(flow) => setScreen({ name: 'edit', flow })}
+          onCancel={home}
+        />
       ) : (
         <ImportScreen library={library} onImported={homeRefreshed} onCancel={home} />
       )}
@@ -82,5 +105,5 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg },
+  root: { flex: 1 },
 });

@@ -3,8 +3,22 @@
 //   - 时钟显式注入：所有 now / tzOffset 都是参数，绝不隐读环境。
 //   - 确定性：给定同样的输入，必得同样的输出（可重放、可验证）。
 
-import { type Flow, type FlowNode, type Run, type RunEvent, type ScheduledNode } from '../domain/types';
-import { type Instant, localMidnight, MS_PER_DAY, MS_PER_MINUTE } from './clock';
+import {
+  type Flow,
+  type FlowNode,
+  type Recurrence,
+  type Run,
+  type RunEvent,
+  type ScheduledNode,
+} from '../domain/types';
+import {
+  type Instant,
+  type TimeZoneLike,
+  instantAtTimeOfDay,
+  localMidnight,
+  MS_PER_MINUTE,
+} from './clock';
+import { occursOnDay } from './recurrence';
 
 export type RunStatus = 'idle' | 'running' | 'paused' | 'completed';
 
@@ -153,14 +167,16 @@ export interface ScheduledOccurrence {
 export function nextEvents(
   flow: Flow,
   now: Instant,
-  tzOffsetMinutes: number,
+  tz: TimeZoneLike,
   horizonMs: number,
 ): ScheduledOccurrence[] {
   if (flow.topology !== 'scheduled') return [];
 
+  // 重复节律在 Flow 级：整个模式一起重复；缺省 = 仅今天（默认不重复）。
+  const repeat = flow.repeat ?? { kind: 'once' as const };
   const out: ScheduledOccurrence[] = [];
   for (const node of collectScheduled(flow.nodes)) {
-    const at = nextOccurrence(node, now, tzOffsetMinutes);
+    const at = nextOccurrence(node.at, repeat, now, tz);
     if (at !== null && at <= now + horizonMs) {
       out.push({ nodeId: node.id, label: node.label, at });
     }
@@ -178,11 +194,30 @@ function collectScheduled(nodes: FlowNode[]): ScheduledNode[] {
   return acc;
 }
 
-function nextOccurrence(node: ScheduledNode, now: Instant, tzOffsetMinutes: number): Instant | null {
-  const todayAt = localMidnight(now, tzOffsetMinutes) + node.at * MS_PER_MINUTE;
-  if (node.repeat.kind === 'daily') {
-    return todayAt >= now ? todayAt : todayAt + MS_PER_DAY;
+/** 逐日扫描的上限：任何重复规则一年内必有下一次，否则视为无。 */
+const MAX_SCAN_DAYS = 366;
+
+function nextOccurrence(
+  at: ScheduledNode['at'],
+  repeat: Recurrence,
+  now: Instant,
+  tz: TimeZoneLike,
+): Instant | null {
+  // once：仅今天这一次，过时不候（无状态运行时不跨日顺延）。
+  if (repeat.kind === 'once') {
+    const todayAt = instantAtTimeOfDay(now, at, tz);
+    return todayAt >= now ? todayAt : null;
   }
-  // once：仅当今天该时刻仍在未来时
-  return todayAt >= now ? todayAt : null;
+  // 重复型：从今天起逐日找第一个匹配日。墙钟时刻按「目标那一天」的偏移换算（DST 正确）——
+  // 不能用 todayAt + 24h 推明天，切换日的一天不是 24 小时。
+  let anchor: Instant = now;
+  for (let i = 0; i < MAX_SCAN_DAYS; i++) {
+    if (occursOnDay(repeat, anchor, tz)) {
+      const occurrence = instantAtTimeOfDay(anchor, at, tz);
+      if (occurrence >= now) return occurrence;
+    }
+    // 次日锚点：当天开始 + 36h。本地一天长 23–25 小时，该点必落在下一天之内。
+    anchor = localMidnight(anchor, tz) + 36 * 60 * MS_PER_MINUTE;
+  }
+  return null;
 }

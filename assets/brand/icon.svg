@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- 「准时」应用图标：表圈 + 顶部时间珠（墙钟时刻钉在环上）+ 对勾（准时完成）。
+       安静克制：主题绿底、米白标记，与应用内 theme 同源（accent #2F6F4F / bg #F6F6F3）。 -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#357A5B"/>
+      <stop offset="1" stop-color="#2A6347"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <g fill="none" stroke="#F6F6F3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M594.69 223.62 A300 300 0 1 1 429.31 223.62" stroke-width="64"/>
+    <path d="M368 530 L478 640 L688 410" stroke-width="68"/>
+  </g>
+  <circle cx="512" cy="212" r="44" fill="#F6F6F3"/>
+</svg>

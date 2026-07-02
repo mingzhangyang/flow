@@ -43,7 +43,7 @@ test('校验捕获非法计时时长与越界时刻', () => {
 
   const sched: Flow = {
     schemaVersion: SCHEMA_VERSION, id: 'f', title: 't', topology: 'scheduled',
-    nodes: [{ kind: 'scheduled', id: 'x', label: 'x', at: 1500, repeat: { kind: 'daily' } }],
+    nodes: [{ kind: 'scheduled', id: 'x', label: 'x', at: 1500 }],
   };
   assert.ok(validateFlow(sched).some((i) => i.path.endsWith('at')));
 });
@@ -52,7 +52,7 @@ test('校验捕获节点类型与拓扑不相容', () => {
   // scheduled 节点放进 sequential 流
   const flow: Flow = {
     schemaVersion: SCHEMA_VERSION, id: 'f', title: 't', topology: 'sequential',
-    nodes: [{ kind: 'scheduled', id: 'x', label: 'x', at: 60, repeat: { kind: 'daily' } }],
+    nodes: [{ kind: 'scheduled', id: 'x', label: 'x', at: 60 }],
   };
   assert.ok(validateFlow(flow).some((i) => i.path.endsWith('kind')));
 });
@@ -70,4 +70,39 @@ test('序列化是稳定的（幂等）', () => {
     const twice = serializeFlow(deserializeFlow(once));
     assert.equal(twice, once);
   }
+});
+
+test('迁移 v1 → v2：节点级 repeat 上移为 flow 级（ADR-0003）', () => {
+  const v1 = JSON.stringify({
+    schemaVersion: 1,
+    id: 'old',
+    title: '旧数据',
+    topology: 'scheduled',
+    nodes: [
+      { kind: 'scheduled', id: 'a', label: 'A', at: 480, repeat: { kind: 'daily' } },
+      {
+        kind: 'parallel', id: 'g', label: '组',
+        children: [{ kind: 'scheduled', id: 'b', label: 'B', at: 600, repeat: { kind: 'daily' } }],
+      },
+    ],
+  });
+  const flow = deserializeFlow(v1);
+  assert.equal(flow.schemaVersion, SCHEMA_VERSION);
+  assert.deepEqual(flow.repeat, { kind: 'daily' }); // 取第一个 scheduled 节点的节律
+  // 节点不再携带 repeat
+  assert.ok(flow.nodes.every((n) => !('repeat' in n)));
+  const group = flow.nodes[1];
+  assert.ok(group.kind === 'parallel' && group.children.every((n) => !('repeat' in n)));
+  // 迁移后可正常再序列化（无损、合法）
+  assert.deepEqual(deserializeFlow(serializeFlow(flow)), flow);
+});
+
+test('迁移 v1 → v2：顺序型 v1 不产生 repeat 字段', () => {
+  const v1 = JSON.stringify({
+    schemaVersion: 1, id: 'seq', title: 't', topology: 'sequential',
+    nodes: [{ kind: 'timed', id: 'a', label: 'A', durationSec: 60 }],
+  });
+  const flow = deserializeFlow(v1);
+  assert.equal(flow.schemaVersion, SCHEMA_VERSION);
+  assert.equal(flow.repeat, undefined);
 });

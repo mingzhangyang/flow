@@ -14,6 +14,7 @@
 
 - 架构与模块边界：[`docs/architecture.md`](./docs/architecture.md)
 - 开发路线图与 MVP 范围：[`docs/roadmap.md`](./docs/roadmap.md)
+- 商业化方向（记录）：[`docs/monetization.md`](./docs/monetization.md)
 
 ## 技术栈提示
 
