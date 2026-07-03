@@ -107,3 +107,11 @@ Flow 的**编辑器**，不是主人（见 `02-ai-principles.md`）。
 ## 契约测试约定
 每个模块在其目录下维护 `*.contract.test.ts`，只针对**公开接口**断言。
 重构一个模块的内部实现时，契约测试 + Runtime 黄金测试必须仍绿。
+
+## UI 回归（e2e）
+逻辑层由契约测试守护，UI 层由 `e2e/`（`npm run test:e2e`）守护：`expo export` 出 web
+静态构建 → 本地伺服 → playwright-core 驱动 headless Chromium 走真实界面，运行器仍是
+`node --test`。确定性同 E3/E4 思路：假时钟固定注入（`FIXED_NOW`）、时区固定
+Asia/Shanghai、语言固定 zh-CN。固化的验收路径：顺序型运行（开始/暂停/跳过/回退 +
+整页刷新后恢复计时）、服药打卡（逐剂独立 + 刷新保留 + 免责可见）、编辑→导出→导入
+闭环、once「过时不候」提示、AI 解读入口、整库备份→全新环境恢复。CI 与本地同一命令。

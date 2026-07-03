@@ -3,6 +3,6 @@
   "compilerOptions": {
     "strict": true
   },
-  "//": "src 下的 *.test.ts 用 node 内置测试运行器，其类型由 tsconfig.src.json 负责；从应用侧类型检查中排除，避免 node:test 类型缺失报错。",
-  "exclude": ["src/**/*.test.ts"]
+  "//": "src 下的 *.test.ts 与 e2e/ 用 node 内置测试运行器，其类型由 tsconfig.src.json 负责；从应用侧类型检查中排除，避免 node:test 类型缺失报错。",
+  "exclude": ["src/**/*.test.ts", "e2e"]
 }

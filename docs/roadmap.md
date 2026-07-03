@@ -81,6 +81,7 @@
 - [x] 整库备份（C6 兜底）：flow + 历史修订 + 打卡日志导出为开放格式 JSON（首页「备份」走系统分享）；导入框自动识别备份并整库恢复，绝不覆盖本机数据（同 id 入历史、打卡本机优先）　`C6,E5`
 - [x] once「过时不候」语义显式化：编辑器选「仅今天」与日程运行视图均有三语提示——默认值的语义不只活在文档里　`C2,E6`
 - [x] 工程闸门加固：ESLint（一致性守护，不动排版）与 package.json↔app.json 版本一致性检查入 `npm run check`；AI 真实端点冒烟 `npm run check:ai`（BYOK 手动跑，不入 CI）　`C10`
+- [x] UI 回归固化：历次手动 Playwright 验收固化为 `npm run test:e2e`（web 构建 + 假时钟注入，运行/打卡/导入导出/备份六条路径），入 CI 与本地同一命令　`C10,E4`
 - [ ] 真机验证本地推送（iOS 权限时机、Android 13+ 通知权限与渠道、后台到点）——需真机
 - [ ] 品牌资产：替换占位 icon / adaptive icon / splash / favicon
 - [ ] EAS：`eas init` + `eas.json`、签名（Apple Developer 账号、Android keystore 备份）、TestFlight / internal testing 内测

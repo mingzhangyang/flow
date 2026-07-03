@@ -1,5 +1,6 @@
-# CI：每次 push / PR 跑完整检查（双 typecheck + 全部契约/黄金测试）。
-# 与本地 `npm run check` 完全一致——CI 不引入本地没有的行为（C10 的工程面）。
+# CI：每次 push / PR 跑完整检查（版本闸门 + 双 typecheck + lint + 全部契约/黄金测试），
+# 外加 UI 回归（e2e：expo export 的 web 构建 + Playwright 驱动 Chrome 走真实界面）。
+# 与本地命令完全一致（npm run check / npm run test:e2e）——CI 不引入本地没有的行为（C10 的工程面）。
 name: check
 
 on:
@@ -21,3 +22,14 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+
+  e2e:
+    runs-on: ubuntu-latest # 运行器预装 Chrome，e2e/harness.ts 会自动选中
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:e2e
