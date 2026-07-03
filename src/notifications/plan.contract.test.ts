@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { type RunEvent } from '../domain/types';
+import { type Flow, type RunEvent } from '../domain/types';
 import { planSequentialReminder, planScheduledReminders, planScheduledBatch } from './plan';
 import { MS_PER_DAY } from '../runtime/clock';
 import { coffeeFlow } from '../examples/coffee';
@@ -72,4 +72,53 @@ test('planScheduledBatch 合并多条 flow，按时间排序并截断到 cap', (
   const capped = planScheduledBatch(entries, 25_200_000, 3 * MS_PER_DAY, 5);
   assert.equal(capped.length, 5);
   assert.deepEqual(capped.map((r) => r.at), all.slice(0, 5).map((r) => r.at)); // 最近的优先
+});
+
+// ---- 系统级重复触发器（App 几周不开也不断档）----
+
+test('daily + 重复触发器 → 每节点一条带 repeat 的提醒，id 稳定、at 为下一次触发', () => {
+  const now = 36_000_000; // 第 0 天 10:00（tz 0）
+  const rem = planScheduledReminders(medicationFlow, now, 0, MS_PER_DAY, { repeatingTriggers: true });
+  assert.equal(rem.length, 3); // 每节点 1 条，而不是 3 × N 天
+
+  const morning = rem.find((r) => r.id === 'example.medication:morning:daily');
+  assert.ok(morning);
+  assert.deepEqual(morning.repeat, { kind: 'daily', hour: 8, minute: 0 });
+  assert.equal(morning.at, MS_PER_DAY + 8 * 3_600_000); // 今天 08:00 已过 → 明天
+
+  const noon = rem.find((r) => r.id === 'example.medication:noon:daily');
+  assert.deepEqual(noon?.repeat, { kind: 'daily', hour: 14, minute: 0 });
+  assert.equal(noon?.at, 14 * 3_600_000); // 今天 14:00 未到
+});
+
+test('weekly + 重复触发器 → 每「节点 × 星期」一条，weekday 同 JS getDay', () => {
+  const weekly: Flow = {
+    ...medicationFlow,
+    id: 'wk',
+    repeat: { kind: 'weekly', days: [1, 4] }, // 周一、周四
+    nodes: [{ kind: 'scheduled', id: 'dose', label: '剂', at: 9 * 60 }],
+  };
+  const now = 36_000_000; // 第 0 天（1970-01-01 = 周四）10:00——今天 09:00 已过
+  const rem = planScheduledReminders(weekly, now, 0, MS_PER_DAY, { repeatingTriggers: true });
+  assert.deepEqual(
+    rem.map((r) => r.id).sort(),
+    ['wk:dose:w1', 'wk:dose:w4'],
+  );
+  const monday = rem.find((r) => r.id === 'wk:dose:w1');
+  assert.deepEqual(monday?.repeat, { kind: 'weekly', weekday: 1, hour: 9, minute: 0 });
+  assert.equal(monday?.at, 4 * MS_PER_DAY + 9 * 3_600_000); // 下周一 = 第 4 天
+  const thursday = rem.find((r) => r.id === 'wk:dose:w4');
+  assert.equal(thursday?.at, 7 * MS_PER_DAY + 9 * 3_600_000); // 今天已过 → 下周四
+});
+
+test('once / everyNDays 即便允许重复触发器也走预排窗口（无 repeat 字段）', () => {
+  const once: Flow = { ...medicationFlow, repeat: undefined };
+  const onceRem = planScheduledReminders(once, 25_200_000, 0, 3 * MS_PER_DAY, { repeatingTriggers: true });
+  assert.ok(onceRem.length > 0);
+  assert.ok(onceRem.every((r) => r.repeat === undefined));
+
+  const everyN: Flow = { ...medicationFlow, id: 'e2', repeat: { kind: 'everyNDays', n: 2, fromDay: 0 } };
+  const everyNRem = planScheduledReminders(everyN, 25_200_000, 0, 4 * MS_PER_DAY, { repeatingTriggers: true });
+  assert.equal(everyNRem.length, 6); // 3 剂 × 2 个符合节律的日子
+  assert.ok(everyNRem.every((r) => r.repeat === undefined));
 });

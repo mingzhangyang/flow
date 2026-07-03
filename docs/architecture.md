@@ -62,9 +62,16 @@
 把 Runtime 给出的触发时刻翻译成平台的本地定时通知/闹钟（expo-notifications）。
 - 接口：`schedule(events) / cancel(ids) / rescheduleFor(run)`。
 - **不变式**：不含业务逻辑，只做"事件 → 平台通知"的翻译；掉电/重启后可由 Run 记录重建。
-- **多日排入与重排（`reschedule.ts`）**：用户打开某条日程型 flow 的运行视图即为它**登记**提醒
+- **重复触发器优先（`plan.ts` 的 `ReminderRepeat`）**：跟随设备时区的 daily/weekly 节律
+  不做预排，而是每「节点 × 星期槽位」排一条**系统级重复触发器**（iOS 为 repeats 的
+  UNCalendarNotificationTrigger，随系统持久、重启仍在；Android 由 expo-notifications 续排）——
+  排入一次长期有效，**App 几周不开也不断档**。weekday 沿用 JS getDay（0=周日），
+  适配器换算到 expo 的 1=周日。
+- **多日预排窗口（其余情形）**：once / everyNDays / 锚定非设备时区（`Flow.timeZone`，异地墙钟
+  无法按设备墙钟重复）走未来 7 天窗口整批预排。
+- **登记与重排（`reschedule.ts`）**：用户打开某条日程型 flow 的运行视图即为它**登记**提醒
   （enroll，不为没打开过的 flow 自动推送）；App 启动 / 回到前台 / 库变更时把已登记 flow
-  未来 7 天的提醒整批重排（上一批 id 记在 KV，先取消再排入）——App 几天不开，提醒也不断档（C5）。
+  的提醒整批重排（上一批 id 记在 KV，先取消再排入；重复触发器 id 稳定，重排即同 id 替换）。
   单批截断到 48 条（iOS 待决通知上限 64，留余量）；计划本身是纯函数（`plan.ts`），编排不含时钟隐读（E3）。
 
 ### 5. AI Assistant（`src/ai/`）
