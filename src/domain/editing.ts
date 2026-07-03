@@ -1,7 +1,7 @@
 // Flow 编辑：纯变换。每个函数返回新的 Flow，绝不修改入参（Flow 不可变）。
 // 编辑“可以复杂”（C4 的对偶）；这里只做结构变换，版本递增与历史留存交给 library。
 
-import { SCHEMA_VERSION, type Flow, type FlowNode, type Topology } from './types';
+import { SCHEMA_VERSION, type Flow, type FlowNode, type Recurrence, type Topology } from './types';
 
 /** 一个尚未成型的空 Flow（version 1）。 */
 export function createFlow(params: {
@@ -21,11 +21,17 @@ export function createFlow(params: {
   };
 }
 
-export function setMeta(flow: Flow, meta: { title?: string; description?: string }): Flow {
+export function setMeta(
+  flow: Flow,
+  meta: { title?: string; description?: string; timeZone?: string; repeat?: Recurrence },
+): Flow {
   return {
     ...flow,
     title: meta.title ?? flow.title,
     description: meta.description ?? flow.description,
+    // 传空串表示清除锚定（回到跟随设备）；未传则保持原值。
+    timeZone: meta.timeZone !== undefined ? meta.timeZone.trim() || undefined : flow.timeZone,
+    repeat: meta.repeat ?? flow.repeat,
   };
 }
 

@@ -6,6 +6,7 @@ import { type Flow } from '../domain/types';
 import { type Instant } from '../runtime/clock';
 import { deserializeFlow } from '../domain/serialize';
 import { type Storage } from '../storage/storage';
+import { type Backup, buildBackup, mergeCheckIns } from '../storage/backup';
 
 export interface Library {
   list(): Promise<Flow[]>;
@@ -19,7 +20,14 @@ export interface Library {
   exportFlow(id: string): Promise<string | null>;
   /** 从开放格式文本导入，登记来源时间，保存并返回。 */
   importFlow(text: string, now: Instant): Promise<Flow>;
+  /** 整库备份（C6 兜底）：全部 flow + 历史修订 + 打卡日志，开放格式文本。 */
+  exportBackup(now: Instant): Promise<string>;
+  /** 恢复备份（parseBackup 的产物）；返回恢复的 flow 数。不覆盖本机已有数据。 */
+  importBackup(backup: Backup): Promise<number>;
 }
+
+/** 每条 flow 保留的历史修订上限：超出时丢最旧的，避免存储无界增长。 */
+export const MAX_REVISIONS = 50;
 
 export function createLibrary(storage: Storage): Library {
   return {
@@ -30,7 +38,7 @@ export function createLibrary(storage: Storage): Library {
       const prev = await storage.loadFlow(flow.id);
       if (prev) {
         const history = await storage.loadRevisions(flow.id);
-        await storage.saveRevisions(flow.id, [...history, prev]);
+        await storage.saveRevisions(flow.id, [...history, prev].slice(-MAX_REVISIONS));
       }
       const next: Flow = { ...flow, version: prev ? (prev.version ?? 1) + 1 : 1 };
       await storage.saveFlow(next);
@@ -50,8 +58,43 @@ export function createLibrary(storage: Storage): Library {
         ...parsed,
         provenance: { ...(parsed.provenance ?? {}), importedAt: now },
       };
-      await storage.saveFlow(imported);
-      return imported;
+      // 走 commit：若同 id 的 flow 已存在，旧版本入历史、version 递增——
+      // 导入绝不静默覆盖用户已有的 flow（C6「Flow 不应消失」、AI-C3 可回退）。
+      return this.commit(imported);
+    },
+
+    async exportBackup(now) {
+      const flows = await storage.listFlows();
+      const revisions: Record<string, Flow[]> = {};
+      for (const flow of flows) {
+        const history = await storage.loadRevisions(flow.id);
+        if (history.length > 0) revisions[flow.id] = history;
+      }
+      return buildBackup({ flows, revisions, checkIns: await storage.listAllCheckIns(), exportedAt: now });
+    },
+
+    async importBackup(backup) {
+      for (const flow of backup.flows) {
+        const existing = await storage.loadFlow(flow.id);
+        if (!existing) {
+          // 新设备恢复：原样保存（保留 version），历史修订仅在本机没有时写入。
+          await storage.saveFlow(flow);
+          const localHistory = await storage.loadRevisions(flow.id);
+          const fromBackup = backup.revisions[flow.id];
+          if (localHistory.length === 0 && fromBackup) {
+            await storage.saveRevisions(flow.id, fromBackup.slice(-MAX_REVISIONS));
+          }
+        } else {
+          // 本机已有同 id：走 commit（旧版本入历史、version 递增），绝不静默覆盖；
+          // 本机历史保留，备份中的历史不合并（避免版本序列混淆）。
+          await this.commit(flow);
+        }
+      }
+      for (const [flowId, incoming] of Object.entries(backup.checkIns)) {
+        const local = await storage.loadCheckIns(flowId);
+        await storage.saveCheckIns(flowId, mergeCheckIns(local, incoming));
+      }
+      return backup.flows.length;
     },
   };
 }

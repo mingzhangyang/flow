@@ -2,17 +2,21 @@
 // AI 永远只“提议与解释”，由用户决定（AI-C1）；任何改动都能先看差异、可回退（AI-C3）。
 // 不调用任何外部模型——全部由本地纯函数生成。
 
-import { useEffect, useState } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
+import { useEffect, useState, useMemo } from 'react';
+import { View, Text, ScrollView, Pressable, StyleSheet, useColorScheme } from 'react-native';
 import { type Flow } from '../domain/types';
 import { type Library } from '../session/library';
 import { explain } from '../ai/explain';
 import { analyze, type Finding } from '../ai/analyze';
 import { diffFlows, describeChange, type Change } from '../ai/diff';
-import { colors, spacing, radius } from './theme';
+import { useI18n } from './i18n';
+import { paletteFor, type Palette, spacing, radius } from './theme';
 
 export function InsightScreen(props: { flow: Flow; library: Library; onExit: () => void; onChanged: () => void }) {
   const { flow } = props;
+  const c = paletteFor(useColorScheme());
+  const styles = useMemo(() => createStyles(c), [c]);
+  const { locale, t } = useI18n();
   const [previous, setPrevious] = useState<Flow | null>(null);
 
   useEffect(() => {
@@ -26,8 +30,8 @@ export function InsightScreen(props: { flow: Flow; library: Library; onExit: () 
     };
   }, [flow]);
 
-  const lines = explain(flow);
-  const findings = analyze(flow);
+  const lines = explain(flow, locale);
+  const findings = analyze(flow, locale);
   const changes: Change[] = previous ? diffFlows(previous, flow) : [];
 
   const restore = (): void => {
@@ -38,23 +42,23 @@ export function InsightScreen(props: { flow: Flow; library: Library; onExit: () 
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={props.onExit} hitSlop={12}><Text style={styles.back}>‹ 返回</Text></Pressable>
-        <Text style={styles.title}>AI 助手</Text>
+        <Pressable onPress={props.onExit} hitSlop={12}><Text style={styles.back}>{t.back}</Text></Pressable>
+        <Text style={styles.title}>{t.insightTitle}</Text>
         <View style={{ width: 48 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.sectionKicker}>解读</Text>
+        <Text style={styles.sectionKicker}>{t.insightReading}</Text>
         <View style={styles.card}>
           {lines.map((l, i) => (
             <Text key={i} style={i === 0 ? styles.lead : styles.line}>{l}</Text>
           ))}
         </View>
 
-        <Text style={styles.sectionKicker}>洞察</Text>
+        <Text style={styles.sectionKicker}>{t.insightFindings}</Text>
         <View style={styles.card}>
           {findings.length === 0 ? (
-            <Text style={styles.line}>没有发现明显问题 👍</Text>
+            <Text style={styles.line}>{t.insightNoFindings}</Text>
           ) : (
             findings.map((f: Finding) => (
               <View key={f.id} style={styles.finding}>
@@ -70,56 +74,54 @@ export function InsightScreen(props: { flow: Flow; library: Library; onExit: () 
 
         {previous ? (
           <>
-            <Text style={styles.sectionKicker}>与上一版（v{previous.version ?? 1}）的差异</Text>
+            <Text style={styles.sectionKicker}>{t.insightDiffTitle(previous.version ?? 1)}</Text>
             <View style={styles.card}>
               {changes.length === 0 ? (
-                <Text style={styles.line}>与上一版没有差异。</Text>
+                <Text style={styles.line}>{t.insightNoDiff}</Text>
               ) : (
-                changes.map((c, i) => <Text key={i} style={styles.change}>{describeChange(c)}</Text>)
+                changes.map((c, i) => <Text key={i} style={styles.change}>{describeChange(c, locale)}</Text>)
               )}
               <Pressable style={styles.restore} onPress={restore}>
-                <Text style={styles.restoreText}>回到上一版</Text>
+                <Text style={styles.restoreText}>{t.insightRestore}</Text>
               </Pressable>
             </View>
           </>
         ) : null}
 
-        <Text style={styles.note}>
-          以上由本地解释器生成，不含真实模型。AI 永远只提议与解释，改动由你决定、可回退。
-        </Text>
+        <Text style={styles.note}>{t.insightNote}</Text>
       </ScrollView>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
+const createStyles = (c: Palette) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: c.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
-  back: { fontSize: 16, color: colors.accent, width: 48 },
-  title: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '600', color: colors.text },
+  back: { fontSize: 16, color: c.accent, width: 48 },
+  title: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '600', color: c.text },
   content: { padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xl },
-  sectionKicker: { fontSize: 13, color: colors.textMuted, letterSpacing: 1, marginLeft: spacing.xs, marginTop: spacing.sm },
+  sectionKicker: { fontSize: 13, color: c.textMuted, letterSpacing: 2, marginLeft: spacing.xs, marginTop: spacing.sm },
   card: {
-    backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: c.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border,
     padding: spacing.md, gap: spacing.xs,
   },
-  lead: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: spacing.xs },
-  line: { fontSize: 14, color: colors.text, lineHeight: 21 },
+  lead: { fontSize: 16, fontWeight: '700', color: c.text, marginBottom: spacing.xs },
+  line: { fontSize: 14, color: c.text, lineHeight: 21 },
   finding: { flexDirection: 'row', gap: spacing.sm, paddingVertical: spacing.xs },
   dot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
-  dotWarn: { backgroundColor: colors.warn },
-  dotInfo: { backgroundColor: colors.accent },
-  findingTitle: { fontSize: 15, fontWeight: '600', color: colors.text },
-  findingDetail: { fontSize: 13, color: colors.textMuted, lineHeight: 19, marginTop: 2 },
-  change: { fontSize: 14, color: colors.text, paddingVertical: 2 },
+  dotWarn: { backgroundColor: c.warn },
+  dotInfo: { backgroundColor: c.accent },
+  findingTitle: { fontSize: 15, fontWeight: '600', color: c.text },
+  findingDetail: { fontSize: 13, color: c.textMuted, lineHeight: 19, marginTop: 2 },
+  change: { fontSize: 14, color: c.text, paddingVertical: 2 },
   restore: {
     marginTop: spacing.sm, alignSelf: 'flex-start',
-    borderWidth: 1, borderColor: colors.accent, borderRadius: radius.pill,
+    borderWidth: 1, borderColor: c.accent, borderRadius: radius.pill,
     paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
   },
-  restoreText: { color: colors.accent, fontSize: 14, fontWeight: '600' },
-  note: { fontSize: 12, color: colors.textMuted, marginTop: spacing.md, lineHeight: 18 },
+  restoreText: { color: c.accent, fontSize: 14, fontWeight: '600' },
+  note: { fontSize: 12, color: c.textMuted, marginTop: spacing.md, lineHeight: 18 },
 });

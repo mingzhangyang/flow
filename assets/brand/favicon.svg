@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 1024 1024">
+  <!-- Favicon：同一标记的加粗版（48px 下笔画仍清晰）。 -->
+  <g fill="none" stroke="#2F6F4F" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M604.7 226.7 A300 300 0 1 1 419.3 226.7" stroke-width="88"/>
+    <path d="M368 530 L478 640 L688 410" stroke-width="96"/>
+  </g>
+  <circle cx="512" cy="212" r="54" fill="#2F6F4F"/>
+</svg>

@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import { type Flow, type Run, type RunEvent } from '../domain/types';
+import { type Locale } from '../i18n/locale';
 import { type Instant } from '../runtime/clock';
 import { reduce, project, type RunState } from '../runtime/engine';
 import { type Storage } from '../storage/storage';
@@ -32,7 +33,12 @@ export interface PersistentRun {
   reset: () => void;
 }
 
-export function usePersistentRun(flow: Flow, storage: Storage, notifier: Notifier): PersistentRun {
+export function usePersistentRun(
+  flow: Flow,
+  storage: Storage,
+  notifier: Notifier,
+  locale: Locale,
+): PersistentRun {
   const [run, setRun] = useState<Run>(() => ({ id: runIdFor(flow), flow, events: [] }));
   const [now, setNow] = useState<Instant>(() => Date.now());
   const [loaded, setLoaded] = useState(false);
@@ -66,7 +72,7 @@ export function usePersistentRun(flow: Flow, storage: Storage, notifier: Notifie
   useEffect(() => {
     if (!loaded) return;
     storage.saveRun(run).catch(() => {});
-    const reminder = planSequentialReminder(flow, run.events, Date.now(), run.id);
+    const reminder = planSequentialReminder(flow, run.events, Date.now(), run.id, locale);
     notifier
       .cancel([run.id])
       .then(() => (reminder ? notifier.schedule([reminder]) : undefined))

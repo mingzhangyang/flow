@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Android 自适应图标前景：标记缩进安全区（中心 66/108 ≈ 61%），透明底。 -->
+  <g transform="translate(256 256) scale(0.44) translate(-512 -512)">
+    <g fill="none" stroke="#F6F6F3" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M594.69 223.62 A300 300 0 1 1 429.31 223.62" stroke-width="64"/>
+      <path d="M368 530 L478 640 L688 410" stroke-width="68"/>
+    </g>
+    <circle cx="512" cy="212" r="44" fill="#F6F6F3"/>
+  </g>
+</svg>

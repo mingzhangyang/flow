@@ -3,15 +3,29 @@
 
 import type { Instant, TimeOfDay } from '../runtime/clock';
 
-/** 当前 Flow 文件格式版本。格式只能加法演进或带迁移（E5）。 */
-export const SCHEMA_VERSION = 1;
+/**
+ * 当前 Flow 文件格式版本。格式只能加法演进或带迁移（E5）。
+ * v2：重复方式从节点上移到 Flow（重复描述的是整个时间模式的节律，见 ADR-0003）；
+ *     v1 数据在反序列化时自动迁移（serialize.ts）。
+ */
+export const SCHEMA_VERSION = 2;
 export type SchemaVersion = typeof SCHEMA_VERSION;
 
 /** 相对时长，整数秒。 */
 export type DurationSec = number;
 
-/** 重复方式。v1 仅支持一次性与每日。 */
-export type Recurrence = { kind: 'once' } | { kind: 'daily' };
+/**
+ * 重复方式（加法演进，E5）。缺省应为 once——「不重复」是最保守的默认。
+ * - once：仅今天这一次（到点提醒，过时不候；运行时无状态，不跨日顺延）。
+ * - daily：每天。
+ * - weekly：每周指定的星期几（0=周日 … 6=周六，与 JS Date#getDay 一致）。
+ * - everyNDays：每 N 天一次，从 fromDay（本地日序号，见 runtime/clock 的 localDayIndex）起算。
+ */
+export type Recurrence =
+  | { kind: 'once' }
+  | { kind: 'daily' }
+  | { kind: 'weekly'; days: number[] }
+  | { kind: 'everyNDays'; n: number; fromDay: number };
 
 // ---- 节点（5 种，见 01-domain-model.md）----
 
@@ -28,11 +42,10 @@ export interface TimedNode extends NodeBase {
   durationSec: DurationSec;
 }
 
-/** 绝对时刻：钉在墙钟时间上，属日程型拓扑，可重复、可并行独立。 */
+/** 绝对时刻：钉在墙钟时间上，属日程型拓扑，可并行独立。重复节律在 Flow 级（Flow.repeat）。 */
 export interface ScheduledNode extends NodeBase {
   kind: 'scheduled';
   at: TimeOfDay;
-  repeat: Recurrence;
 }
 
 /** 手动确认：等待用户确认后才继续（C5）。 */
@@ -77,6 +90,17 @@ export interface Flow {
   title: string;
   description?: string;
   topology: Topology;
+  /**
+   * 可选的锚定时区（IANA 名，如 "Asia/Shanghai"）。设置后，日程型节点的墙钟
+   * 时刻按此时区换算而非设备时区——出差时仍按家里的时区提醒。缺省跟随设备。
+   * 加法演进（E5）：旧数据无此字段，行为不变。
+   */
+  timeZone?: string;
+  /**
+   * 日程型 flow 的重复节律（整个模式一起重复；缺省 = 仅今天，默认不重复）。
+   * 只对 topology === 'scheduled' 有意义；顺序型 flow 由用户随时手动运行。
+   */
+  repeat?: Recurrence;
   nodes: FlowNode[];
   /** 内容修订号，编辑提交时递增（缺省视为 1）。 */
   version?: number;
