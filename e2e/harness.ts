@@ -77,11 +77,21 @@ function launchOptions(): LaunchOptions {
   return { channel: 'chrome' };
 }
 
+export interface OpenAppOptions {
+  /** 浏览器 locale（决定应用语言）。默认 zh-CN。 */
+  locale?: string;
+  /** 等待首页就绪所用的品牌字样（随语言而变）。默认「准时」。 */
+  brand?: string;
+  /** 视口（CSS 像素）。截图脚本用手机视口；测试用默认桌面视口。 */
+  viewport?: { width: number; height: number };
+  deviceScaleFactor?: number;
+}
+
 export interface E2E {
   baseUrl: string;
   browser: Browser;
   /** 新开一个隔离环境（独立 localStorage）并打开首页（假时钟已注入，品牌已可见）。 */
-  openApp(): Promise<Page>;
+  openApp(opts?: OpenAppOptions): Promise<Page>;
   close(): Promise<void>;
 }
 
@@ -93,17 +103,19 @@ export async function startE2E(): Promise<E2E> {
   return {
     baseUrl,
     browser,
-    async openApp() {
+    async openApp(opts?: OpenAppOptions) {
       const context = await browser.newContext({
-        locale: 'zh-CN',
+        locale: opts?.locale ?? 'zh-CN',
         timezoneId: 'Asia/Shanghai',
         permissions: ['clipboard-read', 'clipboard-write'],
+        ...(opts?.viewport ? { viewport: opts.viewport } : {}),
+        ...(opts?.deviceScaleFactor ? { deviceScaleFactor: opts.deviceScaleFactor } : {}),
       });
       contexts.push(context);
       const page = await context.newPage();
       await page.clock.install({ time: FIXED_NOW });
       await page.goto(baseUrl);
-      await page.getByText('准时', { exact: true }).waitFor({ timeout: 30_000 });
+      await page.getByText(opts?.brand ?? '准时', { exact: true }).waitFor({ timeout: 30_000 });
       return page;
     },
     async close() {

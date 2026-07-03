@@ -85,10 +85,10 @@
 - [x] 提醒断档修复（第一步）：跟随设备时区的 daily/weekly 改用**系统级重复触发器**（排入一次长期有效，App 几周不开也不断档）；once/everyNDays/锚定时区仍走 7 天预排窗口　`C5,E3`
 - [x] 提醒能力对用户诚实：`Notifier.status()`（ready/undetermined/denied/unsupported）——权限被拒时日程视图显示警示横幅 + 「去系统设置」；网页版明示不支持定时提醒（e2e 断言）。权限请求时机本就延迟在首次登记提醒时（schedule 内 ensurePermission）　`E6,C5,C10`
 - [ ] 提醒断档修复（后续，需真机）：Android 13+ 通知权限与精确闹钟（`SCHEDULE_EXACT_ALARM`）编排、Doze 实测、电池优化白名单引导；被拒横幅的真机行为验证　`C5`
-- [ ] 真机验证本地推送（iOS 权限时机、Android 13+ 通知权限与渠道、后台到点）——需真机
-- [ ] 品牌资产：替换占位 icon / adaptive icon / splash / favicon
-- [ ] EAS：`eas init` + `eas.json`、签名（Apple Developer 账号、Android keystore 备份）、TestFlight / internal testing 内测
-- [ ] 商店合规与材料：隐私政策上线到公开 URL、健康类内容申报（免责声明首用可见）、AI 第三方数据共享申报、商店文案与截图
+- [ ] 真机验证本地推送（清单见 `docs/release.md`：权限时机、强杀/重启/Doze 到点、被拒横幅、国产 ROM）——需真机
+- [x] 品牌资产：图标/自适应图标/splash/favicon 已从 `assets/brand/` SVG 源渲染（`scripts/render-brand.mjs`）
+- [ ] EAS：配置已就绪（`eas.json` + 发布手册 `docs/release.md`）；余项需账号——`eas init`、Apple Developer / Play Console、keystore 备份、TestFlight / internal testing
+- [ ] 商店合规与材料：文案/申报口径/截图方案已定稿（`docs/store-listing.md`，截图草稿 `npm run shots`）；隐私政策双语 HTML 就绪（`site/privacy/`，启用 GitHub Pages 即上线）；余项——Pages 启用、真机重截、商店后台填报
 - [ ]（可选，v1.0 后）崩溃上报（与无追踪承诺一致）、OTA 更新、国内商店的软著/备案
 
 ## 里程碑
