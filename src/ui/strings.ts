@@ -20,6 +20,11 @@ const zh = {
   newScheduled: '＋ 日程',
   aiGenerate: '✨ AI 生成',
   importAction: '导入',
+  backupAction: '备份',
+  backupShareTitle: '准时 · 全库备份',
+  backupOutcomeShared: '已唤起分享，把备份存到文件或发给自己 ✓',
+  backupOutcomeCopied: '已复制备份数据，请粘贴保存到安全的地方 ✓',
+  backupOutcomeUnavailable: '此环境不支持分享或剪贴板',
   sectionMine: '我的',
   sectionExamples: '示例',
   cardMeta: (n: number, topology: 'sequential' | 'scheduled'): string =>
@@ -64,6 +69,10 @@ const zh = {
   checkIn: '打卡',
   undo: '撤销',
   scheduleNote: '本表仅作提醒之用，不构成医疗处方或诊断；请以医嘱为准。',
+  scheduleOnceNote: '这条 flow 仅提醒今天一次，过时不候；需要长期提醒，请在编辑里把重复改为每天/每周。',
+  scheduleNotifDenied: '提醒未开启：通知权限被拒绝，到点不会有提醒。',
+  scheduleNotifSettings: '去系统设置开启 ›',
+  scheduleNotifWeb: '网页版不支持定时提醒；请在手机 App 上使用提醒功能。',
 
   // 编辑器
   editorTitle: '编辑',
@@ -82,6 +91,7 @@ const zh = {
   editorRepeatDaily: '每天',
   editorRepeatWeekly: '每周',
   editorRepeatEveryN: '隔 N 天',
+  editorOnceHint: '「仅今天」过时不候：今天没提醒到，不会顺延到明天。需要长期提醒请选每天/每周/隔 N 天。',
   weekdayNames: ['日', '一', '二', '三', '四', '五', '六'],
   editorTime: '时间',
   editorDuration: '时长(秒)',
@@ -108,9 +118,11 @@ const zh = {
 
   // 导入
   importTitle: '导入',
-  importHint: '把朋友分享的全文（或 flow 的 JSON）粘贴到下面，导入到你的库。',
+  importHint: '把朋友分享的全文（或 flow 的 JSON、整库备份）粘贴到下面，导入到你的库。',
   importNotFound: '没有找到可导入的 flow 数据，请粘贴分享全文或 JSON',
   importConfirm: '确认导入',
+  importBackupDetected: (n: number): string =>
+    `检测到整库备份：${n} 条 flow。历史修订与打卡记录将一并恢复，不覆盖本机数据。`,
 
   // AI 助手（解读/洞察/差异）
   insightTitle: 'AI 助手',
@@ -155,6 +167,11 @@ const zhHant: Strings = {
   newScheduled: '＋ 日程',
   aiGenerate: '✨ AI 生成',
   importAction: '匯入',
+  backupAction: '備份',
+  backupShareTitle: '準時 · 全庫備份',
+  backupOutcomeShared: '已喚起分享，把備份存到檔案或傳給自己 ✓',
+  backupOutcomeCopied: '已複製備份資料，請貼上保存到安全的地方 ✓',
+  backupOutcomeUnavailable: '此環境不支援分享或剪貼簿',
   sectionMine: '我的',
   sectionExamples: '範例',
   cardMeta: (n, topology) => `${n} ${topology === 'sequential' ? '步' : '個時刻'} · 點按執行`,
@@ -194,6 +211,10 @@ const zhHant: Strings = {
   checkIn: '打卡',
   undo: '復原',
   scheduleNote: '本表僅作提醒之用，不構成醫療處方或診斷；請以醫囑為準。',
+  scheduleOnceNote: '這條 flow 僅提醒今天一次，過時不候；需要長期提醒，請在編輯裡把重複改為每天/每週。',
+  scheduleNotifDenied: '提醒未開啟：通知權限被拒絕，到點不會有提醒。',
+  scheduleNotifSettings: '去系統設定開啟 ›',
+  scheduleNotifWeb: '網頁版不支援定時提醒；請在手機 App 上使用提醒功能。',
 
   editorTitle: '編輯',
   editorFlowName: '流程名稱',
@@ -211,6 +232,7 @@ const zhHant: Strings = {
   editorRepeatDaily: '每天',
   editorRepeatWeekly: '每週',
   editorRepeatEveryN: '隔 N 天',
+  editorOnceHint: '「僅今天」過時不候：今天沒提醒到，不會順延到明天。需要長期提醒請選每天/每週/隔 N 天。',
   weekdayNames: ['日', '一', '二', '三', '四', '五', '六'],
   editorTime: '時間',
   editorDuration: '時長(秒)',
@@ -234,9 +256,10 @@ const zhHant: Strings = {
   shareOutcomeUnavailable: '此環境不支援分享或剪貼簿',
 
   importTitle: '匯入',
-  importHint: '把朋友分享的全文（或 flow 的 JSON）貼到下面，匯入到你的庫。',
+  importHint: '把朋友分享的全文（或 flow 的 JSON、整庫備份）貼到下面，匯入到你的庫。',
   importNotFound: '沒有找到可匯入的 flow 資料，請貼上分享全文或 JSON',
   importConfirm: '確認匯入',
+  importBackupDetected: (n) => `偵測到整庫備份：${n} 條 flow。歷史修訂與打卡記錄將一併恢復，不覆蓋本機資料。`,
 
   insightTitle: 'AI 助手',
   insightReading: '解讀',
@@ -276,6 +299,11 @@ const en: Strings = {
   newScheduled: '＋ Schedule',
   aiGenerate: '✨ AI draft',
   importAction: 'Import',
+  backupAction: 'Backup',
+  backupShareTitle: 'Zhunshi · Full backup',
+  backupOutcomeShared: 'Share sheet opened — save the backup to a file or send it to yourself ✓',
+  backupOutcomeCopied: 'Backup copied — paste it somewhere safe ✓',
+  backupOutcomeUnavailable: 'Sharing and clipboard are unavailable here',
   sectionMine: 'MINE',
   sectionExamples: 'EXAMPLES',
   cardMeta: (n, topology) =>
@@ -317,6 +345,11 @@ const en: Strings = {
   undo: 'Undo',
   scheduleNote:
     "This list is a reminder aid only — not a medical prescription or diagnosis. Follow your clinician's advice.",
+  scheduleOnceNote:
+    'This flow reminds you today only — it does not carry over to tomorrow. Edit its repeat to daily/weekly for ongoing reminders.',
+  scheduleNotifDenied: 'Reminders are off: notification permission was denied, so nothing will fire on time.',
+  scheduleNotifSettings: 'Enable in system settings ›',
+  scheduleNotifWeb: 'The web version cannot deliver scheduled reminders — use the mobile app for reminders.',
 
   editorTitle: 'Edit',
   editorFlowName: 'Flow name',
@@ -334,6 +367,8 @@ const en: Strings = {
   editorRepeatDaily: 'Daily',
   editorRepeatWeekly: 'Weekly',
   editorRepeatEveryN: 'Every N days',
+  editorOnceHint:
+    '“Today only” does not carry over: if today passes, nothing moves to tomorrow. Choose daily / weekly / every N days for ongoing reminders.',
   weekdayNames: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
   editorTime: 'Time',
   editorDuration: 'Duration (s)',
@@ -358,9 +393,11 @@ const en: Strings = {
   shareOutcomeUnavailable: 'Sharing and clipboard are unavailable here',
 
   importTitle: 'Import',
-  importHint: "Paste a friend's shared text (or a flow's JSON) below to add it to your library.",
+  importHint: "Paste a friend's shared text (or a flow's JSON, or a full backup) below to add it to your library.",
   importNotFound: 'No importable flow data found — paste the full share text or JSON',
   importConfirm: 'Import',
+  importBackupDetected: (n) =>
+    `Full backup detected: ${n} ${n === 1 ? 'flow' : 'flows'}. History and check-ins will be restored without overwriting local data.`,
 
   insightTitle: 'AI Assistant',
   insightReading: 'READING',

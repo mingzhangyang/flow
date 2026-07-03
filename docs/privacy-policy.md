@@ -1,9 +1,11 @@
-# 「准时」隐私政策（草稿）
+# 「准时」隐私政策
 
-> 上架前托管到一个可公开访问的 URL（GitHub Pages 即可），并把生效日期补上。
 > 本文陈述的事实以代码为准：本地优先（C6）、无账号、无遥测。
+> 可发布版本（中英双语 HTML）在 `site/privacy/`，经 Cloudflare Pages 托管
+> （接入步骤见 `docs/release.md`），URL：`https://zhunshi.pages.dev/privacy/`
+> （项目名以实际创建为准）。本文与 HTML 同步修订。
 
-**生效日期**：（待定）
+**生效日期**：2026-07-03（如商店提交日更晚，以提交日为准并同步更新此处）
 
 「准时」（Zhunshi，下称"本应用"）是一款本地优先的时间模式工具。我们的隐私立场可以概括为一句话：**你的数据只在你的设备上，我们没有服务器，也收不到它。**
 
@@ -46,4 +48,5 @@
 
 ## 八、联系方式
 
-隐私相关问题请联系：（待补充邮箱或 GitHub Issues 链接）
+隐私相关问题请联系：<mingzhangyang2015@gmail.com>，或在
+[GitHub Issues](https://github.com/mingzhangyang/flow/issues) 提出。

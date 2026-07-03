@@ -34,6 +34,18 @@ export function checkIn(nodeId: string, scheduledFor: Instant, taken: boolean, a
   return { nodeId, scheduledFor, taken, at };
 }
 
+/** 打卡记录的读入闸门（E4）：持久层/备份读回时逐条校验，坏条目单独丢弃。 */
+export function isCheckIn(value: unknown): value is CheckIn {
+  if (typeof value !== 'object' || value === null) return false;
+  const c = value as { nodeId?: unknown; scheduledFor?: unknown; taken?: unknown; at?: unknown };
+  return (
+    typeof c.nodeId === 'string' &&
+    typeof c.scheduledFor === 'number' &&
+    typeof c.taken === 'boolean' &&
+    typeof c.at === 'number'
+  );
+}
+
 /**
  * 计算“今天”每个剂量在 now 时刻的状态。
  * @param graceMinutes 到点后仍算“可服（due）”的宽限分钟数；超出则记为 missed。

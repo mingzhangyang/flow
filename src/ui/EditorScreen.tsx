@@ -183,6 +183,10 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
                   </View>
                 </Row>
               ) : null}
+              {(flow.repeat ?? { kind: 'once' }).kind === 'once' ? (
+                // once 的「过时不候」语义在选择处就说清（默认值尤其要显眼）
+                <Text style={styles.repeatHint}>{t.editorOnceHint}</Text>
+              ) : null}
               {flow.repeat?.kind === 'everyNDays' ? (
                 <Row label={t.editorEveryNDays}>
                   <TextInput
@@ -331,6 +335,7 @@ const createStyles = (c: Palette) => StyleSheet.create({
     backgroundColor: c.surface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
     padding: spacing.md, gap: spacing.sm,
   },
+  repeatHint: { fontSize: 13, color: c.textMuted, lineHeight: 18 },
   nodeCard: {
     backgroundColor: c.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border,
     padding: spacing.md, gap: spacing.sm,

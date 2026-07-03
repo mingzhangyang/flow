@@ -59,7 +59,13 @@ export async function rescheduleReminders(opts: {
   const enrolled = new Set(await enrolledFlowIds(opts.kv));
   const entries = opts.flows
     .filter((f) => f.topology === 'scheduled' && enrolled.has(f.id))
-    .map((flow) => ({ flow, tz: timeZoneForFlow(flow, opts.deviceTz) }));
+    .map((flow) => ({
+      flow,
+      tz: timeZoneForFlow(flow, opts.deviceTz),
+      // 跟随设备时区的 daily/weekly 用系统重复触发器（App 几周不开也不断档）；
+      // 锚定非设备时区（Flow.timeZone）的墙钟无法按设备墙钟重复，仍走多日预排窗口。
+      repeatingTriggers: !flow.timeZone,
+    }));
   const reminders = planScheduledBatch(entries, opts.now, RESCHEDULE_HORIZON_MS, RESCHEDULE_CAP);
 
   const prevIds = await readStringArray(opts.kv, LAST_IDS_KEY);

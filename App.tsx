@@ -99,6 +99,7 @@ export default function App() {
           library={library}
           examples={examples}
           refreshKey={refreshKey}
+          sharer={systemSharer}
           onRun={(flow) => setScreen({ name: 'run', flow })}
           onNew={(topology: Topology) => setScreen({ name: 'edit', flow: createFlow({ id: newFlowId(), title: '', topology }) })}
           onEdit={(flow) => setScreen({ name: 'edit', flow })}
@@ -112,6 +113,7 @@ export default function App() {
           <ScheduleScreen
             flow={screen.flow}
             storage={storage}
+            notifier={notifier}
             onEnrollReminders={(flowId) => {
               enrollFlow(asyncStorageKV, flowId).then(refreshReminders).catch(() => {});
             }}

@@ -52,14 +52,26 @@
 - **机密走窄端口**：`SecretStore`（getItem/setItem/removeItem，无枚举）。适配器
   `secureKv.native`（iOS Keychain / Android Keystore，expo-secure-store）、Web 回落
   AsyncStorage；AI 模型密钥经此存储，不与普通数据混在一个后端（C6）。
+- **整库备份（`backup.ts` + `library.exportBackup/importBackup`）**：全部 flow + 历史修订 +
+  打卡日志组装成一份开放格式 JSON（C6 兜底；不含瞬态 Run，不含 AI 密钥）。首页「备份」
+  经系统分享面板存文件/发给自己；导入框自动识别备份全文（`parseBackup`，非备份则按单条
+  flow 走）。恢复绝不覆盖本机：读回逐条过闸门（坏条目跳过），同 id 的 flow 走 commit
+  入历史，打卡按占位合并、本机记录优先。
 
 ### 4. Notification Engine（`src/notifications/`）
 把 Runtime 给出的触发时刻翻译成平台的本地定时通知/闹钟（expo-notifications）。
 - 接口：`schedule(events) / cancel(ids) / rescheduleFor(run)`。
 - **不变式**：不含业务逻辑，只做"事件 → 平台通知"的翻译；掉电/重启后可由 Run 记录重建。
-- **多日排入与重排（`reschedule.ts`）**：用户打开某条日程型 flow 的运行视图即为它**登记**提醒
+- **重复触发器优先（`plan.ts` 的 `ReminderRepeat`）**：跟随设备时区的 daily/weekly 节律
+  不做预排，而是每「节点 × 星期槽位」排一条**系统级重复触发器**（iOS 为 repeats 的
+  UNCalendarNotificationTrigger，随系统持久、重启仍在；Android 由 expo-notifications 续排）——
+  排入一次长期有效，**App 几周不开也不断档**。weekday 沿用 JS getDay（0=周日），
+  适配器换算到 expo 的 1=周日。
+- **多日预排窗口（其余情形）**：once / everyNDays / 锚定非设备时区（`Flow.timeZone`，异地墙钟
+  无法按设备墙钟重复）走未来 7 天窗口整批预排。
+- **登记与重排（`reschedule.ts`）**：用户打开某条日程型 flow 的运行视图即为它**登记**提醒
   （enroll，不为没打开过的 flow 自动推送）；App 启动 / 回到前台 / 库变更时把已登记 flow
-  未来 7 天的提醒整批重排（上一批 id 记在 KV，先取消再排入）——App 几天不开，提醒也不断档（C5）。
+  的提醒整批重排（上一批 id 记在 KV，先取消再排入；重复触发器 id 稳定，重排即同 id 替换）。
   单批截断到 48 条（iOS 待决通知上限 64，留余量）；计划本身是纯函数（`plan.ts`），编排不含时钟隐读（E3）。
 
 ### 5. AI Assistant（`src/ai/`）
@@ -71,6 +83,7 @@ Flow 的**编辑器**，不是主人（见 `02-ai-principles.md`）。
   - 适配器：`anthropic`（Claude Messages API）、`openaiCompatible`（覆盖 OpenAI / DeepSeek / Kimi / 通义 / 智谱 / Ollama 等一切 `/chat/completions` 方言）。新增供应商 = 新增一个 config 变体 + 一个适配器（扩展而非修改）。
   - 配置（供应商、端点、模型、密钥）只存本机（C6），且走 `SecretStore` 窄端口——原生端为系统安全存储（Keychain/Keystore），旧版明文位置读取时一次性搬迁；生成产物带 `provenance.source = "ai:<provider>/<model>"`（E6）。
   - 管线纯函数化：`buildGenerationRequest` / `parseGeneratedFlow`（解析、校验、分配 id）确定性可测；`generateFlow` 仅编排。
+  - 真实端点连通性不入 CI（没有也不该有密钥）；`npm run check:ai`（`scripts/ai-smoke.mjs`）用自配 Key 走与应用完全相同的管线打一次真实 API，发布前/换供应商时手动验证。
 
 ### 6. Sharing（`src/sharing/`）
 分享的社交面：把 Flow 组装成「人读的文案 + 可导入的数据」。
@@ -101,3 +114,11 @@ Flow 的**编辑器**，不是主人（见 `02-ai-principles.md`）。
 ## 契约测试约定
 每个模块在其目录下维护 `*.contract.test.ts`，只针对**公开接口**断言。
 重构一个模块的内部实现时，契约测试 + Runtime 黄金测试必须仍绿。
+
+## UI 回归（e2e）
+逻辑层由契约测试守护，UI 层由 `e2e/`（`npm run test:e2e`）守护：`expo export` 出 web
+静态构建 → 本地伺服 → playwright-core 驱动 headless Chromium 走真实界面，运行器仍是
+`node --test`。确定性同 E3/E4 思路：假时钟固定注入（`FIXED_NOW`）、时区固定
+Asia/Shanghai、语言固定 zh-CN。固化的验收路径：顺序型运行（开始/暂停/跳过/回退 +
+整页刷新后恢复计时）、服药打卡（逐剂独立 + 刷新保留 + 免责可见）、编辑→导出→导入
+闭环、once「过时不候」提示、AI 解读入口、整库备份→全新环境恢复。CI 与本地同一命令。
