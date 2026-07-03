@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
 import { type Flow, type Topology } from '../domain/types';
 import { type Library } from '../session/library';
+import { type Sharer, type ShareOutcome } from '../sharing/sharer';
 import { nextEvents, type ScheduledOccurrence } from '../runtime/engine';
 import { timeOfDay, MS_PER_DAY } from '../runtime/clock';
 import { systemTimeZone } from '../runtime/systemTimeZone';
@@ -45,6 +46,7 @@ export function HomeScreen(props: {
   library: Library;
   examples: Flow[];
   refreshKey: number;
+  sharer: Sharer;
   onRun: (flow: Flow) => void;
   onNew: (topology: Topology) => void;
   onEdit: (flow: Flow) => void;
@@ -57,6 +59,21 @@ export function HomeScreen(props: {
   const styles = useMemo(() => createStyles(c), [c]);
   const { t } = useI18n();
   const [mine, setMine] = useState<Flow[]>([]);
+  const [backupNote, setBackupNote] = useState<string | null>(null);
+
+  // 整库备份（C6 兜底）：全部 flow + 历史修订 + 打卡日志，经系统分享面板存文件/发给自己。
+  const backup = (): void => {
+    const outcomeText: Record<ShareOutcome, string> = {
+      shared: t.backupOutcomeShared,
+      copied: t.backupOutcomeCopied,
+      unavailable: t.backupOutcomeUnavailable,
+    };
+    props.library
+      .exportBackup(Date.now())
+      .then((text) => props.sharer.share({ title: t.backupShareTitle, message: text }))
+      .then((outcome) => setBackupNote(outcomeText[outcome]))
+      .catch(() => setBackupNote(null)); // 用户取消等——不打扰
+  };
   const reload = (): void => {
     props.library.list().then(setMine).catch(() => {});
   };
@@ -147,7 +164,11 @@ export function HomeScreen(props: {
           <Pressable style={[styles.action, styles.actionGhost]} onPress={props.onImport}>
             <Text style={styles.actionGhostText}>{t.importAction}</Text>
           </Pressable>
+          <Pressable style={[styles.action, styles.actionGhost]} onPress={backup}>
+            <Text style={styles.actionGhostText}>{t.backupAction}</Text>
+          </Pressable>
         </View>
+        {backupNote ? <Text style={styles.backupNote}>{backupNote}</Text> : null}
 
         {mine.length > 0 ? (
           <>
@@ -196,7 +217,8 @@ const createStyles = (c: Palette) => StyleSheet.create({
   nextFlow: { fontSize: type.caption + 1, color: dark.textMuted, marginTop: 1 },
   nextGo: { fontSize: 28, color: dark.textMuted, fontWeight: '300' },
 
-  actions: { flexDirection: 'row', gap: spacing.sm },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  backupNote: { fontSize: 13, color: c.accent, marginLeft: spacing.xs },
   action: {
     backgroundColor: c.accent, borderRadius: radius.pill,
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,

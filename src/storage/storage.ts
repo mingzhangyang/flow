@@ -4,7 +4,7 @@
 import { type Flow, type Run, type RunEvent, type RunEventType } from '../domain/types';
 import { serializeFlow, deserializeFlow, coerceFlow } from '../domain/serialize';
 import { reduce } from '../runtime/engine';
-import { type CheckIn } from '../runtime/adherence';
+import { type CheckIn, isCheckIn } from '../runtime/adherence';
 import { type KVStore } from './kv';
 
 const FLOW = 'flow:';
@@ -46,17 +46,6 @@ function parseRun(text: string): Run | null {
   }
 }
 
-function isCheckIn(value: unknown): value is CheckIn {
-  if (typeof value !== 'object' || value === null) return false;
-  const c = value as { nodeId?: unknown; scheduledFor?: unknown; taken?: unknown; at?: unknown };
-  return (
-    typeof c.nodeId === 'string' &&
-    typeof c.scheduledFor === 'number' &&
-    typeof c.taken === 'boolean' &&
-    typeof c.at === 'number'
-  );
-}
-
 export interface Storage {
   saveFlow(flow: Flow): Promise<void>;
   loadFlow(id: string): Promise<Flow | null>;
@@ -75,6 +64,8 @@ export interface Storage {
   /** 日程型 Flow 的打卡日志（按 flowId 存）。 */
   saveCheckIns(flowId: string, log: CheckIn[]): Promise<void>;
   loadCheckIns(flowId: string): Promise<CheckIn[]>;
+  /** 全部打卡日志（含示例 flow 的——打卡是用户数据，不依附于 flow 是否入库）。 */
+  listAllCheckIns(): Promise<Record<string, CheckIn[]>>;
 
   /** Flow 的历史修订快照（按 flowId 存，旧版本追加保留）。 */
   saveRevisions(flowId: string, revisions: Flow[]): Promise<void>;
@@ -88,6 +79,17 @@ export function createStorage(kv: KVStore): Storage {
   }
   async function saveFlow(flow: Flow): Promise<void> {
     await kv.setItem(FLOW + flow.id, serializeFlow(flow)); // serializeFlow 会校验
+  }
+  async function loadCheckIns(flowId: string): Promise<CheckIn[]> {
+    const text = await kv.getItem(CHECKINS + flowId);
+    if (!text) return [];
+    try {
+      const raw = JSON.parse(text) as unknown;
+      // 每条打卡相互独立：坏条目单独丢弃，不拖累其余记录。
+      return Array.isArray(raw) ? raw.filter(isCheckIn) : [];
+    } catch {
+      return [];
+    }
   }
 
   return {
@@ -140,16 +142,16 @@ export function createStorage(kv: KVStore): Storage {
     async saveCheckIns(flowId, log) {
       await kv.setItem(CHECKINS + flowId, JSON.stringify(log));
     },
-    async loadCheckIns(flowId) {
-      const text = await kv.getItem(CHECKINS + flowId);
-      if (!text) return [];
-      try {
-        const raw = JSON.parse(text) as unknown;
-        // 每条打卡相互独立：坏条目单独丢弃，不拖累其余记录。
-        return Array.isArray(raw) ? raw.filter(isCheckIn) : [];
-      } catch {
-        return [];
+    loadCheckIns,
+    async listAllCheckIns() {
+      const keys = (await kv.keys()).filter((k) => k.startsWith(CHECKINS));
+      const all: Record<string, CheckIn[]> = {};
+      for (const k of keys) {
+        const id = k.slice(CHECKINS.length);
+        const log = await loadCheckIns(id);
+        if (log.length > 0) all[id] = log;
       }
+      return all;
     },
 
     async saveRevisions(flowId, revisions) {
