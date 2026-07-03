@@ -178,6 +178,10 @@ export function ScheduleScreen(props: {
           {cursorAt === doses.length && doses.length > 0 ? <NowCursor minutes={nowMinutes} s={styles} t={t} /> : null}
         </View>
 
+        {(flow.repeat ?? { kind: 'once' }).kind === 'once' ? (
+          // once「过时不候」——在运行视图里明说，不让默认语义只活在文档里
+          <Text style={styles.onceNote}>{t.scheduleOnceNote}</Text>
+        ) : null}
         <Text style={styles.note}>
           {flow.description ? flow.description + '\n' : ''}
           {t.scheduleNote}
@@ -250,5 +254,6 @@ const createStyles = (c: Palette) => StyleSheet.create({
   cursorLabel: { fontSize: type.caption, color: c.accent, fontWeight: '700', fontVariant: ['tabular-nums'] },
   cursorLine: { flex: 1, height: 1.5, backgroundColor: c.accent, opacity: 0.45, borderRadius: 1 },
   empty: { fontSize: type.body - 1, color: c.textMuted, paddingVertical: spacing.md },
+  onceNote: { fontSize: 13, color: c.accent, marginTop: spacing.xs, lineHeight: 19 },
   note: { fontSize: 13, color: c.textMuted, marginTop: spacing.md, lineHeight: 19 },
 });
