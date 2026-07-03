@@ -88,7 +88,7 @@
 - [ ] 真机验证本地推送（清单见 `docs/release.md`：权限时机、强杀/重启/Doze 到点、被拒横幅、国产 ROM）——需真机
 - [x] 品牌资产：图标/自适应图标/splash/favicon 已从 `assets/brand/` SVG 源渲染（`scripts/render-brand.mjs`）
 - [ ] EAS：配置已就绪（`eas.json` + 发布手册 `docs/release.md`）；余项需账号——`eas init`、Apple Developer / Play Console、keystore 备份、TestFlight / internal testing
-- [ ] 商店合规与材料：文案/申报口径/截图方案已定稿（`docs/store-listing.md`，截图草稿 `npm run shots`）；隐私政策双语 HTML 就绪（`site/privacy/`，启用 GitHub Pages 即上线）；余项——Pages 启用、真机重截、商店后台填报
+- [ ] 商店合规与材料：文案/申报口径/截图方案已定稿（`docs/store-listing.md`，截图草稿 `npm run shots`）；隐私政策双语 HTML 就绪（`site/privacy/`，接入 Cloudflare Pages 即上线，见 `docs/release.md`）；余项——Cloudflare 接入、真机重截、商店后台填报
 - [ ]（可选，v1.0 后）崩溃上报（与无追踪承诺一致）、OTA 更新、国内商店的软著/备案
 
 ## 里程碑
