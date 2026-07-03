@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { type Flow, type TimedNode } from '../domain/types';
+import { type TimedNode } from '../domain/types';
 import { createFlow, addNode, updateNode, moveNode, removeNode } from '../domain/editing';
 import { explain, totalTimedSeconds } from './explain';
 import { analyze } from './analyze';

@@ -52,6 +52,11 @@
 - **机密走窄端口**：`SecretStore`（getItem/setItem/removeItem，无枚举）。适配器
   `secureKv.native`（iOS Keychain / Android Keystore，expo-secure-store）、Web 回落
   AsyncStorage；AI 模型密钥经此存储，不与普通数据混在一个后端（C6）。
+- **整库备份（`backup.ts` + `library.exportBackup/importBackup`）**：全部 flow + 历史修订 +
+  打卡日志组装成一份开放格式 JSON（C6 兜底；不含瞬态 Run，不含 AI 密钥）。首页「备份」
+  经系统分享面板存文件/发给自己；导入框自动识别备份全文（`parseBackup`，非备份则按单条
+  flow 走）。恢复绝不覆盖本机：读回逐条过闸门（坏条目跳过），同 id 的 flow 走 commit
+  入历史，打卡按占位合并、本机记录优先。
 
 ### 4. Notification Engine（`src/notifications/`）
 把 Runtime 给出的触发时刻翻译成平台的本地定时通知/闹钟（expo-notifications）。
@@ -71,6 +76,7 @@ Flow 的**编辑器**，不是主人（见 `02-ai-principles.md`）。
   - 适配器：`anthropic`（Claude Messages API）、`openaiCompatible`（覆盖 OpenAI / DeepSeek / Kimi / 通义 / 智谱 / Ollama 等一切 `/chat/completions` 方言）。新增供应商 = 新增一个 config 变体 + 一个适配器（扩展而非修改）。
   - 配置（供应商、端点、模型、密钥）只存本机（C6），且走 `SecretStore` 窄端口——原生端为系统安全存储（Keychain/Keystore），旧版明文位置读取时一次性搬迁；生成产物带 `provenance.source = "ai:<provider>/<model>"`（E6）。
   - 管线纯函数化：`buildGenerationRequest` / `parseGeneratedFlow`（解析、校验、分配 id）确定性可测；`generateFlow` 仅编排。
+  - 真实端点连通性不入 CI（没有也不该有密钥）；`npm run check:ai`（`scripts/ai-smoke.mjs`）用自配 Key 走与应用完全相同的管线打一次真实 API，发布前/换供应商时手动验证。
 
 ### 6. Sharing（`src/sharing/`）
 分享的社交面：把 Flow 组装成「人读的文案 + 可导入的数据」。

@@ -78,6 +78,9 @@
 - [x] 提醒不断档：日程提醒多日排入（7 天窗口、上限 48）+ 启动/回前台/库变更时重排——App 几天不开，服药提醒也到点　`C5,E3`
 - [x] 加固（项目审查修复）：导入同 id 不再静默覆盖（旧版本入历史）；AI 密钥入系统安全存储（Keychain/Keystore，旧数据自动搬迁）；持久数据读入前迁移 + 校验（Run 日志重放即校验）；历史修订设上限　`C6,AI-C3,E4,E5`
 - [x] 多语言（zh / zh-Hant / en）：locale 显式注入贯穿纯逻辑层（解读/洞察/差异/分享/提醒文案），UI 文案表 + 设备语言探测（expo-localization），繁体按台/港惯例用词，示例各语言同 id，跨语言分享可导入　`C2,C6,E3,E4`
+- [x] 整库备份（C6 兜底）：flow + 历史修订 + 打卡日志导出为开放格式 JSON（首页「备份」走系统分享）；导入框自动识别备份并整库恢复，绝不覆盖本机数据（同 id 入历史、打卡本机优先）　`C6,E5`
+- [x] once「过时不候」语义显式化：编辑器选「仅今天」与日程运行视图均有三语提示——默认值的语义不只活在文档里　`C2,E6`
+- [x] 工程闸门加固：ESLint（一致性守护，不动排版）与 package.json↔app.json 版本一致性检查入 `npm run check`；AI 真实端点冒烟 `npm run check:ai`（BYOK 手动跑，不入 CI）　`C10`
 - [ ] 真机验证本地推送（iOS 权限时机、Android 13+ 通知权限与渠道、后台到点）——需真机
 - [ ] 品牌资产：替换占位 icon / adaptive icon / splash / favicon
 - [ ] EAS：`eas init` + `eas.json`、签名（Apple Developer 账号、Android keystore 备份）、TestFlight / internal testing 内测
