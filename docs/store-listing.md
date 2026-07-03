@@ -78,7 +78,7 @@ en：`timer,routine,medication,reminder,checklist,brew,coffee,schedule,habit,flo
 
 **权限清单**：通知（本地提醒，用户首次开启某条日程的提醒时请求）。无相机/定位/通讯录等。
 
-**隐私政策 URL**：`https://mingzhangyang.github.io/flow/privacy/`（启用 GitHub Pages 后生效）。
+**隐私政策 URL**：`https://zhunshi.pages.dev/privacy/`（Cloudflare Pages，接入步骤见 `docs/release.md`；项目名以实际创建为准）。
 
 ## 截图方案（iOS 6.7" / Android 手机各一套，三语）
 

@@ -1,9 +1,9 @@
 # 「准时」隐私政策
 
 > 本文陈述的事实以代码为准：本地优先（C6）、无账号、无遥测。
-> 可发布版本（中英双语 HTML）在 `site/privacy/`，仓库设置里启用
-> GitHub Pages（Source: GitHub Actions）后即托管于
-> `https://mingzhangyang.github.io/flow/privacy/`。本文与 HTML 同步修订。
+> 可发布版本（中英双语 HTML）在 `site/privacy/`，经 Cloudflare Pages 托管
+> （接入步骤见 `docs/release.md`），URL：`https://zhunshi.pages.dev/privacy/`
+> （项目名以实际创建为准）。本文与 HTML 同步修订。
 
 **生效日期**：2026-07-03（如商店提交日更晚，以提交日为准并同步更新此处）
 

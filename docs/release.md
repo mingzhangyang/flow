@@ -43,7 +43,13 @@
 
 ## 商店提交前置
 
-- [ ] 隐私政策上线到公开 URL（见 `site/privacy/`，启用 GitHub Pages 即得
-      `https://mingzhangyang.github.io/flow/privacy/`）
+- [ ] 隐私政策上线（Cloudflare Pages，私有仓库亦免费）：
+  1. Cloudflare 控制台 → Workers & Pages → Create → **Pages** → Connect to Git，
+     授权并选择本仓库；
+  2. 项目名建议 `zhunshi`（决定默认域名 `zhunshi.pages.dev`）；
+  3. Production branch：`main`；**Build command 留空**；Build output directory：`site`；
+  4. 部署完成后政策位于 `https://zhunshi.pages.dev/privacy/`（站点根为一页简介）。
+     此后 main 上 `site/` 的任何变更自动重新部署；如换项目名或绑定自有域名，
+     同步更新本文与 `docs/store-listing.md`、`docs/privacy-policy.md` 里的 URL。
 - [ ] 商店文案与截图（见 `docs/store-listing.md`；截图草稿 `npm run shots`）
 - [ ] 健康类内容申报 + AI 第三方数据共享申报（申报口径同见 store-listing）
