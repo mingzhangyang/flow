@@ -70,6 +70,9 @@ const zh = {
   undo: '撤销',
   scheduleNote: '本表仅作提醒之用，不构成医疗处方或诊断；请以医嘱为准。',
   scheduleOnceNote: '这条 flow 仅提醒今天一次，过时不候；需要长期提醒，请在编辑里把重复改为每天/每周。',
+  scheduleNotifDenied: '提醒未开启：通知权限被拒绝，到点不会有提醒。',
+  scheduleNotifSettings: '去系统设置开启 ›',
+  scheduleNotifWeb: '网页版不支持定时提醒；请在手机 App 上使用提醒功能。',
 
   // 编辑器
   editorTitle: '编辑',
@@ -209,6 +212,9 @@ const zhHant: Strings = {
   undo: '復原',
   scheduleNote: '本表僅作提醒之用，不構成醫療處方或診斷；請以醫囑為準。',
   scheduleOnceNote: '這條 flow 僅提醒今天一次，過時不候；需要長期提醒，請在編輯裡把重複改為每天/每週。',
+  scheduleNotifDenied: '提醒未開啟：通知權限被拒絕，到點不會有提醒。',
+  scheduleNotifSettings: '去系統設定開啟 ›',
+  scheduleNotifWeb: '網頁版不支援定時提醒；請在手機 App 上使用提醒功能。',
 
   editorTitle: '編輯',
   editorFlowName: '流程名稱',
@@ -341,6 +347,9 @@ const en: Strings = {
     "This list is a reminder aid only — not a medical prescription or diagnosis. Follow your clinician's advice.",
   scheduleOnceNote:
     'This flow reminds you today only — it does not carry over to tomorrow. Edit its repeat to daily/weekly for ongoing reminders.',
+  scheduleNotifDenied: 'Reminders are off: notification permission was denied, so nothing will fire on time.',
+  scheduleNotifSettings: 'Enable in system settings ›',
+  scheduleNotifWeb: 'The web version cannot deliver scheduled reminders — use the mobile app for reminders.',
 
   editorTitle: 'Edit',
   editorFlowName: 'Flow name',

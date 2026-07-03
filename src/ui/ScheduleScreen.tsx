@@ -4,8 +4,11 @@
 // 遵守 E6：描述性、非处方性，显式免责。
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, Animated, useColorScheme } from 'react-native';
+import {
+  View, Text, ScrollView, Pressable, StyleSheet, Animated, AppState, Linking, useColorScheme,
+} from 'react-native';
 import { type Flow } from '../domain/types';
+import { type Notifier, type ReminderAvailability } from '../notifications/notifier';
 import { timeOfDay, MS_PER_DAY } from '../runtime/clock';
 import { systemTimeZone } from '../runtime/systemTimeZone';
 import { timeZoneForFlow } from '../runtime/ianaTimeZone';
@@ -67,6 +70,7 @@ function DoseBead(props: { status: DoseStatus; s: Styles; bs: BeadStyles }) {
 export function ScheduleScreen(props: {
   flow: Flow;
   storage: Storage;
+  notifier: Notifier;
   /** 打开即视为为这条 flow 开启提醒；实际登记与多日重排由 App 层编排。 */
   onEnrollReminders: (flowId: string) => void;
   onExit: () => void;
@@ -80,6 +84,19 @@ export function ScheduleScreen(props: {
   const tz = timeZoneForFlow(flow, systemTimeZone);
   const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
   const [now, setNow] = useState<number>(() => Date.now());
+  // 提醒可用状态：被拒/不支持时必须让用户看见（E6 诚实原则——静默失效会伤人）。
+  // 打开与回到前台时各查一次（从系统设置回来后横幅要能消失）。
+  const [notifStatus, setNotifStatus] = useState<ReminderAvailability>('ready');
+  useEffect(() => {
+    const refresh = (): void => {
+      props.notifier.status().then(setNotifStatus).catch(() => {});
+    };
+    refresh();
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') refresh();
+    });
+    return () => sub.remove();
+  }, [props.notifier]);
 
   useEffect(() => {
     let alive = true;
@@ -126,6 +143,14 @@ export function ScheduleScreen(props: {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        {notifStatus === 'denied' ? (
+          <Pressable style={styles.notifBanner} onPress={() => { Linking.openSettings().catch(() => {}); }}>
+            <Text style={styles.notifBannerText}>{t.scheduleNotifDenied}</Text>
+            <Text style={styles.notifBannerLink}>{t.scheduleNotifSettings}</Text>
+          </Pressable>
+        ) : notifStatus === 'unsupported' ? (
+          <Text style={styles.notifWeb}>{t.scheduleNotifWeb}</Text>
+        ) : null}
         <Text style={styles.sectionKicker}>{t.scheduleToday(cadence, flow.timeZone)}</Text>
 
         <View style={styles.card}>
@@ -218,6 +243,13 @@ const createStyles = (c: Palette) => StyleSheet.create({
   back: { fontSize: 16, color: c.accent, width: 48 },
   title: { flex: 1, textAlign: 'center', fontSize: type.emphasis - 1, fontWeight: '600', color: c.text },
   content: { padding: spacing.md, gap: spacing.sm },
+  notifBanner: {
+    backgroundColor: c.surface, borderRadius: radius.md, borderWidth: 1, borderColor: c.warn,
+    padding: spacing.md, gap: spacing.xs,
+  },
+  notifBannerText: { color: c.warn, fontSize: 14, lineHeight: 20 },
+  notifBannerLink: { color: c.accent, fontSize: 14, fontWeight: '600' },
+  notifWeb: { fontSize: 13, color: c.textMuted, marginLeft: spacing.xs },
   sectionKicker: { fontSize: type.caption + 1, color: c.textMuted, letterSpacing: 1, marginLeft: spacing.xs },
   card: {
     backgroundColor: c.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border,

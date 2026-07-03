@@ -23,6 +23,9 @@ function recordingNotifier() {
       cancelled.push(ids);
     },
     async cancelAll() {},
+    async status() {
+      return 'ready';
+    },
   };
   return { notifier, scheduled, cancelled };
 }

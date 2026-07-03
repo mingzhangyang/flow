@@ -19,6 +19,7 @@ test('服药：逐剂打卡互不影响，刷新后保留', async (t) => {
 
   await page.getByText('每日服药提醒', { exact: true }).first().click();
   await expectText(page, /今天 · 每天/); // flow 级节律（ADR-0003）
+  await expectText(page, /网页版不支持定时提醒/); // 提醒能力诚实提示（E6）：web 无定时通知
   await expectText(page, '可服用'); // 08:00 剂：09:00 仍在 120min 宽限内
   assert.equal(await page.getByText('待服', { exact: true }).count(), 2); // 14:00 / 22:00
   await expectText(page, /请以医嘱为准/); // E6 免责

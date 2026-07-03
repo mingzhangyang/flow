@@ -113,6 +113,7 @@ export default function App() {
           <ScheduleScreen
             flow={screen.flow}
             storage={storage}
+            notifier={notifier}
             onEnrollReminders={(flowId) => {
               enrollFlow(asyncStorageKV, flowId).then(refreshReminders).catch(() => {});
             }}

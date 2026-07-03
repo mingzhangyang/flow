@@ -57,5 +57,11 @@ export function createExpoNotifier(): Notifier {
     async cancelAll() {
       await Notifications.cancelAllScheduledNotificationsAsync();
     },
+    async status() {
+      const p = await Notifications.getPermissionsAsync();
+      if (p.granted) return 'ready';
+      // 还能再问 = 尚未真正拒绝（首次登记时会弹系统框）；不能再问 = 被拒，需去系统设置
+      return p.canAskAgain ? 'undetermined' : 'denied';
+    },
   };
 }

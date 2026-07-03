@@ -83,7 +83,8 @@
 - [x] 工程闸门加固：ESLint（一致性守护，不动排版）与 package.json↔app.json 版本一致性检查入 `npm run check`；AI 真实端点冒烟 `npm run check:ai`（BYOK 手动跑，不入 CI）　`C10`
 - [x] UI 回归固化：历次手动 Playwright 验收固化为 `npm run test:e2e`（web 构建 + 假时钟注入，运行/打卡/导入导出/备份六条路径），入 CI 与本地同一命令　`C10,E4`
 - [x] 提醒断档修复（第一步）：跟随设备时区的 daily/weekly 改用**系统级重复触发器**（排入一次长期有效，App 几周不开也不断档）；once/everyNDays/锚定时区仍走 7 天预排窗口　`C5,E3`
-- [ ] 提醒断档修复（后续，需真机）：Android 通知权限（13+）与精确闹钟（`SCHEDULE_EXACT_ALARM`）编排、电池优化白名单引导；iOS 权限延迟到首次打开日程型 flow 时请求　`C5`
+- [x] 提醒能力对用户诚实：`Notifier.status()`（ready/undetermined/denied/unsupported）——权限被拒时日程视图显示警示横幅 + 「去系统设置」；网页版明示不支持定时提醒（e2e 断言）。权限请求时机本就延迟在首次登记提醒时（schedule 内 ensurePermission）　`E6,C5,C10`
+- [ ] 提醒断档修复（后续，需真机）：Android 13+ 通知权限与精确闹钟（`SCHEDULE_EXACT_ALARM`）编排、Doze 实测、电池优化白名单引导；被拒横幅的真机行为验证　`C5`
 - [ ] 真机验证本地推送（iOS 权限时机、Android 13+ 通知权限与渠道、后台到点）——需真机
 - [ ] 品牌资产：替换占位 icon / adaptive icon / splash / favicon
 - [ ] EAS：`eas init` + `eas.json`、签名（Apple Developer 账号、Android keystore 备份）、TestFlight / internal testing 内测
