@@ -2,6 +2,7 @@
   "expo": {
     "name": "准时",
     "slug": "flow",
+    "owner": "ideas-flow",
     "version": "1.0.0",
     "scheme": "zhunshi",
     "orientation": "portrait",
@@ -23,7 +24,11 @@
       },
       "predictiveBackGestureEnabled": false
     },
-    "plugins": ["expo-notifications", "expo-secure-store", "expo-localization"],
+    "plugins": [
+      "expo-notifications",
+      "expo-secure-store",
+      "expo-localization"
+    ],
     "locales": {
       "zh": "./locales/zh.json",
       "zh-Hant": "./locales/zh-Hant.json",
@@ -31,6 +36,11 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "5f35674e-97d5-43ec-8e23-6ba95e27d0fd"
+      }
     }
   }
 }
