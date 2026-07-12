@@ -28,7 +28,9 @@
 1. 改 `app.json`：`expo.version`（用户可见版本，同步改 `package.json.version`，
    否则 `npm run check` 会拦下）；`ios.buildNumber` 与 `android.versionCode` 递增。
 2. `npm run check && npm run test:e2e` 全绿。
-3. 打 tag：`git tag v<version>`。
+3. `npx expo-doctor` 20/20（含「依赖版本与 SDK 匹配」——漂移会在 EAS 构建时才暴露；
+   `npx expo install --fix` 可对齐到 SDK 期望的补丁版本）。
+4. 打 tag：`git tag v<version>`。
 
 ## 真机验证清单（首次发布前必过）
 
