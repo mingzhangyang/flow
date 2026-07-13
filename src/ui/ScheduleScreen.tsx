@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import {
-  View, Text, ScrollView, Pressable, StyleSheet, Animated, AppState, Linking, useColorScheme,
+  View, Text, ScrollView, Pressable, StyleSheet, Animated, AppState, Linking,
 } from 'react-native';
 import { type Flow } from '../domain/types';
 import { type Notifier, type ReminderAvailability } from '../notifications/notifier';
@@ -26,6 +26,7 @@ import { nextEvents } from '../runtime/engine';
 import { fmtTimeOfDay } from './format';
 import { useI18n } from './i18n';
 import { type Strings } from './strings';
+import { useAppScheme } from './settings-context';
 import { paletteFor, type Palette, spacing, radius, type, mono } from './theme';
 
 const GRACE_MINUTES = 120;
@@ -76,7 +77,7 @@ export function ScheduleScreen(props: {
   onExit: () => void;
 }) {
   const { flow, storage } = props;
-  const c = paletteFor(useColorScheme());
+  const c = paletteFor(useAppScheme());
   const { locale, t } = useI18n();
   const styles = useMemo(() => createStyles(c), [c]);
   const beadStyles = useMemo(() => createBeadStyles(c), [c]);

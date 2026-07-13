@@ -2,15 +2,16 @@
 // 备份自动识别（parseBackup），恢复时绝不覆盖本机数据（C6）。
 
 import { useState, useMemo } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { type Library } from '../session/library';
 import { parseBackup } from '../storage/backup';
 import { extractFlowJson } from '../sharing/share';
 import { useI18n } from './i18n';
+import { useAppScheme } from './settings-context';
 import { paletteFor, type Palette, spacing, radius } from './theme';
 
 export function ImportScreen(props: { library: Library; onImported: () => void; onCancel: () => void }) {
-  const c = paletteFor(useColorScheme());
+  const c = paletteFor(useAppScheme());
   const styles = useMemo(() => createStyles(c), [c]);
   const { t } = useI18n();
   const [text, setText] = useState('');

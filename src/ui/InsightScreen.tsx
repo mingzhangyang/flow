@@ -3,18 +3,19 @@
 // 不调用任何外部模型——全部由本地纯函数生成。
 
 import { useEffect, useState, useMemo } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, useColorScheme } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
 import { type Flow } from '../domain/types';
 import { type Library } from '../session/library';
 import { explain } from '../ai/explain';
 import { analyze, type Finding } from '../ai/analyze';
 import { diffFlows, describeChange, type Change } from '../ai/diff';
 import { useI18n } from './i18n';
+import { useAppScheme } from './settings-context';
 import { paletteFor, type Palette, spacing, radius } from './theme';
 
 export function InsightScreen(props: { flow: Flow; library: Library; onExit: () => void; onChanged: () => void }) {
   const { flow } = props;
-  const c = paletteFor(useColorScheme());
+  const c = paletteFor(useAppScheme());
   const styles = useMemo(() => createStyles(c), [c]);
   const { locale, t } = useI18n();
   const [previous, setPrevious] = useState<Flow | null>(null);

@@ -22,6 +22,8 @@ test('打卡 → 备份到剪贴板 → 新环境导入 → 打卡记录恢复',
   await expectText(a, '已服 · 09:00');
   await a.getByText('‹ 返回', { exact: true }).click();
 
+  // 备份入口在设置面板的「数据」区
+  await a.getByText('⚙︎', { exact: true }).click();
   await a.getByText('备份', { exact: true }).click();
   await expectText(a, /已复制备份数据/); // headless 无 Web Share → 剪贴板回退
   const text = await a.evaluate(() =>

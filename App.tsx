@@ -3,7 +3,7 @@
 // 简单的状态机即导航（Constraint 0：先别引入路由库）。
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AppState, SafeAreaView, StyleSheet, useColorScheme } from 'react-native';
+import { AppState, SafeAreaView, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import {
   useFonts,
@@ -17,6 +17,7 @@ import { createStorage } from './src/storage/storage';
 import { asyncStorageKV } from './src/storage/asyncStorageKv';
 import { secureKV } from './src/storage/secureKv';
 import { createLibrary } from './src/session/library';
+import { loadSettings, saveSettings, type Settings } from './src/session/settings';
 import { createExpoNotifier } from './src/notifications/expoNotifier';
 import { enrollFlow, rescheduleReminders } from './src/notifications/reschedule';
 import { systemTimeZone } from './src/runtime/systemTimeZone';
@@ -29,7 +30,9 @@ import { ExportScreen } from './src/ui/ExportScreen';
 import { ImportScreen } from './src/ui/ImportScreen';
 import { InsightScreen } from './src/ui/InsightScreen';
 import { GenerateScreen } from './src/ui/GenerateScreen';
+import { SettingsScreen } from './src/ui/SettingsScreen';
 import { useI18n } from './src/ui/i18n';
+import { SettingsContext, useAppScheme } from './src/ui/settings-context';
 import { paletteFor } from './src/ui/theme';
 
 const newFlowId = (): string => `flow-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -41,13 +44,34 @@ type Screen =
   | { name: 'export'; flow: Flow }
   | { name: 'insight'; flow: Flow }
   | { name: 'import' }
-  | { name: 'generate' };
+  | { name: 'generate' }
+  | { name: 'settings' };
 
 export default function App() {
   // 数字展示字体（时刻/倒计时专用）；加载极快，未就绪前不渲染以免字体跳变
   const [fontsLoaded] = useFonts({ IBMPlexMono_200ExtraLight, IBMPlexMono_500Medium });
-  // 跟随系统深/浅色模式（运行页除外——那是不随模式变的沉浸场景）
-  const scheme = useColorScheme();
+  // 用户偏好（语言/外观覆盖）：启动读一次入 state；更新即存即生效
+  const [settings, setSettings] = useState<Settings | null>(null);
+  useEffect(() => {
+    loadSettings(asyncStorageKV).then(setSettings).catch(() => setSettings({}));
+  }, []);
+  const update = useCallback((next: Settings) => {
+    setSettings(next);
+    saveSettings(asyncStorageKV, next).catch(() => {});
+  }, []);
+  const ctx = useMemo(() => (settings === null ? null : { settings, update }), [settings, update]);
+
+  if (!fontsLoaded || ctx === null) return null;
+  return (
+    <SettingsContext.Provider value={ctx}>
+      <Shell />
+    </SettingsContext.Provider>
+  );
+}
+
+function Shell() {
+  // 深/浅色：用户覆盖 ?? 系统模式（运行页除外——那是不随模式变的沉浸场景）
+  const scheme = useAppScheme();
   const c = paletteFor(scheme);
   // 语言在此读取一次，向下显式传递；示例内容随语言切换（id 不变，记录不丢）
   const { locale } = useI18n();
@@ -89,8 +113,6 @@ export default function App() {
     return () => sub.remove();
   }, [refreshReminders, refreshKey]);
 
-  if (!fontsLoaded) return null;
-
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.bg }]}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
@@ -99,7 +121,6 @@ export default function App() {
           library={library}
           examples={examples}
           refreshKey={refreshKey}
-          sharer={systemSharer}
           onRun={(flow) => setScreen({ name: 'run', flow })}
           onNew={(topology: Topology) => setScreen({ name: 'edit', flow: createFlow({ id: newFlowId(), title: '', topology }) })}
           onEdit={(flow) => setScreen({ name: 'edit', flow })}
@@ -107,6 +128,7 @@ export default function App() {
           onInsight={(flow) => setScreen({ name: 'insight', flow })}
           onImport={() => setScreen({ name: 'import' })}
           onGenerate={() => setScreen({ name: 'generate' })}
+          onSettings={() => setScreen({ name: 'settings' })}
         />
       ) : screen.name === 'run' ? (
         screen.flow.topology === 'scheduled' ? (
@@ -136,6 +158,8 @@ export default function App() {
           onDraft={(flow) => setScreen({ name: 'edit', flow })}
           onCancel={home}
         />
+      ) : screen.name === 'settings' ? (
+        <SettingsScreen library={library} sharer={systemSharer} onBack={homeRefreshed} />
       ) : (
         <ImportScreen library={library} onImported={homeRefreshed} onCancel={home} />
       )}

@@ -2,16 +2,16 @@
 // 卡片带由 id 派生的低饱和色线与拓扑图形徽章，库一多也有节奏而不吵。
 
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { type Flow, type Topology } from '../domain/types';
 import { type Library } from '../session/library';
-import { type Sharer, type ShareOutcome } from '../sharing/sharer';
 import { nextEvents, type ScheduledOccurrence } from '../runtime/engine';
 import { timeOfDay, MS_PER_DAY } from '../runtime/clock';
 import { systemTimeZone } from '../runtime/systemTimeZone';
 import { timeZoneForFlow } from '../runtime/ianaTimeZone';
 import { fmtTimeOfDay } from './format';
 import { useI18n } from './i18n';
+import { useAppScheme } from './settings-context';
 import { paletteFor, type Palette, dark, spacing, radius, type, mono } from './theme';
 
 /** 卡片色线的低饱和候选色；由 flow id 稳定派生。 */
@@ -46,7 +46,6 @@ export function HomeScreen(props: {
   library: Library;
   examples: Flow[];
   refreshKey: number;
-  sharer: Sharer;
   onRun: (flow: Flow) => void;
   onNew: (topology: Topology) => void;
   onEdit: (flow: Flow) => void;
@@ -54,26 +53,13 @@ export function HomeScreen(props: {
   onInsight: (flow: Flow) => void;
   onImport: () => void;
   onGenerate: () => void;
+  onSettings: () => void;
 }) {
-  const c = paletteFor(useColorScheme());
+  const c = paletteFor(useAppScheme());
   const styles = useMemo(() => createStyles(c), [c]);
   const { t } = useI18n();
   const [mine, setMine] = useState<Flow[]>([]);
-  const [backupNote, setBackupNote] = useState<string | null>(null);
 
-  // 整库备份（C6 兜底）：全部 flow + 历史修订 + 打卡日志，经系统分享面板存文件/发给自己。
-  const backup = (): void => {
-    const outcomeText: Record<ShareOutcome, string> = {
-      shared: t.backupOutcomeShared,
-      copied: t.backupOutcomeCopied,
-      unavailable: t.backupOutcomeUnavailable,
-    };
-    props.library
-      .exportBackup(Date.now())
-      .then((text) => props.sharer.share({ title: t.backupShareTitle, message: text }))
-      .then((outcome) => setBackupNote(outcomeText[outcome]))
-      .catch(() => setBackupNote(null)); // 用户取消等——不打扰
-  };
   const reload = (): void => {
     props.library.list().then(setMine).catch(() => {});
   };
@@ -133,9 +119,14 @@ export function HomeScreen(props: {
     <View style={styles.screen}>
       <View style={styles.header}>
         <Text style={styles.brand}>{t.brand}</Text>
-        <Text style={styles.date}>
-          {t.headerDate(today.getMonth() + 1, today.getDate(), today.getDay())}
-        </Text>
+        <View style={styles.headerRight}>
+          <Text style={styles.date}>
+            {t.headerDate(today.getMonth() + 1, today.getDate(), today.getDay())}
+          </Text>
+          <Pressable onPress={props.onSettings} hitSlop={12} accessibilityLabel={t.settingsTitle}>
+            <Text style={styles.gear}>⚙︎</Text>
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -164,11 +155,7 @@ export function HomeScreen(props: {
           <Pressable style={[styles.action, styles.actionGhost]} onPress={props.onImport}>
             <Text style={styles.actionGhostText}>{t.importAction}</Text>
           </Pressable>
-          <Pressable style={[styles.action, styles.actionGhost]} onPress={backup}>
-            <Text style={styles.actionGhostText}>{t.backupAction}</Text>
-          </Pressable>
         </View>
-        {backupNote ? <Text style={styles.backupNote}>{backupNote}</Text> : null}
 
         {mine.length > 0 ? (
           <>
@@ -199,7 +186,9 @@ const createStyles = (c: Palette) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between',
   },
   brand: { fontSize: type.display, fontWeight: '800', color: c.text, letterSpacing: 4 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   date: { fontSize: type.body - 1, color: c.textMuted, fontVariant: ['tabular-nums'] },
+  gear: { fontSize: 20, color: c.textMuted },
   content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
 
   next: {
@@ -218,7 +207,6 @@ const createStyles = (c: Palette) => StyleSheet.create({
   nextGo: { fontSize: 28, color: dark.textMuted, fontWeight: '300' },
 
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  backupNote: { fontSize: 13, color: c.accent, marginLeft: spacing.xs },
   action: {
     backgroundColor: c.accent, borderRadius: radius.pill,
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,

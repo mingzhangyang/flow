@@ -3,7 +3,7 @@
 // 供应商可切换：Anthropic（Claude）或任何 OpenAI 兼容端点；配置与密钥只存本机（C6）。
 
 import { useEffect, useState, useMemo } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { type Flow } from '../domain/types';
 import { type SecretStore } from '../storage/kv';
 import { generateFlow } from '../ai/generate';
@@ -19,6 +19,7 @@ import { type FetchLike } from '../ai/model/port';
 import { localDayIndex } from '../runtime/clock';
 import { systemTimeZone } from '../runtime/systemTimeZone';
 import { useI18n } from './i18n';
+import { useAppScheme } from './settings-context';
 import { paletteFor, type Palette, spacing, radius } from './theme';
 
 const platformFetch: FetchLike = (url, init) =>
@@ -33,7 +34,7 @@ export function GenerateScreen(props: {
   onDraft: (flow: Flow) => void;
   onCancel: () => void;
 }) {
-  const c = paletteFor(useColorScheme());
+  const c = paletteFor(useAppScheme());
   const styles = useMemo(() => createStyles(c), [c]);
   const { locale, t } = useI18n();
   const [description, setDescription] = useState('');

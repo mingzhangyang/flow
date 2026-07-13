@@ -2,7 +2,7 @@
 // 保存时经 library 提交为新修订（版本递增、旧版本入历史）。
 
 import { useState, useMemo } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { type Flow, type FlowNode, type NodeKind, type Recurrence } from '../domain/types';
 import { addNode, updateNode, removeNode, moveNode, setMeta } from '../domain/editing';
 import { validateFlow } from '../domain/validate';
@@ -13,6 +13,7 @@ import { type Library } from '../session/library';
 import { fmtTimeOfDay } from './format';
 import { useI18n } from './i18n';
 import { type Strings } from './strings';
+import { useAppScheme } from './settings-context';
 import { paletteFor, type Palette, spacing, radius } from './theme';
 
 const newNodeId = (): string => `n-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -63,7 +64,7 @@ function toggleWeekday(repeat: Recurrence, d: number): Recurrence {
 }
 
 export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f: Flow) => void; onCancel: () => void }) {
-  const c = paletteFor(useColorScheme());
+  const c = paletteFor(useAppScheme());
   const styles = useMemo(() => createStyles(c), [c]);
   const { t } = useI18n();
   const [flow, setFlow] = useState<Flow>(props.draft);
@@ -298,7 +299,7 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
 }
 
 function Row(props: { label: string; children: React.ReactNode }) {
-  const c = paletteFor(useColorScheme());
+  const c = paletteFor(useAppScheme());
   return (
     <View style={rowStyles.fieldRow}>
       <Text style={[rowStyles.fieldLabel, { color: c.textMuted }]}>{props.label}</Text>

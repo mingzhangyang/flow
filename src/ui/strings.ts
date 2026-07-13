@@ -25,6 +25,15 @@ const zh = {
   backupOutcomeShared: '已唤起分享，把备份存到文件或发给自己 ✓',
   backupOutcomeCopied: '已复制备份数据，请粘贴保存到安全的地方 ✓',
   backupOutcomeUnavailable: '此环境不支持分享或剪贴板',
+
+  // 设置
+  settingsTitle: '设置',
+  settingsLanguage: '语言',
+  settingsAppearance: '外观',
+  settingsData: '数据',
+  followSystem: '跟随系统',
+  appearanceLight: '浅色',
+  appearanceDark: '深色',
   sectionMine: '我的',
   sectionExamples: '示例',
   cardMeta: (n: number, topology: 'sequential' | 'scheduled'): string =>
@@ -172,6 +181,15 @@ const zhHant: Strings = {
   backupOutcomeShared: '已喚起分享，把備份存到檔案或傳給自己 ✓',
   backupOutcomeCopied: '已複製備份資料，請貼上保存到安全的地方 ✓',
   backupOutcomeUnavailable: '此環境不支援分享或剪貼簿',
+
+  // 設定
+  settingsTitle: '設定',
+  settingsLanguage: '語言',
+  settingsAppearance: '外觀',
+  settingsData: '資料',
+  followSystem: '跟隨系統',
+  appearanceLight: '淺色',
+  appearanceDark: '深色',
   sectionMine: '我的',
   sectionExamples: '範例',
   cardMeta: (n, topology) => `${n} ${topology === 'sequential' ? '步' : '個時刻'} · 點按執行`,
@@ -304,6 +322,15 @@ const en: Strings = {
   backupOutcomeShared: 'Share sheet opened — save the backup to a file or send it to yourself ✓',
   backupOutcomeCopied: 'Backup copied — paste it somewhere safe ✓',
   backupOutcomeUnavailable: 'Sharing and clipboard are unavailable here',
+
+  // Settings
+  settingsTitle: 'Settings',
+  settingsLanguage: 'Language',
+  settingsAppearance: 'Appearance',
+  settingsData: 'Data',
+  followSystem: 'Follow system',
+  appearanceLight: 'Light',
+  appearanceDark: 'Dark',
   sectionMine: 'MINE',
   sectionExamples: 'EXAMPLES',
   cardMeta: (n, topology) =>

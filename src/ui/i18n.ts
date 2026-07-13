@@ -4,6 +4,7 @@
 import { useMemo } from 'react';
 import { getLocales } from 'expo-localization';
 import { resolveLocale, type Locale } from '../i18n/locale';
+import { useSettings } from './settings-context';
 import { STRINGS, type Strings } from './strings';
 
 export function deviceLocale(): Locale {
@@ -19,10 +20,11 @@ export interface I18n {
   t: Strings;
 }
 
-/** 当前语言与文案表。挂载时取一次设备语言（系统语言变更极少发生在会话中途）。 */
+/** 当前语言与文案表：设置里的覆盖优先，缺省用设备语言（后者一次探测，会话中途极少变）。 */
 export function useI18n(): I18n {
+  const override = useSettings().settings.locale;
   return useMemo(() => {
-    const locale = deviceLocale();
+    const locale = override ?? deviceLocale();
     return { locale, t: STRINGS[locale] };
-  }, []);
+  }, [override]);
 }

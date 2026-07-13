@@ -3,13 +3,14 @@
 // 数据面：开放格式 JSON（E5，可拥有 C6）。署名进入 provenance（E6 来源标注）。
 
 import { useMemo, useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Platform, useColorScheme } from 'react-native';
+import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Platform } from 'react-native';
 import { type Flow } from '../domain/types';
 import { serializeFlow } from '../domain/serialize';
 import { buildShareText, buildSharePayload, dataDivider } from '../sharing/share';
 import { type Sharer, type ShareOutcome } from '../sharing/sharer';
 import { useI18n } from './i18n';
 import { type Strings } from './strings';
+import { useAppScheme } from './settings-context';
 import { paletteFor, type Palette, spacing, radius } from './theme';
 
 const outcomeText = (t: Strings): Record<ShareOutcome, string> => ({
@@ -19,7 +20,7 @@ const outcomeText = (t: Strings): Record<ShareOutcome, string> => ({
 });
 
 export function ExportScreen(props: { flow: Flow; sharer: Sharer; onDone: () => void }) {
-  const c = paletteFor(useColorScheme());
+  const c = paletteFor(useAppScheme());
   const styles = useMemo(() => createStyles(c), [c]);
   const { locale, t } = useI18n();
   const [author, setAuthor] = useState('');
