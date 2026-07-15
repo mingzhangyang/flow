@@ -11,8 +11,9 @@
 3. **Apple**：Apple Developer Program（个人 $99/年）。首次 `eas build -p ios` 时
    EAS 可代管证书与 provisioning profile（推荐，选 EAS managed credentials）。
 4. **Android**：Play Console（一次性 $25）。首次 `eas build -p android` 时让 EAS
-   生成 keystore，然后**立刻** `eas credentials -p android` 导出备份到密码管理器——
-   keystore 丢失 = 永远无法更新已上架应用。
+   生成 keystore，然后**立刻**导出备份到密码管理器——keystore 丢失 = 永远无法更新
+   已上架应用。步骤与存放规范见 [`docs/keystore-backup.md`](./keystore-backup.md)
+   （无 TTY 环境用网页控制台下载，交互式 `eas credentials` 跑不了）。
 
 ## 日常构建
 
