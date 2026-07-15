@@ -121,6 +121,8 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
       </View>
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {/* 拓扑不可事后切换——在编辑一开始就说明这条 flow 的时间语义 */}
+        <Text style={styles.topologyHint}>{isScheduled ? t.editorHintScheduled : t.editorHintSequential}</Text>
         <TextInput
           style={styles.titleInput}
           value={flow.title}
@@ -323,6 +325,7 @@ const createStyles = (c: Palette) => StyleSheet.create({
   save: { fontWeight: '700' },
   title: { fontSize: 16, fontWeight: '600', color: c.text },
   content: { padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xl },
+  topologyHint: { fontSize: 13, color: c.textMuted },
   titleInput: {
     fontSize: 22, fontWeight: '700', color: c.text, backgroundColor: c.surface,
     borderRadius: radius.md, borderWidth: 1, borderColor: c.border, padding: spacing.md,

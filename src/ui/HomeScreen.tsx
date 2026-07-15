@@ -142,13 +142,18 @@ export function HomeScreen(props: {
           </Pressable>
         ) : null}
 
+        {/* 创建入口带一行微文案：拓扑的选择要在按下之前就知情（选后不可切换） */}
+        <View style={styles.creates}>
+          <Pressable style={styles.create} onPress={() => props.onNew('sequential')}>
+            <Text style={styles.createTitle}>{t.newSequential}</Text>
+            <Text style={styles.createHint}>{t.newSequentialHint}</Text>
+          </Pressable>
+          <Pressable style={styles.create} onPress={() => props.onNew('scheduled')}>
+            <Text style={styles.createTitle}>{t.newScheduled}</Text>
+            <Text style={styles.createHint}>{t.newScheduledHint}</Text>
+          </Pressable>
+        </View>
         <View style={styles.actions}>
-          <Pressable style={styles.action} onPress={() => props.onNew('sequential')}>
-            <Text style={styles.actionText}>{t.newSequential}</Text>
-          </Pressable>
-          <Pressable style={styles.action} onPress={() => props.onNew('scheduled')}>
-            <Text style={styles.actionText}>{t.newScheduled}</Text>
-          </Pressable>
           <Pressable style={[styles.action, styles.actionGhost]} onPress={props.onGenerate}>
             <Text style={styles.actionGhostText}>{t.aiGenerate}</Text>
           </Pressable>
@@ -206,12 +211,18 @@ const createStyles = (c: Palette) => StyleSheet.create({
   nextFlow: { fontSize: type.caption + 1, color: dark.textMuted, marginTop: 1 },
   nextGo: { fontSize: 28, color: dark.textMuted, fontWeight: '300' },
 
+  creates: { flexDirection: 'row', gap: spacing.sm },
+  create: {
+    flex: 1, backgroundColor: c.accent, borderRadius: radius.md,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2, gap: 2,
+  },
+  createTitle: { color: c.accentText, fontSize: 15, fontWeight: '700' },
+  createHint: { color: c.accentText, opacity: 0.8, fontSize: type.caption },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   action: {
     backgroundColor: c.accent, borderRadius: radius.pill,
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
-  actionText: { color: c.accentText, fontSize: 14, fontWeight: '700' },
   actionGhost: { backgroundColor: c.surface, borderWidth: 1, borderColor: c.border },
   actionGhostText: { color: c.text, fontSize: 14, fontWeight: '600' },
   sectionKicker: {

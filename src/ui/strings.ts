@@ -18,6 +18,8 @@ const zh = {
   upNext: '接下来',
   newSequential: '＋ 顺序',
   newScheduled: '＋ 日程',
+  newSequentialHint: '一步接一步，计时向前推',
+  newScheduledHint: '固定时刻，可重复、可并行',
   aiGenerate: '✨ AI 生成',
   importAction: '导入',
   backupAction: '备份',
@@ -85,6 +87,8 @@ const zh = {
 
   // 编辑器
   editorTitle: '编辑',
+  editorHintSequential: '顺序型：事件串成链——上一步结束，下一步开始。',
+  editorHintScheduled: '日程型：事件钉在固定时刻，可重复；多件事并行、互不阻塞。',
   editorFlowName: '流程名称',
   editorDescription: '一句话描述（可选）',
   editorTimeZone: '锚定时区（可选，如 Asia/Shanghai；留空跟随设备）',
@@ -174,6 +178,8 @@ const zhHant: Strings = {
   upNext: '接下來',
   newSequential: '＋ 順序',
   newScheduled: '＋ 日程',
+  newSequentialHint: '一步接一步，計時向前推',
+  newScheduledHint: '固定時刻，可重複、可並行',
   aiGenerate: '✨ AI 生成',
   importAction: '匯入',
   backupAction: '備份',
@@ -235,6 +241,8 @@ const zhHant: Strings = {
   scheduleNotifWeb: '網頁版不支援定時提醒；請在手機 App 上使用提醒功能。',
 
   editorTitle: '編輯',
+  editorHintSequential: '順序型：事件串成鏈——上一步結束，下一步開始。',
+  editorHintScheduled: '日程型：事件釘在固定時刻，可重複；多件事並行、互不阻塞。',
   editorFlowName: '流程名稱',
   editorDescription: '一句話描述（可選）',
   editorTimeZone: '錨定時區（可選，如 Asia/Taipei；留空跟隨裝置）',
@@ -315,6 +323,8 @@ const en: Strings = {
   upNext: 'UP NEXT',
   newSequential: '＋ Sequence',
   newScheduled: '＋ Schedule',
+  newSequentialHint: 'One step after another',
+  newScheduledHint: 'Fixed times · repeats, runs in parallel',
   aiGenerate: '✨ AI draft',
   importAction: 'Import',
   backupAction: 'Backup',
@@ -379,6 +389,8 @@ const en: Strings = {
   scheduleNotifWeb: 'The web version cannot deliver scheduled reminders — use the mobile app for reminders.',
 
   editorTitle: 'Edit',
+  editorHintSequential: 'Sequential: events form a chain — one step ends, the next begins.',
+  editorHintScheduled: 'Scheduled: events pinned to clock times, repeatable; items run independently.',
   editorFlowName: 'Flow name',
   editorDescription: 'One-line description (optional)',
   editorTimeZone: 'Anchor time zone (optional, e.g. Asia/Shanghai; blank = device)',
