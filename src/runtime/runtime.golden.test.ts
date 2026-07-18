@@ -125,9 +125,59 @@ test('reduce 拒绝越界下标——坏日志进不了 Run', () => {
   assert.throws(() => reduce(started, { type: 'skipped', index: -1, at: T0 }));
   assert.throws(() => reduce(started, { type: 'gateConfirmed', index: 1.5, at: T0 }));
   assert.throws(() => reduce(started, { type: 'wentBack', toIndex: n, at: T0 }));
-  // 合法边界仍通过
+  // 合法的当前节点仍通过
   assert.ok(reduce(started, { type: 'stepCompleted', index: 0, at: T0 }));
-  assert.ok(reduce(started, { type: 'wentBack', toIndex: n - 1, at: T0 }));
+});
+
+test('reduce 拒绝与当前游标或节点类型不符的事件', () => {
+  const empty: Run = { id: 'r', flow: coffeeFlow, events: [] };
+  const started = reduce(empty, { type: 'started', at: T0 });
+  assert.throws(() => reduce(started, { type: 'stepCompleted', index: 1, at: T0 }), /current index/);
+  assert.throws(() => reduce(started, { type: 'gateConfirmed', index: 0, at: T0 }), /current node/);
+
+  const atGate = play([
+    { type: 'started', at: T0 },
+    { type: 'stepCompleted', index: 0, at: T0 },
+    { type: 'stepCompleted', index: 1, at: T0 },
+    { type: 'stepCompleted', index: 2, at: T0 },
+    { type: 'stepCompleted', index: 3, at: T0 },
+  ]);
+  assert.throws(() => reduce(atGate, { type: 'stepCompleted', index: 4, at: T0 }), /must be confirmed/);
+});
+
+test('reduce 拒绝重复暂停、无暂停恢复与向前/原地 wentBack', () => {
+  const empty: Run = { id: 'r', flow: coffeeFlow, events: [] };
+  const started = reduce(empty, { type: 'started', at: T0 });
+  assert.throws(() => reduce(started, { type: 'resumed', at: T0 }), /cannot resume/);
+  assert.throws(() => reduce(started, { type: 'wentBack', toIndex: 0, at: T0 }), /must precede/);
+
+  const atSecond = reduce(started, { type: 'stepCompleted', index: 0, at: T0 });
+  assert.throws(() => reduce(atSecond, { type: 'wentBack', toIndex: 1, at: T0 }), /must precede/);
+  const paused = reduce(atSecond, { type: 'paused', at: T0 });
+  assert.throws(() => reduce(paused, { type: 'paused', at: T0 }), /cannot pause/);
+
+  // 完成态可以回到任一有效旧步骤（UI 当前回到最后一步，日志格式仍允许更远回退）。
+  const completed = play([
+    { type: 'started', at: T0 },
+    { type: 'stepCompleted', index: 0, at: T0 },
+    { type: 'stepCompleted', index: 1, at: T0 },
+    { type: 'stepCompleted', index: 2, at: T0 },
+    { type: 'stepCompleted', index: 3, at: T0 },
+    { type: 'gateConfirmed', index: 4, at: T0 },
+  ]);
+  assert.ok(reduce(completed, { type: 'wentBack', toIndex: coffeeFlow.nodes.length - 1, at: T0 }));
+});
+
+test('reduce 拒绝非有限或倒退的事件时间', () => {
+  const empty: Run = { id: 'r', flow: coffeeFlow, events: [] };
+  assert.throws(() => reduce(empty, { type: 'started', at: Number.NaN }), /finite/);
+  assert.throws(() => reduce(empty, { type: 'started', at: Number.POSITIVE_INFINITY }), /finite/);
+
+  const started = reduce(empty, { type: 'started', at: T0 });
+  assert.throws(
+    () => reduce(started, { type: 'stepCompleted', index: 0, at: T0 - 1 }),
+    /must not move backwards/,
+  );
 });
 
 // ---- 日程型（每日服药）----

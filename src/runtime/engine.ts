@@ -45,9 +45,17 @@ export function reduce(run: Run, event: RunEvent): Run {
 }
 
 function assertLegal(run: Run, event: RunEvent): void {
+  if (!Number.isFinite(event.at)) throw new Error('event timestamp must be finite');
+  const previous = run.events.at(-1);
+  if (previous && (!Number.isFinite(previous.at) || event.at < previous.at)) {
+    throw new Error('event timestamp must not move backwards');
+  }
+
   const hasStarted = run.events.some((e) => e.type === 'started');
   if (event.type === 'started' && hasStarted) throw new Error('run already started');
+  if (event.type === 'started' && run.events.length > 0) throw new Error('started must be the first event');
   if (event.type !== 'started' && !hasStarted) throw new Error('run not started');
+  if (event.type === 'started') return;
 
   // 带下标的事件必须落在节点范围内——越界日志会让 project 读到不存在的节点。
   const n = run.flow.nodes.length;
@@ -60,6 +68,44 @@ function assertLegal(run: Run, event: RunEvent): void {
     if (!Number.isInteger(event.toIndex) || event.toIndex < 0 || event.toIndex >= n) {
       throw new Error(`wentBack toIndex ${String(event.toIndex)} out of range [0, ${n})`);
     }
+  }
+
+  // 日程型 Flow 由独立 check-in 驱动，不使用线性 Run 游标；这里只对顺序型日志收紧
+  // 状态转移语义。Storage 从头 reduce 重放时会复用同一闸门（E4）。
+  if (run.flow.topology !== 'sequential') return;
+
+  const state = project(run.flow, run.events, event.at);
+  if (event.type === 'paused') {
+    if (state.status !== 'running') throw new Error(`cannot pause a ${state.status} run`);
+    return;
+  }
+  if (event.type === 'resumed') {
+    if (state.status !== 'paused') throw new Error(`cannot resume a ${state.status} run`);
+    return;
+  }
+  if (event.type === 'wentBack') {
+    if (state.status === 'completed') return;
+    if (state.status !== 'running' && state.status !== 'paused') {
+      throw new Error(`cannot go back from a ${state.status} run`);
+    }
+    if (event.toIndex >= state.currentIndex) {
+      throw new Error(`wentBack target ${event.toIndex} must precede current index ${state.currentIndex}`);
+    }
+    return;
+  }
+
+  if (state.status !== 'running' && state.status !== 'paused') {
+    throw new Error(`cannot advance a ${state.status} run`);
+  }
+  if (event.index !== state.currentIndex) {
+    throw new Error(`event index ${event.index} does not match current index ${state.currentIndex}`);
+  }
+  const node = run.flow.nodes[state.currentIndex];
+  if (event.type === 'gateConfirmed' && node.kind !== 'gate') {
+    throw new Error('gateConfirmed requires the current node to be a gate');
+  }
+  if (event.type === 'stepCompleted' && node.kind === 'gate') {
+    throw new Error('gate nodes must be confirmed');
   }
 }
 

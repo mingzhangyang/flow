@@ -21,9 +21,11 @@ export function RunnerScreen(props: {
   notifier: Notifier;
   onExit: () => void;
 }) {
-  const { flow } = props;
   const { locale, t } = useI18n();
-  const run = usePersistentRun(flow, props.storage, props.notifier, locale);
+  const run = usePersistentRun(props.flow, props.storage, props.notifier, locale);
+  // Display the same immutable snapshot that the Runtime is executing. If the
+  // library definition changed mid-run, it takes effect only after Restart.
+  const flow = run.flow;
   const state = run.state;
   const node = state.currentIndex < flow.nodes.length ? flow.nodes[state.currentIndex] : null;
   const running = state.status === 'running' || state.status === 'paused';

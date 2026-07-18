@@ -29,6 +29,51 @@ test('保存 / 读取 / 列出 / 删除 Flow', async () => {
   assert.equal(await s.loadFlow('example.coffee'), null);
 });
 
+test('损坏的 Flow 记录 → loadFlow 为 null，listFlows 保留其余合法 Flow', async () => {
+  const kv = createInMemoryKV();
+  const s = createStorage(kv);
+  await s.saveFlow(coffeeFlow);
+  await kv.setItem('flow:broken-json', '{not json');
+  await kv.setItem('flow:bad-shape', JSON.stringify({ id: 'bad-shape' }));
+
+  assert.equal(await s.loadFlow('broken-json'), null);
+  assert.equal(await s.loadFlow('bad-shape'), null);
+  assert.deepEqual((await s.listFlows()).map((flow) => flow.id), [coffeeFlow.id]);
+});
+
+test('删除 Flow 同时清理其历史、Run 与打卡，且不影响其它 Flow', async () => {
+  const kv = createInMemoryKV();
+  const s = createStorage(kv);
+  const ownedRun: Run = {
+    id: 'past-example.coffee',
+    flow: coffeeFlow,
+    events: [{ type: 'started', at: 1000 }],
+  };
+  const otherRun: Run = {
+    id: 'active-example.medication',
+    flow: medicationFlow,
+    events: [{ type: 'started', at: 1000 }],
+  };
+  await s.saveFlow(coffeeFlow);
+  await s.saveFlow(medicationFlow);
+  await s.saveRevisions(coffeeFlow.id, [coffeeFlow]);
+  await s.saveCheckIns(coffeeFlow.id, [{ nodeId: 'water', scheduledFor: 1, taken: true, at: 2 }]);
+  await s.saveRun(ownedRun);
+  await s.saveRun(otherRun);
+  // 旧版/损坏的 active Run 也应能按稳定 id 清掉，不能成为永久孤儿。
+  await kv.setItem('run:active-example.coffee', '{not json');
+
+  await s.deleteFlow(coffeeFlow.id);
+
+  assert.equal(await s.loadFlow(coffeeFlow.id), null);
+  assert.deepEqual(await s.loadRevisions(coffeeFlow.id), []);
+  assert.deepEqual(await s.loadCheckIns(coffeeFlow.id), []);
+  assert.equal(await s.loadRun(ownedRun.id), null);
+  assert.equal((await kv.keys()).includes('run:active-example.coffee'), false);
+  assert.deepEqual(await s.loadFlow(medicationFlow.id), medicationFlow);
+  assert.deepEqual(await s.loadRun(otherRun.id), otherRun);
+});
+
 test('导出 / 导入 Flow 无损', async () => {
   const s = fresh();
   await s.saveFlow(coffeeFlow);
@@ -93,10 +138,22 @@ test('损坏的 Run 记录 → loadRun 为 null，listRuns 跳过', async () => 
       ],
     }),
   );
+  await kv.setItem(
+    'run:wrong-current',
+    JSON.stringify({
+      id: 'wrong-current',
+      flow: coffeeFlow,
+      events: [
+        { type: 'started', at: 0 },
+        { type: 'stepCompleted', index: 1, at: 1 }, // 范围内但不在当前游标——语义非法
+      ],
+    }),
+  );
 
   assert.equal(await s.loadRun('broken-json'), null);
   assert.equal(await s.loadRun('bad-shape'), null);
   assert.equal(await s.loadRun('illegal-log'), null);
+  assert.equal(await s.loadRun('wrong-current'), null);
   assert.deepEqual(await s.listRuns(), []);
 });
 

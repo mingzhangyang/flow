@@ -84,7 +84,9 @@
 - [x] UI 回归固化：历次手动 Playwright 验收固化为 `npm run test:e2e`（web 构建 + 假时钟注入，运行/打卡/导入导出/备份六条路径），入 CI 与本地同一命令　`C10,E4`
 - [x] 提醒断档修复（第一步）：跟随设备时区的 daily/weekly 改用**系统级重复触发器**（排入一次长期有效，App 几周不开也不断档）；once/everyNDays/锚定时区仍走 7 天预排窗口　`C5,E3`
 - [x] 提醒能力对用户诚实：`Notifier.status()`（ready/undetermined/denied/unsupported）——权限被拒时日程视图显示警示横幅 + 「去系统设置」；网页版明示不支持定时提醒（e2e 断言）。权限请求时机本就延迟在首次登记提醒时（schedule 内 ensurePermission）　`E6,C5,C10`
-- [ ] 提醒断档修复（后续，需真机）：Android 13+ 通知权限与精确闹钟（`SCHEDULE_EXACT_ALARM`）编排、Doze 实测、电池优化白名单引导；被拒横幅的真机行为验证　`C5`
+- [x] 原生提醒送达基线：前台 presentation handler、默认提示音、Android 高优先级 channel（先建 channel 再请求 Android 13 权限）、`SCHEDULE_EXACT_ALARM` manifest 声明；适配器策略契约测试　`C5,C10`
+- [x] P1/P2 数据与时间加固：weekly 重复槽位覆盖秋令时回拨的超 168h 一周；Run 重放校验语义与时间顺序；损坏 Flow 逐条隔离；删除 Flow 级联清理历史、Run、打卡、提醒登记与待决提醒　`C5,C6,E2,E3,E4,E5,C10`
+- [ ] 提醒断档修复（后续，需真机）：Android 12+「闹钟和提醒」特殊访问的授予/撤销实测、Doze 实测、电池优化白名单引导；被拒横幅的真机行为验证　`C5`
 - [ ] 真机验证本地推送（清单见 `docs/release.md`：权限时机、强杀/重启/Doze 到点、被拒横幅、国产 ROM）——需真机
 - [x] 品牌资产：图标/自适应图标/splash/favicon 已从 `assets/brand/` SVG 源渲染（`scripts/render-brand.mjs`）
 - [ ] EAS：配置已就绪（`eas.json` + 发布手册 `docs/release.md`）；余项需账号——`eas init`、Apple Developer / Play Console、keystore 备份、TestFlight / internal testing

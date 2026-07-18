@@ -19,7 +19,8 @@ import { secureKV } from './src/storage/secureKv';
 import { createLibrary } from './src/session/library';
 import { loadSettings, saveSettings, type Settings } from './src/session/settings';
 import { createExpoNotifier } from './src/notifications/expoNotifier';
-import { enrollFlow, rescheduleReminders } from './src/notifications/reschedule';
+import { enrollFlow, rescheduleReminders, unenrollFlow } from './src/notifications/reschedule';
+import { activeRunId } from './src/runtime/runIdentity';
 import { systemTimeZone } from './src/runtime/systemTimeZone';
 import { systemSharer } from './src/sharing/systemSharer';
 import { HomeScreen } from './src/ui/HomeScreen';
@@ -90,25 +91,33 @@ function Shell() {
   };
 
   // 重排已登记 flow 未来数日的日程提醒——启动、回到前台、库变更时各续一次（C5）。
-  const refreshReminders = useCallback((): void => {
-    library
-      .list()
-      .then((flows) =>
-        rescheduleReminders({
-          kv: asyncStorageKV,
-          notifier,
-          flows: [...examples, ...flows],
-          now: Date.now(),
-          deviceTz: systemTimeZone,
-        }),
-      )
-      .catch(() => {});
+  const refreshReminders = useCallback(async (): Promise<void> => {
+    try {
+      const flows = await library.list();
+      await rescheduleReminders({
+        kv: asyncStorageKV,
+        notifier,
+        flows: [...examples, ...flows],
+        now: Date.now(),
+        deviceTz: systemTimeZone,
+      });
+    } catch {
+      // 提醒能力不可用不阻塞本地 Flow 操作；ScheduleScreen 会向用户展示能力状态。
+    }
   }, [library, notifier, examples]);
 
+  const removeFlow = useCallback(async (flowId: string): Promise<void> => {
+    await library.remove(flowId); // 定义 + 历史 + Run + 打卡由 Storage 一并清理
+    await unenrollFlow(asyncStorageKV, flowId);
+    // 顺序计时提醒不在日程提醒批次清单里，按稳定的 active Run id 单独取消。
+    await notifier.cancel([activeRunId(flowId)]).catch(() => {});
+    await refreshReminders(); // 取消上一批日程提醒，并仅为剩余 flow 重排
+  }, [library, notifier, refreshReminders]);
+
   useEffect(() => {
-    refreshReminders();
+    void refreshReminders();
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') refreshReminders();
+      if (state === 'active') void refreshReminders();
     });
     return () => sub.remove();
   }, [refreshReminders, refreshKey]);
@@ -126,6 +135,7 @@ function Shell() {
           onEdit={(flow) => setScreen({ name: 'edit', flow })}
           onExport={(flow) => setScreen({ name: 'export', flow })}
           onInsight={(flow) => setScreen({ name: 'insight', flow })}
+          onDelete={removeFlow}
           onImport={() => setScreen({ name: 'import' })}
           onGenerate={() => setScreen({ name: 'generate' })}
           onSettings={() => setScreen({ name: 'settings' })}

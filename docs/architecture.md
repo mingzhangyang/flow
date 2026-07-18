@@ -36,7 +36,8 @@
   - `project(flow: Flow, log: RunEvent[], now: Instant): RunState` — 由日志重建状态（E2）。
   - `nextEvents(flow, state, now): ScheduledEvent[]` — 每节点最近一次触发，驱动界面「下一次」。
   - `upcomingEvents(flow, now, tz, horizonMs)` — 窗口内**全部**触发（可跨多日），供通知层一次排入数日提醒。
-  - `reduce` 对带下标的事件做范围校验——非法转移抛错，坏日志进不了 Run。
+  - `reduce` 校验事件时间单调、暂停/恢复状态、当前游标、节点动作类型与回退方向——非法转移
+    抛错，坏日志进不了 Run。
 - **不变式**：无隐式 `now()`、无隐藏内存；同一输入必得同一输出（E4）。
 - **重复规则（`runtime/recurrence.ts`）**：节律在 **Flow 级**（`Flow.repeat`，整个模式一起重复，ADR-0003）。`occursOnDay(repeat, anchor, tz)` 判定某条规则在某个本地日是否发生（weekly 按星期、everyNDays 按起算日取模），engine 排下一次触发与 adherence 过滤今日清单共用（今天不在节律上 = 整条 flow 今天无事件）；`describeRecurrence` 供 UI/解读。once 语义为「仅今天一次，过时不候」——无状态运行时不跨日顺延，这是缺省值（默认不重复）。
 - **时区**：与时钟同为显式注入。`TimeZone.offsetAt(instant)` 表达「偏移随时刻变化」，因此 DST 切换日也正确（固定偏移标量仍兼容）；墙钟 → Instant 的换算集中在 `instantAtTimeOfDay`——被跳过的时刻取切换后第一个时刻，重复的时刻取第一次。适配器有二：`systemTimeZone`（按被询问时刻取设备偏移）与 `ianaTimeZone(name)`（按 IANA 时区名，供 `Flow.timeZone` 锚定非设备时区——出差时仍按家里的时区提醒）；`timeZoneForFlow(flow, fallback)` 做选择与坏名回退。测试注入固定或阶跃时区，IANA 适配器用真实 DST 切换点验证。
@@ -49,6 +50,8 @@
 - **读入闸门**：持久数据回到纯核心前先过校验——flow 快照（含 Run 内嵌、历史修订）走
   迁移 + 校验（`coerceFlow`），Run 事件日志用 `reduce` 从头重放验证（重放即校验，E4）；
   坏数据返回 null / 逐条跳过，绝不让非法状态流入运行时。
+- **删除级联**：用户删除 Flow 时，同时清理其历史修订、Run 快照与打卡日志；其它 Flow 的数据
+  不受影响。通知登记与 OS 待决提醒由 App 编排层同步撤销。
 - **机密走窄端口**：`SecretStore`（getItem/setItem/removeItem，无枚举）。适配器
   `secureKv.native`（iOS Keychain / Android Keystore，expo-secure-store）、Web 回落
   AsyncStorage；AI 模型密钥经此存储，不与普通数据混在一个后端（C6）。
@@ -62,6 +65,10 @@
 把 Runtime 给出的触发时刻翻译成平台的本地定时通知/闹钟（expo-notifications）。
 - 接口：`schedule(events) / cancel(ids) / rescheduleFor(run)`。
 - **不变式**：不含业务逻辑，只做"事件 → 平台通知"的翻译；掉电/重启后可由 Run 记录重建。
+- **原生送达策略**：前台显式安装 presentation handler（可见 + 默认提示音）；Android 先建立
+  高优先级 `reminders` channel 再请求通知权限（Android 13），所有触发器显式绑定该 channel；
+  `SCHEDULE_EXACT_ALARM` 由 app config 声明，系统未授予特殊访问时 expo-notifications 按平台能力
+  降级为非精确提醒，避免调度直接失败。
 - **重复触发器优先（`plan.ts` 的 `ReminderRepeat`）**：跟随设备时区的 daily/weekly 节律
   不做预排，而是每「节点 × 星期槽位」排一条**系统级重复触发器**（iOS 为 repeats 的
   UNCalendarNotificationTrigger，随系统持久、重启仍在；Android 由 expo-notifications 续排）——
@@ -72,6 +79,7 @@
 - **登记与重排（`reschedule.ts`）**：用户打开某条日程型 flow 的运行视图即为它**登记**提醒
   （enroll，不为没打开过的 flow 自动推送）；App 启动 / 回到前台 / 库变更时把已登记 flow
   的提醒整批重排（上一批 id 记在 KV，先取消再排入；重复触发器 id 稳定，重排即同 id 替换）。
+  删除 flow 时先 unenroll，再取消其顺序计时提醒并重排日程批次，不留孤儿通知。
   单批截断到 48 条（iOS 待决通知上限 64，留余量）；计划本身是纯函数（`plan.ts`），编排不含时钟隐读（E3）。
 
 ### 5. AI Assistant（`src/ai/`）

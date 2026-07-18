@@ -19,10 +19,11 @@ import {
   resumeAction,
   backAction,
 } from '../session/actions';
-
-const runIdFor = (flow: Flow): string => `active-${flow.id}`;
+import { activeRunId } from '../runtime/runIdentity';
 
 export interface PersistentRun {
+  /** The immutable Flow snapshot owned by this Run. */
+  flow: Flow;
   state: RunState;
   start: () => void;
   complete: () => void;
@@ -39,7 +40,7 @@ export function usePersistentRun(
   notifier: Notifier,
   locale: Locale,
 ): PersistentRun {
-  const [run, setRun] = useState<Run>(() => ({ id: runIdFor(flow), flow, events: [] }));
+  const [run, setRun] = useState<Run>(() => ({ id: activeRunId(flow.id), flow, events: [] }));
   const [now, setNow] = useState<Instant>(() => Date.now());
   const [loaded, setLoaded] = useState(false);
 
@@ -47,7 +48,7 @@ export function usePersistentRun(
   useEffect(() => {
     let alive = true;
     storage
-      .loadRun(runIdFor(flow))
+      .loadRun(activeRunId(flow.id))
       .then((saved) => {
         if (!alive) return;
         if (saved && saved.flow.id === flow.id) setRun(saved);
@@ -59,7 +60,9 @@ export function usePersistentRun(
     };
   }, [flow, storage]);
 
-  const state = project(flow, run.events, now);
+  // A restored Run must always execute its own definition snapshot. The latest
+  // library Flow is used only when reset starts a new Run (Flow ≠ Run).
+  const state = project(run.flow, run.events, now);
 
   // 计时进行时按秒刷新
   useEffect(() => {
@@ -72,12 +75,12 @@ export function usePersistentRun(
   useEffect(() => {
     if (!loaded) return;
     storage.saveRun(run).catch(() => {});
-    const reminder = planSequentialReminder(flow, run.events, Date.now(), run.id, locale);
+    const reminder = planSequentialReminder(run.flow, run.events, Date.now(), run.id, locale);
     notifier
       .cancel([run.id])
       .then(() => (reminder ? notifier.schedule([reminder]) : undefined))
       .catch(() => {});
-  }, [run, loaded]);
+  }, [run, loaded, locale, notifier, storage]);
 
   const apply = (event: RunEvent | null): void => {
     if (!event) return;
@@ -85,19 +88,19 @@ export function usePersistentRun(
     setNow(Date.now());
   };
   const reset = (): void => {
-    setRun({ id: runIdFor(flow), flow, events: [] });
+    setRun({ id: activeRunId(flow.id), flow, events: [] });
     setNow(Date.now());
   };
 
   return {
+    flow: run.flow,
     state,
     start: () => apply(startAction(Date.now())),
-    complete: () => apply(completeCurrentAction(flow, run.events, Date.now())),
-    skip: () => apply(skipCurrentAction(flow, run.events, Date.now())),
-    pause: () => apply(pauseAction(flow, run.events, Date.now())),
-    resume: () => apply(resumeAction(flow, run.events, Date.now())),
-    back: () => apply(backAction(flow, run.events, Date.now())),
+    complete: () => apply(completeCurrentAction(run.flow, run.events, Date.now())),
+    skip: () => apply(skipCurrentAction(run.flow, run.events, Date.now())),
+    pause: () => apply(pauseAction(run.flow, run.events, Date.now())),
+    resume: () => apply(resumeAction(run.flow, run.events, Date.now())),
+    back: () => apply(backAction(run.flow, run.events, Date.now())),
     reset,
   };
 }
-

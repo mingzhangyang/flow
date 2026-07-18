@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { type Flow, type RunEvent } from '../domain/types';
 import { planSequentialReminder, planScheduledReminders, planScheduledBatch } from './plan';
 import { MS_PER_DAY } from '../runtime/clock';
+import { ianaTimeZone } from '../runtime/ianaTimeZone';
 import { coffeeFlow } from '../examples/coffee';
 import { medicationFlow } from '../examples/medication';
 
@@ -109,6 +110,24 @@ test('weekly + 重复触发器 → 每「节点 × 星期」一条，weekday 同
   assert.equal(monday?.at, 4 * MS_PER_DAY + 9 * 3_600_000); // 下周一 = 第 4 天
   const thursday = rem.find((r) => r.id === 'wk:dose:w4');
   assert.equal(thursday?.at, 7 * MS_PER_DAY + 9 * 3_600_000); // 今天已过 → 下周四
+});
+
+test('weekly + 秋令时回拨 → 不漏掉超过 168 小时的下周同一墙钟槽位', () => {
+  const weekly: Flow = {
+    ...medicationFlow,
+    id: 'dst-fall-weekly',
+    repeat: { kind: 'weekly', days: [0] },
+    nodes: [{ kind: 'scheduled', id: 'dose', label: '剂', at: 3 * 60 }],
+  };
+  // 纽约 2026-10-25 周日 03:01（EDT）；下次周日 03:00 已切为 EST，间隔 168h59m。
+  const now = Date.parse('2026-10-25T07:01:00Z');
+  const rem = planScheduledReminders(weekly, now, ianaTimeZone('America/New_York'), MS_PER_DAY, {
+    repeatingTriggers: true,
+  });
+
+  assert.equal(rem.length, 1);
+  assert.equal(rem[0].at, Date.parse('2026-11-01T08:00:00Z'));
+  assert.deepEqual(rem[0].repeat, { kind: 'weekly', weekday: 0, hour: 3, minute: 0 });
 });
 
 test('once / everyNDays 即便允许重复触发器也走预排窗口（无 repeat 字段）', () => {

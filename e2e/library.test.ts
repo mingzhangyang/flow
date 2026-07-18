@@ -64,3 +64,45 @@ test('AI 解读（本地解释器）对示例可用', async () => {
   await page.getByText('‹ 返回', { exact: true }).click();
   await expectText(page, '示例');
 });
+
+test('删除日程 Flow → 定义、历史、打卡与提醒登记全部级联清理', async () => {
+  const page = await e2e.openApp();
+
+  await page.getByText('＋ 日程', { exact: true }).click();
+  await page.getByPlaceholder('流程名称').fill('级联删除');
+  await page.getByText('＋ 添加事件', { exact: true }).click();
+  await page.getByPlaceholder('事件（如：早餐后服药）').fill('早餐后服药');
+  await page.getByText('保存', { exact: true }).click();
+
+  // 先取开放格式里的稳定 id；随后产生提醒登记与一条打卡。
+  await page.getByText('分享', { exact: true }).click();
+  const exported = JSON.parse(await page.locator('textarea').inputValue()) as { id: string };
+  await page.getByText('‹ 返回', { exact: true }).click();
+  await page.getByText('级联删除', { exact: true }).click();
+  await page.getByText('打卡', { exact: true }).click();
+  await expectText(page, '已服');
+  await page.waitForFunction((id) => {
+    const enrolled = JSON.parse(localStorage.getItem('notif:enrolled') ?? '[]') as unknown;
+    return Array.isArray(enrolled) && enrolled.includes(id) && localStorage.getItem(`checkins:${id}`) !== null;
+  }, exported.id);
+  await page.getByText('‹ 返回', { exact: true }).click();
+
+  // 再提交一版以产生历史修订，然后从首页删除。
+  await page.getByText('编辑', { exact: true }).click();
+  await page.getByPlaceholder('流程名称').fill('级联删除 v2');
+  await page.getByText('保存', { exact: true }).click();
+  await page.waitForFunction((id) => localStorage.getItem(`rev:${id}`) !== null, exported.id);
+  await page.getByText('删除', { exact: true }).click();
+  await page.getByText('级联删除 v2', { exact: true }).waitFor({ state: 'detached' });
+
+  // App 编排层完成后，任何 KV key/value 都不再引用被删 flow（含 scheduled ids/enrollment）。
+  await page.waitForFunction(
+    (id) => Object.entries(localStorage).every(([key, value]) => !key.includes(id) && !value.includes(id)),
+    exported.id,
+  );
+  assert.equal(
+    await page.evaluate((id) =>
+      Object.entries(localStorage).some(([key, value]) => key.includes(id) || value.includes(id)), exported.id),
+    false,
+  );
+});

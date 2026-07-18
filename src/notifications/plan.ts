@@ -79,11 +79,12 @@ export function planScheduledReminders(
 ): Reminder[] {
   const repeat = flow.repeat;
   if (opts?.repeatingTriggers && (repeat?.kind === 'daily' || repeat?.kind === 'weekly')) {
-    // 未来 7 天内每个「节点 × 星期」槽位恰好出现一次：一趟展开即枚举全部重复槽位，
-    // 且每条的 at 就是该槽位的下一次触发（墙钟换算沿用 instantAtTimeOfDay，DST 语义一致）。
+    // 用 8 个绝对日覆盖完整的 7 个本地日：秋令时回拨会让一周长于 7 × 24h，若只扫
+    // 7 个绝对日，恰好落在回拨后的下周同一墙钟槽位可能被漏掉。seen 仍保证每个槽位
+    // 只取最近一次；at 的墙钟换算沿用 instantAtTimeOfDay，DST 语义一致。
     const seen = new Set<string>();
     const reminders: Reminder[] = [];
-    for (const o of upcomingEvents(flow, now, tz, 7 * MS_PER_DAY)) {
+    for (const o of upcomingEvents(flow, now, tz, 8 * MS_PER_DAY)) {
       const weekday = weekdayOfDayIndex(localDayIndex(o.at, tz));
       const key = repeat.kind === 'daily' ? `${o.nodeId}:daily` : `${o.nodeId}:w${weekday}`;
       if (seen.has(key)) continue;

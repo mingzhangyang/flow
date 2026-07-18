@@ -50,3 +50,30 @@ test('法压咖啡：开始 → 计时 → 暂停 → 刷新后恢复 → 跳过
   await expectText(page, /第 2 \/ 5 步/);
   assert.equal(await page.getByText('浸泡', { exact: true }).count() > 0, true);
 });
+
+test('运行中编辑定义 → 已开始的 Run 继续使用原快照，重开也不漂移', async () => {
+  const page = await e2e.openApp();
+
+  // 建一条 60 秒 flow 并开始运行。
+  await page.getByText('＋ 顺序', { exact: true }).click();
+  await page.getByPlaceholder('流程名称').fill('快照隔离');
+  await page.getByText('＋ 添加步骤', { exact: true }).click();
+  await page.getByPlaceholder('这一步做什么').fill('旧步骤');
+  await page.getByText('保存', { exact: true }).click();
+  await page.getByText('快照隔离', { exact: true }).click();
+  await page.getByText('开始', { exact: true }).click();
+  await page.clock.fastForward(10_000);
+  await expectText(page, '00:50');
+  await page.getByText('‹ 返回', { exact: true }).click();
+
+  // 定义改成 5 秒与新标签；已开始的 Run 必须不受影响（AI-C1）。
+  await page.getByText('编辑', { exact: true }).click();
+  await page.getByPlaceholder('这一步做什么').fill('新步骤');
+  await page.getByText('时长(秒)', { exact: true }).locator('..').locator('input').fill('5');
+  await page.getByText('保存', { exact: true }).click();
+  await page.getByText('快照隔离', { exact: true }).click();
+
+  await expectText(page, '旧步骤');
+  await expectText(page, '00:50');
+  assert.equal(await page.getByText('新步骤', { exact: true }).count(), 0);
+});

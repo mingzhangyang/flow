@@ -4,6 +4,7 @@
 import { type Flow, type Run, type RunEvent, type RunEventType } from '../domain/types';
 import { serializeFlow, deserializeFlow, coerceFlow } from '../domain/serialize';
 import { reduce } from '../runtime/engine';
+import { activeRunId } from '../runtime/runIdentity';
 import { type CheckIn, isCheckIn } from '../runtime/adherence';
 import { type KVStore } from './kv';
 
@@ -29,7 +30,8 @@ const EVENT_TYPES = new Set<RunEventType>([
 function isRunEvent(value: unknown): value is RunEvent {
   if (typeof value !== 'object' || value === null) return false;
   const e = value as { type?: unknown; at?: unknown };
-  return typeof e.type === 'string' && EVENT_TYPES.has(e.type as RunEventType) && typeof e.at === 'number';
+  return typeof e.type === 'string' && EVENT_TYPES.has(e.type as RunEventType) &&
+    typeof e.at === 'number' && Number.isFinite(e.at);
 }
 
 function parseRun(text: string): Run | null {
@@ -75,7 +77,12 @@ export interface Storage {
 export function createStorage(kv: KVStore): Storage {
   async function loadFlow(id: string): Promise<Flow | null> {
     const text = await kv.getItem(FLOW + id);
-    return text ? deserializeFlow(text) : null;
+    if (!text) return null;
+    try {
+      return deserializeFlow(text);
+    } catch {
+      return null;
+    }
   }
   async function saveFlow(flow: Flow): Promise<void> {
     await kv.setItem(FLOW + flow.id, serializeFlow(flow)); // serializeFlow 会校验
@@ -99,14 +106,29 @@ export function createStorage(kv: KVStore): Storage {
       const keys = (await kv.keys()).filter((k) => k.startsWith(FLOW));
       const flows: Flow[] = [];
       for (const k of keys) {
-        const text = await kv.getItem(k);
-        if (text) flows.push(deserializeFlow(text));
+        const flow = await loadFlow(k.slice(FLOW.length));
+        if (flow) flows.push(flow);
       }
       flows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
       return flows;
     },
     async deleteFlow(id) {
-      await kv.removeItem(FLOW + id);
+      // Run 携带 Flow 快照，不能只按 run id 猜归属；逐条过读入闸门后删除所有属于
+      // 该 Flow 的运行实例。删除很少发生，这里的完整扫描换取不留孤儿用户数据。
+      const runKeys = (await kv.keys()).filter((k) => k.startsWith(RUN));
+      // active Run 的 id 是稳定约定，即使其内容已经损坏、无法 parse，也能按精确键清掉。
+      const ownedRunKeys = new Set<string>([RUN + activeRunId(id)]);
+      for (const key of runKeys) {
+        const text = await kv.getItem(key);
+        const run = text ? parseRun(text) : null;
+        if (run?.flow.id === id) ownedRunKeys.add(key);
+      }
+      await Promise.all([
+        kv.removeItem(FLOW + id),
+        kv.removeItem(REV + id),
+        kv.removeItem(CHECKINS + id),
+        ...[...ownedRunKeys].map((key) => kv.removeItem(key)),
+      ]);
     },
     async exportFlow(id) {
       const flow = await loadFlow(id);

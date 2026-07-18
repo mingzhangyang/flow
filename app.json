@@ -16,6 +16,9 @@
     "android": {
       "package": "com.mingzhangyang.zhunshi",
       "versionCode": 1,
+      "permissions": [
+        "android.permission.SCHEDULE_EXACT_ALARM"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#2F6F4F",
         "foregroundImage": "./assets/android-icon-foreground.png",

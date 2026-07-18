@@ -9,7 +9,7 @@ import { medicationFlow } from '../examples/medication';
 import { coffeeFlow } from '../examples/coffee';
 import { type Reminder } from './plan';
 import { type Notifier } from './notifier';
-import { enrollFlow, enrolledFlowIds, rescheduleReminders, RESCHEDULE_CAP } from './reschedule';
+import { enrollFlow, enrolledFlowIds, rescheduleReminders, RESCHEDULE_CAP, unenrollFlow } from './reschedule';
 
 /** 记录型 Notifier：断言排入/取消了什么。 */
 function recordingNotifier() {
@@ -39,6 +39,15 @@ test('enroll 幂等，登记清单可读回', async () => {
   await enrollFlow(kv, 'a');
   await enrollFlow(kv, 'b');
   assert.deepEqual(await enrolledFlowIds(kv), ['a', 'b']);
+});
+
+test('unenroll 只移除目标 flow，且幂等', async () => {
+  const kv = createInMemoryKV();
+  await enrollFlow(kv, 'a');
+  await enrollFlow(kv, 'b');
+  await unenrollFlow(kv, 'a');
+  await unenrollFlow(kv, 'a');
+  assert.deepEqual(await enrolledFlowIds(kv), ['b']);
 });
 
 test('只为已登记的日程型 flow 排提醒；未登记/顺序型不排', async () => {
