@@ -24,6 +24,22 @@
 | 商店正式包 | `eas build --profile production -p all` |
 | 提交商店 | `eas submit -p ios` / `eas submit -p android` |
 
+## 冻结候选版本（真机验证前必做）
+
+真机证据只对**生成该安装包的 commit**有效。旧 APK 能用于试装，不能替代当前 HEAD 的发布验证。
+
+1. 确认准备材料已提交、工作树干净，分支已推远端且 CI 全绿。
+2. 在同一 commit 运行 `npm run check && npm run test:e2e`，再运行 `npx expo-doctor`；任何失败都先修复。
+3. 用 `git rev-parse HEAD` 记录完整 RC SHA，然后从该 SHA 执行
+   `eas build --profile preview -p android`（iOS 候选版本使用对应 profile/platform）。
+4. 在 EAS 构建记录中核对 commit SHA，把 SHA、build ID、产物链接写入
+   [`release-status.md`](./release-status.md) 与本次结果表。下载 APK，运行
+   `scripts/android-reminder-check.sh apk-sha256 <path>`，同时记录 artifact SHA-256。
+5. 代码、依赖、app config 或原生配置一旦变化，旧真机结论自动失效：生成新 build ID，并重跑受影响项。
+
+合并前再次确认 `git rev-parse HEAD` 与结果表 RC SHA 完全一致。若 main 或候选分支在验证后发生变化，
+不得沿用旧结果。
+
 ## 每次发版的版本号流程
 
 1. 改 `app.json`：`expo.version`（用户可见版本，同步改 `package.json.version`，
@@ -35,14 +51,36 @@
 
 ## 真机验证清单（首次发布前必过）
 
-- [ ] 打开服药示例 → 权限弹窗出现在**此时**（不是启动时）→ 允许
-- [ ] 强杀 App → 到点提醒响（iOS / Android 各测）
-- [ ] 重启设备 → 到点提醒响（Android 重点：boot receiver）
-- [ ] Android `adb shell dumpsys deviceidle force-idle` 模拟 Doze → 到点是否被推迟
-      （明显推迟 → 需要 `SCHEDULE_EXACT_ALARM` 引导，见 roadmap 余项）
+### Android RC 验证
+
+使用 [`../scripts/android-reminder-check.sh`](../scripts/android-reminder-check.sh) 辅助，并把完整证据填入
+[`android-reminder-test-results.md`](./android-reminder-test-results.md) 的副本。
+
+- [ ] 结果表 RC SHA、EAS build ID、APK SHA-256 与设备上安装的文件一致
+- [ ] 全新安装（或确认备份后清除测试数据）→ 启动时不弹通知权限 → 首次打开服药示例才弹 → 允许
+- [ ] 前台、按 Home 后台、普通后台进程死亡（脚本 `process-death`）三种状态都到点提醒
+- [ ] 重启设备且不先打开 App → 到点提醒（boot receiver / 系统调度验证）
+- [ ] Android 12+ 分别记录“闹钟和提醒”特殊访问授予/撤销状态；授予后进入 Doze 仍按时提醒
+- [ ] 撤销特殊访问后重复 Doze：若明显推迟且 App 没有诚实提示/引导，作为发布阻塞处理
 - [ ] 拒绝通知权限 → 日程视图出现警示横幅 → 点「去系统设置」→ 开启后回来横幅消失
-- [ ] 国产 ROM（小米/华为等）至少一台：后台数小时后提醒仍到点
 - [ ] 锚定时区 flow：改设备时区后提醒时刻仍按锚定时区
+- [ ] 编辑/删除已登记 flow 后，旧提醒被替换/取消，无孤儿提醒
+- [ ] `force-stop --ack-platform-limit` 只验证平台边界：重新打开前**不期待**提醒；重新打开并安排未来提醒后恢复
+- [ ] 国产 ROM（小米/华为等）至少一台：后台数小时后提醒仍到点；无设备时是唯一可显式延期项
+
+默认准时判据为“不提前、延迟不超过 60 秒”；若设备/系统需要不同容差，必须在开始测试前写入结果表并说明，
+不能看到结果后再放宽。清除应用数据会删除本地 Flow 与设置，操作前先按 C6 完成备份。
+
+> Android 的“普通进程死亡”和 force-stop 不是一回事。force-stop 会把包置于 stopped state，
+> 用户重新打开前系统不允许它自行恢复；因此不能用 `adb shell am force-stop` 证明“后台仍会提醒”。
+
+### iOS RC 验证（产生 iOS 构建后独立执行）
+
+- [ ] 记录独立的 commit SHA、build ID、iOS 版本与设备型号
+- [ ] 权限请求只在首次登记提醒时出现；允许/拒绝/设置恢复均符合文案
+- [ ] 前台、后台、从 App Switcher 划掉后分别验证本地提醒
+- [ ] 重启/系统升级边界与锚定时区行为有记录
+- [ ] 真机结果绑定待发布 iOS RC；未验证前不得进入 TestFlight / App Store 发布列车
 
 ## 商店提交前置
 

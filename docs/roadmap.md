@@ -87,7 +87,8 @@
 - [x] 原生提醒送达基线：前台 presentation handler、默认提示音、Android 高优先级 channel（先建 channel 再请求 Android 13 权限）、`SCHEDULE_EXACT_ALARM` manifest 声明；适配器策略契约测试　`C5,C10`
 - [x] P1/P2 数据与时间加固：weekly 重复槽位覆盖秋令时回拨的超 168h 一周；Run 重放校验语义与时间顺序；损坏 Flow 逐条隔离；删除 Flow 级联清理历史、Run、打卡、提醒登记与待决提醒　`C5,C6,E2,E3,E4,E5,C10`
 - [ ] 提醒断档修复（后续，需真机）：Android 12+「闹钟和提醒」特殊访问的授予/撤销实测、Doze 实测、电池优化白名单引导；被拒横幅的真机行为验证　`C5`
-- [ ] 真机验证本地推送（清单见 `docs/release.md`：权限时机、强杀/重启/Doze 到点、被拒横幅、国产 ROM）——需真机
+- [ ] 真机验证本地推送（清单见 `docs/release.md`：权限时机、普通进程死亡/重启/Doze 到点、
+      force-stop 平台边界、被拒横幅、国产 ROM；结果绑定 RC SHA/build ID）——需真机
 - [x] 品牌资产：图标/自适应图标/splash/favicon 已从 `assets/brand/` SVG 源渲染（`scripts/render-brand.mjs`）
 - [ ] EAS：配置已就绪（`eas.json` + 发布手册 `docs/release.md`）；余项需账号——`eas init`、Apple Developer / Play Console、keystore 备份、TestFlight / internal testing
 - [ ] 商店合规与材料：文案/申报口径/截图方案已定稿（`docs/store-listing.md`，截图草稿 `npm run shots`）；隐私政策双语 HTML 就绪（`site/privacy/`，接入 Cloudflare Pages 即上线，见 `docs/release.md`）；余项——Cloudflare 接入、真机重截、商店后台填报
