@@ -8,14 +8,15 @@
 
 Android 曾在 commit `21452e4` 成功生成可安装 preview APK，但当前分支 HEAD 已到 `01d9eb5`，
 其后 4 个提交包含原生提醒与生命周期变更。因此旧 APK **不是当前发布候选版本（RC）**，只能用于试装。
-当前首要顺序是：准备材料入库并推远端 → 备份 keystore → 从精确 HEAD 构建新 RC → Android 真机验证。
+准备材料已入库并推远端。当前首要顺序是：备份 keystore → 从精确 HEAD 构建新 RC → Android 真机验证。
 
 ## 当前工程基线
 
 - 分支：`chore/eas-project-link`
-- HEAD：`01d9eb5cc2c80b5db2f65fbbc75582d5b658b814`
-- 相对 `main`：领先 6 个 commit，`main` 当前为 `89c21be`
-- 远端：仓库有 `origin`；本分支尚无 upstream，尚未异地备份
+- 准备前代码 HEAD：`01d9eb5cc2c80b5db2f65fbbc75582d5b658b814`
+- 准备提交：`f517f41`（文档/脚本）+ `aaff5b5`（脚本 executable bit）
+- `main` 基线：`89c21be`；实时 HEAD 与领先数以 `git rev-parse HEAD` / `git rev-list` 为准
+- 远端：已建立 `origin/chore/eas-project-link` upstream，准备提交已异地备份
 - `npm run check`：2026-07-19 本地通过；源代码中 172 个 `test(...)` 用例
 - RC 闸门尚未执行：`npm run test:e2e`、`npx expo-doctor`、当前 HEAD 的 EAS build 均需在冻结 RC 时重跑
 - 真机验证：尚未开始
@@ -34,7 +35,7 @@ Android 曾在 commit `21452e4` 成功生成可安装 preview APK，但当前分
 5. [`release-evidence/`](./release-evidence/README.md) 已定义逐 RC 留档与隐私规则。
 6. 真实服药 dogfood / 用户验证已加入 E6 边界：只能作为既有提醒的并行辅助，不得替代医嘱或唯一提醒。
 
-以上改动目前仍在工作树中，尚未 commit / push；这正是计划 P0 的第一项。
+以上准备已由 commit `f517f41` 与 `aaff5b5` 入库并推送；后续状态更新单独提交，避免改写已发布历史。
 
 ## 历史构建产物（仅试装，不作为当前 RC 证据）
 
@@ -49,9 +50,9 @@ Android 曾在 commit `21452e4` 成功生成可安装 preview APK，但当前分
 
 ## 下一步（严格按顺序）
 
-- [ ] **P0.1 准备材料入库**：提交本次文档与脚本，提交信息标注
+- [x] **P0.1 准备材料入库**：提交本次文档与脚本，提交信息标注
       `Constitution: C5, C6, C10; E6`；确认没有相关文件仍未跟踪。
-- [ ] **P0.2 推送分支**：`git push -u origin chore/eas-project-link`；等待 CI 的 check 与 e2e 均通过。
+- [x] **P0.2 推送分支**：`git push -u origin chore/eas-project-link`；等待 CI 的 check 与 e2e 均通过。
 - [ ] **P0.3 备份 Android keystore**：按 [`keystore-backup.md`](./keystore-backup.md) 下载 `.jks`、
       保存三组值到 KeePassXC，并为 `.kdbx` 建立异地副本；`.jks` 绝不入库。
 - [ ] **P1.1 冻结 Android RC**：工作树干净、CI 全绿后，按 [`release.md`](./release.md)
