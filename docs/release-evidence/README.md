@@ -12,6 +12,8 @@ android-YYYYMMDD-<short-sha>.md
 
 - 文件内必须记录完整 commit SHA、EAS build ID、设备/系统版本和明确结论。
 - 代码、依赖、app config 或原生配置变化后创建新记录；旧记录保留，但不能放行新 RC。
+- build ID、artifact hash 与结果只有构建后才能产生，因此允许作为 RC 后的证据提交；运行
+  `scripts/verify-rc-scope.sh <RC_SHA>` 必须证明其后没有白名单外变化。
 - 不记录 adb serial、账号、药名、服药时间或其它个人健康信息。
 - 截图或日志若含个人信息，先脱敏再入库；无法安全脱敏则只记录本机受控位置，不提交文件本身。
 - 模板见 [`../android-reminder-test-results.md`](../android-reminder-test-results.md)。

@@ -35,9 +35,14 @@
 4. 在 EAS 构建记录中核对 commit SHA，把 SHA、build ID、产物链接写入
    [`release-status.md`](./release-status.md) 与本次结果表。下载 APK，运行
    `scripts/android-reminder-check.sh apk-sha256 <path>`，同时记录 artifact SHA-256。
-5. 代码、依赖、app config 或原生配置一旦变化，旧真机结论自动失效：生成新 build ID，并重跑受影响项。
+5. 构建完成后可把 build ID、APK SHA-256 与真机结果作为**证据提交**写回
+   `docs/release-status.md`、`docs/plan-2026-07-19.md` 或 `docs/release-evidence/`；这些文档不进入 App。
+   用 `scripts/verify-rc-scope.sh <RC_SHA>` 验证 RC 之后只有上述证据变化。
+6. 源码、依赖、app config、原生配置或白名单外任何文件一旦变化，旧真机结论自动失效：
+   生成新 build ID，并重跑受影响项。
 
-合并前再次确认 `git rev-parse HEAD` 与结果表 RC SHA 完全一致。若 main 或候选分支在验证后发生变化，
+合并前要求二选一：`git rev-parse HEAD` 与结果表 RC SHA 完全一致；或
+`scripts/verify-rc-scope.sh <RC_SHA>` 通过，证明其后只有发布证据文档。若候选分支存在其它变化，
 不得沿用旧结果。
 
 ## 每次发版的版本号流程

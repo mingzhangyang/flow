@@ -8,7 +8,8 @@
 
 Android 曾在 commit `21452e4` 成功生成可安装 preview APK，但当前分支 HEAD 已到 `01d9eb5`，
 其后 4 个提交包含原生提醒与生命周期变更。因此旧 APK **不是当前发布候选版本（RC）**，只能用于试装。
-准备材料已入库并推远端。当前首要顺序是：备份 keystore → 从精确 HEAD 构建新 RC → Android 真机验证。
+准备材料已入库并推远端，keystore 已完成独立备份。当前首要顺序是：从精确 HEAD 构建新 RC
+→ Android 真机验证。
 
 ## 当前工程基线
 
@@ -20,7 +21,7 @@ Android 曾在 commit `21452e4` 成功生成可安装 preview APK，但当前分
 - `npm run check`：2026-07-19 本地通过；源代码中 172 个 `test(...)` 用例
 - RC 闸门尚未执行：`npm run test:e2e`、`npx expo-doctor`、当前 HEAD 的 EAS build 均需在冻结 RC 时重跑
 - 真机验证：尚未开始
-- Android keystore：仍只由 EAS 云端托管，尚未完成独立备份
+- Android keystore：用户已确认 `.jks`、三组值与 `.kdbx` 异地副本完成；仓库不记录路径或秘密
 
 ## 已完成的实施前准备
 
@@ -53,14 +54,15 @@ Android 曾在 commit `21452e4` 成功生成可安装 preview APK，但当前分
 - [x] **P0.1 准备材料入库**：提交本次文档与脚本，提交信息标注
       `Constitution: C5, C6, C10; E6`；确认没有相关文件仍未跟踪。
 - [x] **P0.2 推送分支**：`git push -u origin chore/eas-project-link`；等待 CI 的 check 与 e2e 均通过。
-- [ ] **P0.3 备份 Android keystore**：按 [`keystore-backup.md`](./keystore-backup.md) 下载 `.jks`、
+- [x] **P0.3 备份 Android keystore**：按 [`keystore-backup.md`](./keystore-backup.md) 下载 `.jks`、
       保存三组值到 KeePassXC，并为 `.kdbx` 建立异地副本；`.jks` 绝不入库。
 - [ ] **P1.1 冻结 Android RC**：工作树干净、CI 全绿后，按 [`release.md`](./release.md)
       重跑 check / e2e / expo-doctor，记录完整 SHA，从该 SHA 生成新的 EAS preview APK，
       并记录下载文件的 SHA-256。
 - [ ] **P1.2 真机验证**：安装精确 RC，用辅助脚本执行清单并把填写后的模板另存为
       `docs/release-evidence/android-YYYYMMDD-<short-sha>.md`。
-- [ ] **P2 合并**：仅当 Android 必测项通过且结果表 SHA 与 HEAD 相同，才 fast-forward 合并到 main。
+- [ ] **P2 合并**：仅当 Android 必测项通过，且结果表 SHA 与 HEAD 相同或
+      `scripts/verify-rc-scope.sh <RC_SHA>` 证明其后只有证据文档，才 fast-forward 合并到 main。
 
 ## EAS 项目与环境
 
