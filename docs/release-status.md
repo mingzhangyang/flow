@@ -8,8 +8,8 @@
 
 Android 曾在 commit `21452e4` 成功生成可安装 preview APK，但当前分支 HEAD 已到 `01d9eb5`，
 其后 4 个提交包含原生提醒与生命周期变更。因此旧 APK **不是当前发布候选版本（RC）**，只能用于试装。
-准备材料已入库并推远端，keystore 已完成独立备份。当前首要顺序是：从精确 HEAD 构建新 RC
-→ Android 真机验证。
+准备材料已入库并推远端，keystore 已完成独立备份；精确 SHA 的 Android RC 已构建成功。
+当前首要步骤是安装该 RC 并执行 Android 真机验证。
 
 ## 当前工程基线
 
@@ -20,7 +20,7 @@ Android 曾在 commit `21452e4` 成功生成可安装 preview APK，但当前分
 - 远端：已建立 `origin/chore/eas-project-link` upstream，准备提交已异地备份
 - `npm run check`：2026-07-19 本地通过；源代码中 172 个 `test(...)` 用例
 - RC 依赖预检：首次 `expo-doctor` 19/20，已按官方建议对齐 SDK 57 补丁；升级后 20/20
-- RC 闸门仍需在依赖提交的冻结 SHA 上重跑 check / e2e，并等待同 SHA CI
+- RC 闸门：冻结 SHA `95a17ce` 的本地 check、10 条 e2e、Expo Doctor 20/20 与同 SHA CI 全绿
 - 真机验证：尚未开始
 - Android keystore：用户已确认 `.jks`、三组值与 `.kdbx` 异地副本完成；仓库不记录路径或秘密
 
@@ -49,6 +49,20 @@ Android 曾在 commit `21452e4` 成功生成可安装 preview APK，但当前分
   构建工具链；唯一自动方案会强制降级到 `expo 46.0.21`，属于破坏性且不兼容 SDK 57，因此不执行
   `npm audit fix --force`。该链不被应用源码导入，保留为上游待修风险。
 
+## 当前 Android RC（等待真机验证）
+
+- RC commit：`95a17cee3a72592ddd012ae7ab8f654965326711`
+- Annotated tag：`android-rc-v1.0.0-20260719.1`
+- EAS build ID：`87dddb97-f512-4cf9-a260-dc7ab8fb1ba3`
+- 构建页：https://expo.dev/accounts/ideas-flow/projects/flow/builds/87dddb97-f512-4cf9-a260-dc7ab8fb1ba3
+- APK：https://expo.dev/artifacts/eas/YUavIoiAWqbB2JTHXm9-FLCGFkMohXn3NtQ3wChIS-A.apk
+- APK SHA-256：`cc5a02e2a8255fb84d98f7f54fe8e17c5eec1ed934aef145139a6ccee2a49147`
+- Project fingerprint：`149ad5af7a8572c3e6ff84cac026db62302cf0e9`
+- 版本：`1.0.0`（Android versionCode `1`）；profile `preview`；distribution `internal`
+- 本地闸门：`npm run check` 通过；`npm run test:e2e` 10/10；`npx expo-doctor` 20/20
+- CI：https://github.com/mingzhangyang/flow/actions/runs/29707312420（check + e2e 全绿）
+- 真机记录：[`release-evidence/android-20260719-95a17ce.md`](./release-evidence/android-20260719-95a17ce.md)
+
 ## 历史构建产物（仅试装，不作为当前 RC 证据）
 
 - 成功构建 commit：`21452e4c2b2c9650479e8ad8e808e04ac20eab3f`
@@ -67,7 +81,7 @@ Android 曾在 commit `21452e4` 成功生成可安装 preview APK，但当前分
 - [x] **P0.2 推送分支**：`git push -u origin chore/eas-project-link`；等待 CI 的 check 与 e2e 均通过。
 - [x] **P0.3 备份 Android keystore**：按 [`keystore-backup.md`](./keystore-backup.md) 下载 `.jks`、
       保存三组值到 KeePassXC，并为 `.kdbx` 建立异地副本；`.jks` 绝不入库。
-- [ ] **P1.1 冻结 Android RC**：工作树干净、CI 全绿后，按 [`release.md`](./release.md)
+- [x] **P1.1 冻结 Android RC**：工作树干净、CI 全绿后，按 [`release.md`](./release.md)
       重跑 check / e2e / expo-doctor，记录完整 SHA，从该 SHA 生成新的 EAS preview APK，
       并记录下载文件的 SHA-256。
 - [ ] **P1.2 真机验证**：安装精确 RC，用辅助脚本执行清单并把填写后的模板另存为
