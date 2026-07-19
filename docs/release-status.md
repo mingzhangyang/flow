@@ -19,7 +19,8 @@ Android 曾在 commit `21452e4` 成功生成可安装 preview APK，但当前分
 - `main` 基线：`89c21be`；实时 HEAD 与领先数以 `git rev-parse HEAD` / `git rev-list` 为准
 - 远端：已建立 `origin/chore/eas-project-link` upstream，准备提交已异地备份
 - `npm run check`：2026-07-19 本地通过；源代码中 172 个 `test(...)` 用例
-- RC 闸门尚未执行：`npm run test:e2e`、`npx expo-doctor`、当前 HEAD 的 EAS build 均需在冻结 RC 时重跑
+- RC 依赖预检：首次 `expo-doctor` 19/20，已按官方建议对齐 SDK 57 补丁；升级后 20/20
+- RC 闸门仍需在依赖提交的冻结 SHA 上重跑 check / e2e，并等待同 SHA CI
 - 真机验证：尚未开始
 - Android keystore：用户已确认 `.jks`、三组值与 `.kdbx` 异地副本完成；仓库不记录路径或秘密
 
@@ -37,6 +38,16 @@ Android 曾在 commit `21452e4` 成功生成可安装 preview APK，但当前分
 6. 真实服药 dogfood / 用户验证已加入 E6 边界：只能作为既有提醒的并行辅助，不得替代医嘱或唯一提醒。
 
 以上准备已由 commit `f517f41` 与 `aaff5b5` 入库并推送；后续状态更新单独提交，避免改写已发布历史。
+
+## RC 依赖预检记录
+
+- `npx expo install --fix` 将 Expo SDK 57 相关安装版本对齐到当前兼容补丁：`expo 57.0.7`、
+  `@expo/metro-runtime 57.0.6`、`expo-font 57.0.1`、`expo-localization 57.0.1`、
+  `expo-notifications 57.0.6`、`expo-secure-store 57.0.1`、`expo-status-bar 57.0.1`。
+- Expo CLI 同步把 `expo-status-bar` config plugin 写入 `app.json`；`expo-doctor` 20/20 证明 app config 有效。
+- `npm audit --omit=dev` 报告的 10 个 moderate 均汇聚到 `uuid <11.1.1 → xcode → @expo/config-plugins`
+  构建工具链；唯一自动方案会强制降级到 `expo 46.0.21`，属于破坏性且不兼容 SDK 57，因此不执行
+  `npm audit fix --force`。该链不被应用源码导入，保留为上游待修风险。
 
 ## 历史构建产物（仅试装，不作为当前 RC 证据）
 

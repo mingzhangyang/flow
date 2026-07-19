@@ -31,7 +31,8 @@
       "expo-notifications",
       "expo-secure-store",
       "expo-localization",
-      "./plugins/withAndroidLintExtraTranslation"
+      "./plugins/withAndroidLintExtraTranslation",
+      "expo-status-bar"
     ],
     "locales": {
       "zh": "./locales/zh.json",
