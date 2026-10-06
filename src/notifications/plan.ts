@@ -12,6 +12,7 @@ import {
   MS_PER_DAY,
 } from '../runtime/clock';
 import { project, upcomingEvents } from '../runtime/engine';
+import { flowNotificationRoute, type NotificationRouteData } from './notificationRoute';
 
 /**
  * 系统级重复触发器（按**设备墙钟**的时/分表达；weekday 同 JS getDay，0=周日）。
@@ -29,6 +30,8 @@ export interface Reminder {
   at: Instant;
   title: string;
   body: string;
+  /** 点击提醒后回到哪条 Flow；只携带稳定 id，不复制 Flow 快照。 */
+  data?: NotificationRouteData;
   repeat?: ReminderRepeat;
 }
 
@@ -58,6 +61,7 @@ export function planSequentialReminder(
     at: now + s.remainingSec * 1000,
     title: flow.title,
     body: body[locale],
+    data: flowNotificationRoute(flow.id),
   };
 }
 
@@ -96,6 +100,7 @@ export function planScheduledReminders(
         at: o.at,
         title: flow.title,
         body: o.label,
+        data: flowNotificationRoute(flow.id, o.nodeId),
         repeat:
           repeat.kind === 'daily'
             ? { kind: 'daily', hour, minute }
@@ -110,6 +115,7 @@ export function planScheduledReminders(
     at: o.at,
     title: flow.title,
     body: o.label,
+    data: flowNotificationRoute(flow.id, o.nodeId),
   }));
 }
 

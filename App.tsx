@@ -18,6 +18,8 @@ import { asyncStorageKV } from './src/storage/asyncStorageKv';
 import { secureKV } from './src/storage/secureKv';
 import { createLibrary } from './src/session/library';
 import { createExpoNotifier } from './src/notifications/expoNotifier';
+import { createExpoNotificationResponseSource } from './src/notifications/notificationResponses';
+import { type NotificationRouteData } from './src/notifications/notificationRoute';
 import { enrollFlow, rescheduleReminders } from './src/notifications/reschedule';
 import { systemTimeZone } from './src/runtime/systemTimeZone';
 import { systemSharer } from './src/sharing/systemSharer';
@@ -55,6 +57,7 @@ export default function App() {
   const storage = useMemo(() => createStorage(asyncStorageKV), []);
   const library = useMemo(() => createLibrary(storage), [storage]);
   const notifier = useMemo(() => createExpoNotifier(), []);
+  const notificationResponses = useMemo(() => createExpoNotificationResponseSource(), []);
 
   const [screen, setScreen] = useState<Screen>({ name: 'home' });
   const [refreshKey, setRefreshKey] = useState(0);
@@ -64,6 +67,13 @@ export default function App() {
     setRefreshKey((k) => k + 1);
     home();
   };
+
+  // 通知只携带稳定 id；真正的 Flow 总是从当前示例/本地库重新读取，
+  // 避免把可能过期的定义快照塞进系统通知（C6/E5）。
+  const openFlowFromNotification = useCallback(async (flowId: string): Promise<void> => {
+    const flow = examples.find((candidate) => candidate.id === flowId) ?? (await library.get(flowId));
+    if (flow) setScreen({ name: 'run', flow });
+  }, [examples, library]);
 
   // 重排已登记 flow 未来数日的日程提醒——启动、回到前台、库变更时各续一次（C5）。
   const refreshReminders = useCallback((): void => {
@@ -88,6 +98,27 @@ export default function App() {
     });
     return () => sub.remove();
   }, [refreshReminders, refreshKey]);
+
+  // 运行中点击走 listener；App 已被系统杀掉时由 last response 补上冷启动路径。
+  // 原生适配器消费后清掉 last response，避免下次普通启动再次跳转。
+  useEffect(() => {
+    let active = true;
+    const open = (route: NotificationRouteData): void => {
+      if (!active) return;
+      openFlowFromNotification(route.flowId).catch(() => {});
+    };
+    const unsubscribe = notificationResponses.subscribe(open);
+    notificationResponses
+      .getInitialRoute()
+      .then((route) => {
+        if (route) open(route);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [notificationResponses, openFlowFromNotification]);
 
   if (!fontsLoaded) return null;
 

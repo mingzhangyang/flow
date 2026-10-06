@@ -46,7 +46,7 @@ export function createExpoNotifier(): Notifier {
       for (const r of reminders) {
         await Notifications.scheduleNotificationAsync({
           identifier: r.id,
-          content: { title: r.title, body: r.body },
+          content: { title: r.title, body: r.body, ...(r.data ? { data: r.data } : {}) },
           trigger: triggerFor(r),
         });
       }
