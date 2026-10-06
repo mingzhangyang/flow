@@ -10,16 +10,18 @@ import {
 } from './notificationPresentationCore';
 
 test('安装前台 handler，并保持 banner/list 可见且允许提醒声音', async () => {
-  let installed: NotificationPresentationHandler | null = null;
+  const installed: NotificationPresentationHandler[] = [];
 
   configureNotificationPresentation({
     setNotificationHandler(handler) {
-      installed = handler;
+      installed.push(handler);
     },
   });
 
-  assert.ok(installed);
-  assert.deepEqual(await installed.handleNotification(), FOREGROUND_NOTIFICATION_BEHAVIOR);
+  assert.equal(installed.length, 1);
+  const handler = installed[0];
+  assert.ok(handler);
+  assert.deepEqual(await handler.handleNotification(), FOREGROUND_NOTIFICATION_BEHAVIOR);
   assert.deepEqual(FOREGROUND_NOTIFICATION_BEHAVIOR, {
     shouldPlaySound: true,
     shouldSetBadge: false,
