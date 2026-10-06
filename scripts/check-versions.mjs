@@ -7,6 +7,7 @@ const app = JSON.parse(readFileSync(new URL('../app.json', import.meta.url), 'ut
 const eas = JSON.parse(readFileSync(new URL('../eas.json', import.meta.url), 'utf8'));
 
 const CANONICAL_APPLICATION_ID = 'com.mingzhangyang.zhunshi';
+const CANONICAL_SCHEME = 'zhunshi';
 
 function fail(message) {
   console.error(`release config invalid: ${message}`);
@@ -34,7 +35,9 @@ if (androidId !== CANONICAL_APPLICATION_ID) {
   fail(`android.package must remain ${CANONICAL_APPLICATION_ID} (got ${androidId ?? 'missing'})`);
 }
 
-if (!app.expo.scheme || typeof app.expo.scheme !== 'string') fail('expo.scheme is missing');
+if (app.expo.scheme !== CANONICAL_SCHEME) {
+  fail(`expo.scheme must remain ${CANONICAL_SCHEME} (got ${String(app.expo.scheme ?? 'missing')})`);
+}
 
 const iosBuildNumber = app.expo.ios?.buildNumber;
 if (typeof iosBuildNumber !== 'string' || !/^[1-9]\d*(?:\.\d+){0,2}$/.test(iosBuildNumber)) {

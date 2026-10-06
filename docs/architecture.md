@@ -70,6 +70,7 @@
   适配器换算到 expo 的 1=周日。
 - **多日预排窗口（其余情形）**：once / everyNDays / 锚定非设备时区（`Flow.timeZone`，异地墙钟
   无法按设备墙钟重复）走未来 7 天窗口整批预排。
+- **前台展示（SDK 57）**：composition root 通过 `notificationPresentation` 原生适配器安装 `setNotificationHandler`；前台提醒允许 banner/list 展示并可点击回流，不额外修改 badge，也不在展示 handler 中强制声音策略。Web 为 noop，策略由纯核心契约测试固定。
 - **登记与重排（`reschedule.ts`）**：用户打开某条日程型 flow 的运行视图即为它**登记**提醒
   （enroll，不为没打开过的 flow 自动推送）；App 启动 / 回到前台 / 库变更时把已登记 flow
   的提醒整批重排（上一批 id 记在 KV，先取消再排入；重复触发器 id 稳定，重排即同 id 替换）。

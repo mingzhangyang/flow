@@ -20,6 +20,7 @@ import { createLibrary } from './src/session/library';
 import { catalogWithOwnedPrecedence, resolveCatalogFlow } from './src/session/flowCatalog';
 import { createExpoNotifier } from './src/notifications/expoNotifier';
 import { createExpoNotificationResponseSource } from './src/notifications/notificationResponses';
+import { configureExpoNotificationPresentation } from './src/notifications/notificationPresentation';
 import { type NotificationRouteData } from './src/notifications/notificationRoute';
 import { enrollFlow, rescheduleReminders } from './src/notifications/reschedule';
 import { systemTimeZone } from './src/runtime/systemTimeZone';
@@ -34,6 +35,8 @@ import { InsightScreen } from './src/ui/InsightScreen';
 import { GenerateScreen } from './src/ui/GenerateScreen';
 import { useI18n } from './src/ui/i18n';
 import { paletteFor } from './src/ui/theme';
+
+configureExpoNotificationPresentation();
 
 const newFlowId = (): string => `flow-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
