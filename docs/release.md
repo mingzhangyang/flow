@@ -28,13 +28,15 @@
 1. 改 `app.json`：`expo.version`（用户可见版本，同步改 `package.json.version`，
    否则 `npm run check` 会拦下）；`ios.buildNumber` 与 `android.versionCode` 递增。
 2. `npm run check && npm run test:e2e` 全绿。
-3. `npx expo-doctor` 20/20（含「依赖版本与 SDK 匹配」——漂移会在 EAS 构建时才暴露；
-   `npx expo install --fix` 可对齐到 SDK 期望的补丁版本）。
+3. `npx expo install --check` 无版本漂移，再跑 `npx expo-doctor@latest` 并确保**全部检查通过**；
+   如有漂移，用 `npx expo install --fix` 对齐到当前 SDK 57 稳定补丁。
 4. 打 tag：`git tag v<version>`。
 
 ## 真机验证清单（首次发布前必过）
 
 - [ ] 打开服药示例 → 权限弹窗出现在**此时**（不是启动时）→ 允许
+- [ ] App 在前台/后台时点击日程提醒 → 直接打开对应 Flow
+- [ ] 强杀 App 后点击日程提醒冷启动 → 仍直接打开对应 Flow；随后普通重启不应重复跳转
 - [ ] 强杀 App → 到点提醒响（iOS / Android 各测）
 - [ ] 重启设备 → 到点提醒响（Android 重点：boot receiver）
 - [ ] Android `adb shell dumpsys deviceidle force-idle` 模拟 Doze → 到点是否被推迟
