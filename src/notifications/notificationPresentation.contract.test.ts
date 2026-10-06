@@ -9,7 +9,7 @@ import {
   type NotificationPresentationHandler,
 } from './notificationPresentationCore';
 
-test('安装前台 handler，并保持 banner/list 可见而不修改 badge/声音策略', async () => {
+test('安装前台 handler，并保持 banner/list 可见且允许提醒声音', async () => {
   let installed: NotificationPresentationHandler | null = null;
 
   configureNotificationPresentation({
@@ -21,7 +21,7 @@ test('安装前台 handler，并保持 banner/list 可见而不修改 badge/声�
   assert.ok(installed);
   assert.deepEqual(await installed.handleNotification(), FOREGROUND_NOTIFICATION_BEHAVIOR);
   assert.deepEqual(FOREGROUND_NOTIFICATION_BEHAVIOR, {
-    shouldPlaySound: false,
+    shouldPlaySound: true,
     shouldSetBadge: false,
     shouldShowBanner: true,
     shouldShowList: true,

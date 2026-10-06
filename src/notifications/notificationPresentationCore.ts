@@ -17,8 +17,8 @@ export interface NotificationPresentationFacade {
 }
 
 export const FOREGROUND_NOTIFICATION_BEHAVIOR: ForegroundNotificationBehavior = {
-  // 保持前台提醒可见、可从系统通知进入，同时不额外改变 badge 或强制声音策略。
-  shouldPlaySound: false,
+  // Android 上 shouldPlaySound=false 会抑制前台 heads-up/drop-down；提醒型应用需要可见、可点击。
+  shouldPlaySound: true,
   shouldSetBadge: false,
   shouldShowBanner: true,
   shouldShowList: true,
