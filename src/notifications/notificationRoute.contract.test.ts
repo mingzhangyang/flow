@@ -21,11 +21,11 @@ test('flowNotificationRoute 只携带稳定 id', () => {
   });
 });
 
-test('parseNotificationRoute 接受合法路由并清理空白', () => {
+test('parseNotificationRoute 只用 trim 判断空值，但保留导入后的稳定 id 原值', () => {
   assert.deepEqual(parseNotificationRoute({ kind: 'flow', flowId: ' flow-1 ', nodeId: ' node-2 ' }), {
     kind: 'flow',
-    flowId: 'flow-1',
-    nodeId: 'node-2',
+    flowId: ' flow-1 ',
+    nodeId: ' node-2 ',
   });
 });
 

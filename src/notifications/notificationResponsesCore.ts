@@ -34,8 +34,19 @@ function routeOf(response: NotificationResponseLike | null): NotificationRouteDa
   return response ? parseNotificationRoute(response.notification.request.content.data) : null;
 }
 
-async function consumeLastResponse(api: NotificationResponsesFacade): Promise<void> {
-  await api.clearLastNotificationResponseAsync().catch(() => {});
+async function consumeLastResponse(api: NotificationResponsesFacade): Promise<boolean> {
+  // clear 是 stale-response 保证的一部分，不是 best-effort 清理。
+  // 先重试一次以吸收瞬态失败；连续失败时宁可不导航，也不能交付一个仍可能
+  // 被 Expo 保留、并在下次普通启动再次重放的 response。
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await api.clearLastNotificationResponseAsync();
+      return true;
+    } catch {
+      // retry
+    }
+  }
+  return false;
 }
 
 export function createNotificationResponseSource(
@@ -46,8 +57,8 @@ export function createNotificationResponseSource(
       const response = await api.getLastNotificationResponseAsync();
       if (!response) return null;
       const route = routeOf(response);
-      await consumeLastResponse(api);
-      return route;
+      const consumed = await consumeLastResponse(api);
+      return consumed ? route : null;
     },
 
     subscribe(listener) {
@@ -57,8 +68,8 @@ export function createNotificationResponseSource(
           const route = routeOf(response);
           // Expo retains the latest warm response too. Consume it before navigating so a
           // later ordinary launch cannot reopen this Flow.
-          await consumeLastResponse(api);
-          if (active && route) listener(route);
+          const consumed = await consumeLastResponse(api);
+          if (active && consumed && route) listener(route);
         })();
       });
       return () => {
