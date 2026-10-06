@@ -58,8 +58,9 @@ export function createLibrary(storage: Storage): Library {
         ...parsed,
         provenance: { ...(parsed.provenance ?? {}), importedAt: now },
       };
-      // 走 commit：若同 id 的 flow 已存在，旧版本入历史、version 递增——
-      // 导入绝不静默覆盖用户已有的 flow（C6「Flow 不应消失」、AI-C3 可回退）。
+      // 走 commit：若同 id 的用户 flow 已存在，旧版本入历史、version 递增。
+      // 若 id 与内置示例冲突，导入后的用户 Flow 在 catalog 层具有优先级；
+      // 示例仍是只读内置数据，不会覆盖用户拥有的数据（C6）。
       return this.commit(imported);
     },
 

@@ -57,7 +57,7 @@
   经系统分享面板存文件/发给自己；导入框自动识别备份全文（`parseBackup`，非备份则按单条
   flow 走）。恢复绝不覆盖本机：读回逐条过闸门（坏条目跳过），同 id 的 flow 走 commit
   入历史，打卡按占位合并、本机记录优先。
-
+- **Flow ID 冲突规则**：用户库是权威层，内置示例是只读 fallback。导入/备份允许保留外部稳定 id；若与示例同 id，用户 Flow 在首页、提醒重排和通知点击路由中一致地遮蔽示例。删除该用户 Flow 后示例重新可见。\n
 ### 4. Notification Engine（`src/notifications/`）
 把 Runtime 给出的触发时刻翻译成平台的本地定时通知/闹钟（expo-notifications）。
 - 接口：`schedule(events) / cancel(ids) / rescheduleFor(run)`。

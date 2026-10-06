@@ -1,30 +1,26 @@
 // iOS / Android 通知点击适配器。
-// 同时覆盖运行中点击与“App 已被系统杀掉后点击通知”的冷启动路径。
+// Expo API 只存在于这一层；消费/路由语义在纯核心中统一并由契约测试覆盖。
 
 import * as Notifications from 'expo-notifications';
-import { parseNotificationRoute, type NotificationRouteData } from './notificationRoute';
+import {
+  createNotificationResponseSource,
+  type NotificationResponseSource,
+  type NotificationResponsesFacade,
+} from './notificationResponsesCore';
 
-function routeOf(response: Notifications.NotificationResponse | null): NotificationRouteData | null {
-  return response ? parseNotificationRoute(response.notification.request.content.data) : null;
-}
+const expoNotificationsFacade: NotificationResponsesFacade = {
+  async getLastNotificationResponseAsync() {
+    return Notifications.getLastNotificationResponseAsync();
+  },
+  async clearLastNotificationResponseAsync() {
+    await Notifications.clearLastNotificationResponseAsync();
+  },
+  addNotificationResponseReceivedListener(listener) {
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => listener(response));
+    return { remove: () => subscription.remove() };
+  },
+};
 
-export function createExpoNotificationResponseSource() {
-  return {
-    async getInitialRoute(): Promise<NotificationRouteData | null> {
-      const response = await Notifications.getLastNotificationResponseAsync();
-      if (!response) return null;
-      const route = routeOf(response);
-      // 已消费的响应必须清掉，否则下一次普通启动仍会被旧点击重新路由。
-      await Notifications.clearLastNotificationResponseAsync().catch(() => {});
-      return route;
-    },
-
-    subscribe(listener: (route: NotificationRouteData) => void): () => void {
-      const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-        const route = routeOf(response);
-        if (route) listener(route);
-      });
-      return () => subscription.remove();
-    },
-  };
+export function createExpoNotificationResponseSource(): NotificationResponseSource {
+  return createNotificationResponseSource(expoNotificationsFacade);
 }

@@ -6,9 +6,19 @@ const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url),
 const app = JSON.parse(readFileSync(new URL('../app.json', import.meta.url), 'utf8'));
 const eas = JSON.parse(readFileSync(new URL('../eas.json', import.meta.url), 'utf8'));
 
+const CANONICAL_APPLICATION_ID = 'com.mingzhangyang.zhunshi';
+
 function fail(message) {
   console.error(`release config invalid: ${message}`);
   process.exit(1);
+}
+
+function assertConfiguredAsset(label, path) {
+  if (typeof path !== 'string' || path.trim() === '') fail(`${label} is missing`);
+  const relative = path.replace(/^\.\//, '');
+  if (!existsSync(new URL(`../${relative}`, import.meta.url))) {
+    fail(`${label} points to missing file: ${path}`);
+  }
 }
 
 if (pkg.version !== app.expo.version) {
@@ -17,11 +27,20 @@ if (pkg.version !== app.expo.version) {
 
 const iosId = app.expo.ios?.bundleIdentifier;
 const androidId = app.expo.android?.package;
-if (!iosId || !androidId || iosId !== androidId) {
-  fail(`iOS bundleIdentifier and Android package must match (got ${iosId ?? 'missing'} / ${androidId ?? 'missing'})`);
+if (iosId !== CANONICAL_APPLICATION_ID) {
+  fail(`ios.bundleIdentifier must remain ${CANONICAL_APPLICATION_ID} (got ${iosId ?? 'missing'})`);
 }
+if (androidId !== CANONICAL_APPLICATION_ID) {
+  fail(`android.package must remain ${CANONICAL_APPLICATION_ID} (got ${androidId ?? 'missing'})`);
+}
+
 if (!app.expo.scheme || typeof app.expo.scheme !== 'string') fail('expo.scheme is missing');
-if (!app.expo.ios?.buildNumber || Number(app.expo.ios.buildNumber) < 1) fail('ios.buildNumber must be >= 1');
+
+const iosBuildNumber = app.expo.ios?.buildNumber;
+if (typeof iosBuildNumber !== 'string' || !/^[1-9]\d*(?:\.\d+){0,2}$/.test(iosBuildNumber)) {
+  fail('ios.buildNumber must be a CFBundleVersion-style positive numeric string (for example 1 or 1.2.3)');
+}
+
 if (!Number.isInteger(app.expo.android?.versionCode) || app.expo.android.versionCode < 1) {
   fail('android.versionCode must be a positive integer');
 }
@@ -35,8 +54,14 @@ if (eas.cli?.appVersionSource !== 'local') fail('eas.cli.appVersionSource must s
 if (!Object.prototype.hasOwnProperty.call(eas.build ?? {}, 'production')) fail('EAS production build profile missing');
 if (!Object.prototype.hasOwnProperty.call(eas.submit ?? {}, 'production')) fail('EAS production submit profile missing');
 
-for (const asset of ['../assets/icon.png', '../assets/favicon.png', '../assets/splash-icon.png', '../site/privacy/index.html']) {
+assertConfiguredAsset('expo.icon', app.expo.icon);
+assertConfiguredAsset('android.adaptiveIcon.foregroundImage', app.expo.android?.adaptiveIcon?.foregroundImage);
+assertConfiguredAsset('android.adaptiveIcon.backgroundImage', app.expo.android?.adaptiveIcon?.backgroundImage);
+assertConfiguredAsset('android.adaptiveIcon.monochromeImage', app.expo.android?.adaptiveIcon?.monochromeImage);
+assertConfiguredAsset('web.favicon', app.expo.web?.favicon);
+
+for (const asset of ['../assets/splash-icon.png', '../site/privacy/index.html']) {
   if (!existsSync(new URL(asset, import.meta.url))) fail(`release asset missing: ${asset.replace('../', '')}`);
 }
 
-console.log(`release config ok: ${pkg.version} / ${iosId}`);
+console.log(`release config ok: ${pkg.version} / ${CANONICAL_APPLICATION_ID}`);

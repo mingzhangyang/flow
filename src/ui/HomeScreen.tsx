@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
 import { type Flow, type Topology } from '../domain/types';
 import { type Library } from '../session/library';
+import { examplesVisibleAlongsideOwned } from '../session/flowCatalog';
 import { type Sharer, type ShareOutcome } from '../sharing/sharer';
 import { nextEvents, type ScheduledOccurrence } from '../runtime/engine';
 import { timeOfDay, MS_PER_DAY } from '../runtime/clock';
@@ -85,18 +86,22 @@ export function HomeScreen(props: {
 
   const now = Date.now();
   const today = new Date(now);
+  const visibleExamples = useMemo(
+    () => examplesVisibleAlongsideOwned(props.examples, mine),
+    [props.examples, mine],
+  );
 
-  // 接下来：所有可见日程型 flow 的最近一次提醒（我的优先，无则看示例）
+  // 接下来：所有可见日程型 flow 的最近一次提醒（我的优先，无则看未被同 id 用户 Flow 遮蔽的示例）
   const upNext = useMemo(() => {
     const mineSched = mine.filter((f) => f.topology === 'scheduled');
-    const pool = mineSched.length > 0 ? mineSched : props.examples.filter((f) => f.topology === 'scheduled');
+    const pool = mineSched.length > 0 ? mineSched : visibleExamples.filter((f) => f.topology === 'scheduled');
     let best: { flow: Flow; occ: ScheduledOccurrence } | null = null;
     for (const flow of pool) {
       const [occ] = nextEvents(flow, now, timeZoneForFlow(flow, systemTimeZone), MS_PER_DAY);
       if (occ && (!best || occ.at < best.occ.at)) best = { flow, occ };
     }
     return best;
-  }, [mine, props.examples, props.refreshKey]);
+  }, [mine, visibleExamples, props.refreshKey]);
 
   const card = (flow: Flow, own: boolean) => (
     <View key={flow.id} style={styles.card}>
@@ -178,7 +183,7 @@ export function HomeScreen(props: {
         ) : null}
 
         <Text style={styles.sectionKicker}>{t.sectionExamples}</Text>
-        {props.examples.map((f) => card(f, false))}
+        {visibleExamples.map((f) => card(f, false))}
       </ScrollView>
     </View>
   );

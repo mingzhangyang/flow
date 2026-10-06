@@ -17,6 +17,7 @@ import { createStorage } from './src/storage/storage';
 import { asyncStorageKV } from './src/storage/asyncStorageKv';
 import { secureKV } from './src/storage/secureKv';
 import { createLibrary } from './src/session/library';
+import { catalogWithOwnedPrecedence, resolveCatalogFlow } from './src/session/flowCatalog';
 import { createExpoNotifier } from './src/notifications/expoNotifier';
 import { createExpoNotificationResponseSource } from './src/notifications/notificationResponses';
 import { type NotificationRouteData } from './src/notifications/notificationRoute';
@@ -71,7 +72,8 @@ export default function App() {
   // 通知只携带稳定 id；真正的 Flow 总是从当前示例/本地库重新读取，
   // 避免把可能过期的定义快照塞进系统通知（C6/E5）。
   const openFlowFromNotification = useCallback(async (flowId: string): Promise<void> => {
-    const flow = examples.find((candidate) => candidate.id === flowId) ?? (await library.get(flowId));
+    const owned = await library.get(flowId);
+    const flow = resolveCatalogFlow(flowId, owned ? [owned] : [], examples);
     if (flow) setScreen({ name: 'run', flow });
   }, [examples, library]);
 
@@ -83,7 +85,7 @@ export default function App() {
         rescheduleReminders({
           kv: asyncStorageKV,
           notifier,
-          flows: [...examples, ...flows],
+          flows: catalogWithOwnedPrecedence(examples, flows),
           now: Date.now(),
           deviceTz: systemTimeZone,
         }),
