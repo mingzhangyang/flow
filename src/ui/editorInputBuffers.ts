@@ -2,11 +2,10 @@
 //
 // Duration, wall-clock time, and every-N-days have a text editing state that can
 // temporarily be invalid (for example "" or "08:"). The Flow definition only
-// changes after parsing succeeds, so this buffer state must participate in
-// dirty/save decisions to avoid silently dropping unfinished edits.
+// receives those values when the buffer is materialized for Save, so unfinished
+// text cannot be silently lost by Back/discard decisions.
 
 import type { Flow, FlowNode } from '../domain/types';
-import { fmtTimeOfDay } from './format';
 
 export type EditorInputBuffers = Readonly<Record<string, string>>;
 
@@ -41,75 +40,84 @@ export function parseEditorTimeOfDay(text: string): number | null {
   return hour * 60 + minute;
 }
 
-function findNode(nodes: FlowNode[], id: string): FlowNode | null {
-  for (const node of nodes) {
-    if (node.id === id) return node;
-    if (node.kind === 'parallel') {
-      const child = findNode(node.children, id);
-      if (child) return child;
-    }
-  }
-  return null;
-}
-
-function nodeKeyParts(key: string): { id: string; field: 'duration' | 'scheduledTime' } | null {
-  const durationSuffix = ':duration';
-  const scheduledTimeSuffix = ':scheduledTime';
-  if (!key.startsWith('node:')) return null;
-
-  if (key.endsWith(durationSuffix)) {
-    return { id: key.slice(5, -durationSuffix.length), field: 'duration' };
-  }
-  if (key.endsWith(scheduledTimeSuffix)) {
-    return { id: key.slice(5, -scheduledTimeSuffix.length), field: 'scheduledTime' };
-  }
-  return null;
-}
-
-export interface EditorInputBufferStatus {
+export interface ResolvedEditorInputBuffers {
+  flow: Flow;
   dirty: boolean;
   invalid: boolean;
 }
 
+function resolveNodes(
+  nodes: FlowNode[],
+  buffers: EditorInputBuffers,
+  state: { dirty: boolean; invalid: boolean },
+): FlowNode[] {
+  return nodes.map((node) => {
+    if (node.kind === 'timed') {
+      const text = buffers[editorDurationInputKey(node.id)];
+      if (text === undefined) return node;
+      const durationSec = parseEditorDuration(text);
+      if (durationSec === null) {
+        state.dirty = true;
+        state.invalid = true;
+        return node;
+      }
+      if (durationSec !== node.durationSec) state.dirty = true;
+      return durationSec === node.durationSec ? node : { ...node, durationSec };
+    }
+
+    if (node.kind === 'scheduled') {
+      const text = buffers[editorScheduledTimeInputKey(node.id)];
+      if (text === undefined) return node;
+      const at = parseEditorTimeOfDay(text);
+      if (at === null) {
+        state.dirty = true;
+        state.invalid = true;
+        return node;
+      }
+      if (at !== node.at) state.dirty = true;
+      return at === node.at ? node : { ...node, at };
+    }
+
+    if (node.kind === 'parallel') {
+      const children = resolveNodes(node.children, buffers, state);
+      return children === node.children ? node : { ...node, children };
+    }
+
+    return node;
+  });
+}
+
 /**
- * Compare visible raw text with the currently parsed Flow.
+ * Materialize currently visible compact-input buffers into a Flow candidate.
  *
- * Buffers for fields that are no longer visible/applicable are ignored. A valid
- * buffer normally becomes clean as soon as its parsed value reaches Flow state;
- * invalid/intermediate text remains dirty and blocks Save.
+ * Inactive buffers (for a node/repeat kind that is no longer visible) are
+ * ignored. Invalid/intermediate text marks the editor dirty and blocks Save.
  */
-export function editorInputBufferStatus(
+export function resolveEditorInputBuffers(
   flow: Flow,
   buffers: EditorInputBuffers,
-): EditorInputBufferStatus {
-  let dirty = false;
-  let invalid = false;
+): ResolvedEditorInputBuffers {
+  const state = { dirty: false, invalid: false };
+  let repeat = flow.repeat;
 
-  for (const [key, text] of Object.entries(buffers)) {
-    if (key === editorEveryNDaysInputKey) {
-      if (flow.topology !== 'scheduled' || flow.repeat?.kind !== 'everyNDays') continue;
-      const canonical = String(flow.repeat.n);
-      if (text !== canonical) dirty = true;
-      if (parseEditorEveryNDays(text) === null) invalid = true;
-      continue;
+  if (flow.topology === 'scheduled' && repeat?.kind === 'everyNDays') {
+    const text = buffers[editorEveryNDaysInputKey];
+    if (text !== undefined) {
+      const n = parseEditorEveryNDays(text);
+      if (n === null) {
+        state.dirty = true;
+        state.invalid = true;
+      } else if (n !== repeat.n) {
+        state.dirty = true;
+        repeat = { ...repeat, n };
+      }
     }
-
-    const parts = nodeKeyParts(key);
-    if (!parts) continue;
-    const node = findNode(flow.nodes, parts.id);
-    if (!node) continue;
-
-    if (parts.field === 'duration') {
-      if (node.kind !== 'timed') continue;
-      if (text !== String(node.durationSec)) dirty = true;
-      if (parseEditorDuration(text) === null) invalid = true;
-      continue;
-    }
-
-    if (node.kind !== 'scheduled') continue;
-    if (text !== fmtTimeOfDay(node.at)) dirty = true;
-    if (parseEditorTimeOfDay(text) === null) invalid = true;
   }
 
-  return { dirty, invalid };
+  const nodes = resolveNodes(flow.nodes, buffers, state);
+  const nextFlow = repeat === flow.repeat && nodes.every((node, i) => node === flow.nodes[i])
+    ? flow
+    : { ...flow, repeat, nodes };
+
+  return { flow: nextFlow, dirty: state.dirty, invalid: state.invalid };
 }
