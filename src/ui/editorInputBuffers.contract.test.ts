@@ -5,6 +5,7 @@ import {
   editorDurationInputKey,
   editorEveryNDaysInputKey,
   editorScheduledTimeInputKey,
+  resolveEditorDraftState,
   resolveEditorInputBuffers,
 } from './editorInputBuffers';
 
@@ -31,7 +32,6 @@ test('invalid duration buffer remains dirty and does not mutate Flow candidate',
     [editorDurationInputKey('step')]: '',
   });
 
-  assert.equal(resolved.dirty, true);
   assert.equal(resolved.invalid, true);
   assert.equal(resolved.flow.nodes[0].kind, 'timed');
   if (resolved.flow.nodes[0].kind !== 'timed') throw new Error('expected timed node');
@@ -44,7 +44,6 @@ test('valid duration buffer materializes only at save boundary', () => {
     [editorDurationInputKey('step')]: '90',
   });
 
-  assert.equal(resolved.dirty, true);
   assert.equal(resolved.invalid, false);
   if (resolved.flow.nodes[0].kind !== 'timed') throw new Error('expected timed node');
   assert.equal(resolved.flow.nodes[0].durationSec, 90);
@@ -57,10 +56,7 @@ test('unfinished scheduled time is dirty and invalid', () => {
     [editorScheduledTimeInputKey('dose')]: '08:',
   });
 
-  assert.deepEqual(
-    { dirty: resolved.dirty, invalid: resolved.invalid },
-    { dirty: true, invalid: true },
-  );
+  assert.equal(resolved.invalid, true);
 });
 
 test('valid scheduled time and every-N buffers materialize together', () => {
@@ -71,7 +67,6 @@ test('valid scheduled time and every-N buffers materialize together', () => {
   });
 
   assert.equal(resolved.invalid, false);
-  assert.equal(resolved.dirty, true);
   assert.deepEqual(resolved.flow.repeat, { kind: 'everyNDays', n: 3, fromDay: 20 });
   if (resolved.flow.nodes[0].kind !== 'scheduled') throw new Error('expected scheduled node');
   assert.equal(resolved.flow.nodes[0].at, 9 * 60 + 15);
@@ -85,7 +80,6 @@ test('semantically unchanged compact input is clean', () => {
   });
 
   assert.equal(resolved.invalid, false);
-  assert.equal(resolved.dirty, false);
 });
 
 test('buffers for inactive fields are ignored', () => {
@@ -96,5 +90,47 @@ test('buffers for inactive fields are ignored', () => {
   });
 
   assert.equal(resolved.invalid, false);
+});
+
+
+test('resolved candidate can return the Editor to clean state', () => {
+  const initial: Flow = {
+    ...sequential(),
+    nodes: [{ id: 'step', kind: 'timed', label: 'Wait', durationSec: 90 }],
+  };
+  // Mirrors Timed -> Gate -> Timed: the structural draft is back to Timed,
+  // but makeNode has reset duration to 60 until the visible raw input is applied.
+  const current: Flow = {
+    ...initial,
+    nodes: [{ id: 'step', kind: 'timed', label: 'Wait', durationSec: 60 }],
+  };
+
+  const resolved = resolveEditorDraftState(initial, current, {
+    [editorDurationInputKey('step')]: '90',
+  });
+
+  assert.equal(resolved.invalid, false);
   assert.equal(resolved.dirty, false);
+  if (resolved.flow.nodes[0].kind !== 'timed') throw new Error('expected timed node');
+  assert.equal(resolved.flow.nodes[0].durationSec, 90);
+});
+
+test('invalid raw input remains dirty even when backing Flow matches the draft', () => {
+  const initial = sequential();
+  const resolved = resolveEditorDraftState(initial, initial, {
+    [editorDurationInputKey('step')]: '',
+  });
+
+  assert.equal(resolved.invalid, true);
+  assert.equal(resolved.dirty, true);
+});
+
+test('materialized value different from the draft is dirty', () => {
+  const initial = sequential();
+  const resolved = resolveEditorDraftState(initial, initial, {
+    [editorDurationInputKey('step')]: '90',
+  });
+
+  assert.equal(resolved.invalid, false);
+  assert.equal(resolved.dirty, true);
 });
