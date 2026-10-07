@@ -21,7 +21,8 @@ import {
 } from '../session/actions';
 
 export interface PersistentRun {
-  ready: boolean;
+  status: 'loading' | 'ready' | 'error';
+  retry: () => void;
   flow: Flow;
   state: RunState;
   start: () => void;
@@ -44,11 +45,12 @@ export function usePersistentRun(
   const runId = activeRunId(definitionKey);
   const [run, setRun] = useState<Run>(() => ({ id: runId, flow, events: [] }));
   const [now, setNow] = useState<Instant>(() => Date.now());
-  const [loaded, setLoaded] = useState(false);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   useEffect(() => {
     let alive = true;
-    setLoaded(false);
+    setStatus('loading');
 
     void (async () => {
       let saved = await storage.loadRun(runId);
@@ -62,21 +64,29 @@ export function usePersistentRun(
 
       const next = runForCurrentDefinition(saved, flow, runId);
       setRun(next);
-      setLoaded(true);
+      setStatus('ready');
 
       if (legacyRunId && saved) {
-        storage.saveRun(next).then(() => storage.deleteRun(legacyRunId as string)).catch(() => {});
+        const oldId = legacyRunId;
+        storage
+          .saveRun(next)
+          .then(() => notifier.cancel([oldId, sequentialReminderId(oldId)]))
+          .then(() => storage.deleteRun(oldId))
+          .catch(() => {
+            // Keep legacy state/reminder if migration is incomplete; a later load can retry.
+          });
       }
     })().catch(() => {
       if (!alive) return;
-      setRun({ id: runId, flow, events: [] });
-      setLoaded(true);
+      // Fail closed: a transient read error must never be reinterpreted as "no saved run",
+      // otherwise the save effect could overwrite a real in-progress Run with an empty one.
+      setStatus('error');
     });
 
     return () => {
       alive = false;
     };
-  }, [flow, legacyFlowId, runId, storage]);
+  }, [flow, legacyFlowId, loadAttempt, notifier, runId, storage]);
 
   const runtimeFlow = run.flow;
   const state = project(runtimeFlow, run.events, now);
@@ -88,7 +98,7 @@ export function usePersistentRun(
   }, [state.status]);
 
   useEffect(() => {
-    if (!loaded) return;
+    if (status !== 'ready') return;
     storage.saveRun(run).catch(() => {});
     const reminder = planSequentialReminder(
       runtimeFlow,
@@ -102,21 +112,22 @@ export function usePersistentRun(
       .cancel([run.id, sequentialReminderId(run.id)])
       .then(() => (reminder ? notifier.schedule([reminder]) : undefined))
       .catch(() => {});
-  }, [definitionKey, loaded, locale, notifier, run, runtimeFlow, storage]);
+  }, [definitionKey, locale, notifier, run, runtimeFlow, status, storage]);
 
   const apply = (event: RunEvent | null): void => {
-    if (!loaded || !event) return;
+    if (status !== 'ready' || !event) return;
     setRun((current) => reduce(current, event));
     setNow(Date.now());
   };
   const reset = (): void => {
-    if (!loaded) return;
+    if (status !== 'ready') return;
     setRun({ id: runId, flow, events: [] });
     setNow(Date.now());
   };
 
   return {
-    ready: loaded,
+    status,
+    retry: () => setLoadAttempt((attempt) => attempt + 1),
     flow: runtimeFlow,
     state,
     start: () => apply(startAction(Date.now())),

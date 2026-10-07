@@ -21,7 +21,9 @@ export interface DeleteOwnedFlowDeps {
 }
 
 function intentKey(flowId: string): string {
-  return `${DELETE_INTENT_PREFIX}${encodeURIComponent(flowId)}`;
+  // JSON.stringify escapes lone UTF-16 surrogates instead of throwing like encodeURIComponent,
+  // while the tuple keeps the mapping injective for every JavaScript string Flow ID.
+  return `${DELETE_INTENT_PREFIX}${JSON.stringify(['v1', flowId])}`;
 }
 
 function parseIntent(text: string): DeleteOwnedFlowIntent {
@@ -75,8 +77,15 @@ export async function deleteOwnedFlowDurably(
     ...(legacyFlowId !== undefined ? { legacyFlowId } : {}),
   };
 
+  // Once the durable intent is written, the delete is committed. Immediate completion is
+  // best-effort; failure remains recoverable via the journal and is surfaced by the catalog
+  // projection/recovery pass rather than turning into a misleading "delete failed" result.
   await deps.kv.setItem(key, JSON.stringify(intent));
-  await completeIntent(key, intent, deps);
+  try {
+    await completeIntent(key, intent, deps);
+  } catch {
+    // keep journal for recoverPendingOwnedFlowDeletions()
+  }
 }
 
 export async function recoverPendingOwnedFlowDeletions(deps: DeleteOwnedFlowDeps): Promise<void> {

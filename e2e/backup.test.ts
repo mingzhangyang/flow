@@ -28,9 +28,17 @@ test('打卡 → 备份到剪贴板 → 新环境导入 → 打卡记录恢复',
     (globalThis as unknown as { navigator: { clipboard: { readText(): Promise<string> } } })
       .navigator.clipboard.readText(),
   );
-  const backup = JSON.parse(text) as { kind: string; checkIns: Record<string, unknown[]> };
+  const backup = JSON.parse(text) as {
+    kind: string;
+    backupVersion: number;
+    definitionCheckIns?: Record<string, unknown[]>;
+  };
   assert.equal(backup.kind, 'zhunshi-backup');
-  assert.equal(backup.checkIns['example.medication']?.length, 1);
+  assert.equal(backup.backupVersion, 2);
+  assert.equal(
+    Object.values(backup.definitionCheckIns ?? {}).reduce((count, log) => count + log.length, 0),
+    1,
+  );
 
   // 设备 B：全新环境，粘贴备份 → 自动识别 → 恢复
   const b = await e2e.openApp();

@@ -43,7 +43,7 @@ test('remove 失败时 durable intent 保留，后续 recovery 可继续完成',
     async unenroll(key: string) { calls.push(`unenroll:${key}`); },
   };
 
-  await assert.rejects(() => deleteOwnedFlowDurably(flow, 'key', undefined, deps));
+  await deleteOwnedFlowDurably(flow, 'key', undefined, deps);
   assert.equal((await journalKeys(kv)).length, 1);
   assert.deepEqual(calls, ['remove:owned']);
 
@@ -66,7 +66,7 @@ test('unenroll 失败时不尝试脆弱 rollback；intent 保留供恢复重试'
     },
   };
 
-  await assert.rejects(() => deleteOwnedFlowDurably(flow, 'key', undefined, deps));
+  await deleteOwnedFlowDurably(flow, 'key', undefined, deps);
   assert.equal((await journalKeys(kv)).length, 1);
 
   failUnenroll = false;
@@ -119,15 +119,13 @@ test('坏 journal fail closed，不猜测删除目标', async () => {
 test('journal 只保存稳定删除标识，不依赖 Flow schema 快照', async () => {
   const kv = createInMemoryKV();
   let failRemove = true;
-  await assert.rejects(() =>
-    deleteOwnedFlowDurably(flow, 'key', 'legacy', {
-      kv,
-      async removeFlow() {
-        if (failRemove) throw new Error('stop after journal');
-      },
-      async unenroll() {},
-    }),
-  );
+  await deleteOwnedFlowDurably(flow, 'key', 'legacy', {
+    kv,
+    async removeFlow() {
+      if (failRemove) throw new Error('stop after journal');
+    },
+    async unenroll() {},
+  });
 
   const [key] = await journalKeys(kv);
   const raw = JSON.parse((await kv.getItem(key)) ?? '{}') as Record<string, unknown>;
