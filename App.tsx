@@ -185,7 +185,6 @@ export default function App() {
           name: 'run',
           flow: entry.flow,
           definitionKey: entry.definitionKey,
-          ...(entry.legacyFlowId ? { legacyFlowId: entry.legacyFlowId } : {}),
         });
       }
     });
