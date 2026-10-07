@@ -58,11 +58,9 @@ test('失败发布 error 但不毒死队列，retry 仍可 ready', async () => {
   assert.equal(coordinator.current().status, 'error');
 
   await coordinator.request(async () => [flow('recovered')]);
-  assert.equal(coordinator.current().status, 'ready');
-  assert.equal(
-    coordinator.current().status === 'ready' ? coordinator.current().flows[0]?.id : null,
-    'recovered',
-  );
+  const recovered = coordinator.current();
+  assert.equal(recovered.status, 'ready');
+  assert.equal(recovered.status === 'ready' ? recovered.flows[0]?.id : null, 'recovered');
 });
 
 test('waitForReady 在 loading/error 期间保留等待者，直到后续成功 snapshot', async () => {
