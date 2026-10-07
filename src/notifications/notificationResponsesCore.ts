@@ -32,7 +32,7 @@ export interface NotificationResponseSource {
    * 原子地启动 cold/warm response 消费。
    * listener 会在 initial response 处理完后才收到启动窗口内缓冲的 warm response。
    */
-  start(listener: (route: NotificationRouteData) => void): () => void;
+  start(listener: (route: NotificationRouteData) => void | Promise<void>): () => void;
 }
 
 function routeOf(response: NotificationResponseLike): NotificationRouteData | null {
@@ -72,7 +72,7 @@ export function createNotificationResponseSource(
         const route = routeOf(response);
         const consumed = await consumeLastResponse(api);
         if (!consumed) return false;
-        if (active && route) listener(route);
+        if (active && route) await listener(route);
         return true;
       };
 

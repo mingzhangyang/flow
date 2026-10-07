@@ -58,6 +58,7 @@
   flow 走）。恢复绝不覆盖本机：读回逐条过闸门（坏条目跳过），同 id 的 flow 走 commit
   入历史，打卡按占位合并、本机记录优先。
 - **Flow ID 冲突规则**：用户库是权威层，内置示例是只读 fallback。导入/备份允许保留外部稳定 id；若与示例同 id，用户 Flow 在首页、提醒重排和通知点击路由中一致地遮蔽示例。删除该用户 Flow 后示例重新可见。
+- **提醒登记身份**：enrollment 绑定 catalog definition key，而不是裸 `flowId`。非冲突定义沿用旧 `flowId` key；只有 owned Flow shadow 同 id 示例时使用独立 owned key，因此导入/恢复不会继承示例登记，删除 owned 也不会把 owned 登记转给 fallback 示例。
 
 ### 4. Notification Engine（`src/notifications/`）
 把 Runtime 给出的触发时刻翻译成平台的本地定时通知/闹钟（expo-notifications）。

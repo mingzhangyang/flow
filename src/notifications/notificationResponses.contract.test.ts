@@ -176,3 +176,32 @@ test('取消订阅会丢弃尚未完成的启动缓冲', async () => {
   assert.deepEqual(routes, []);
   assert.equal(fake.counts().removals, 1);
 });
+
+
+test('连续 warm tap 会等待前一次异步导航完成，后一次不会反向覆盖', async () => {
+  const fake = fakeFacade();
+  const source = createNotificationResponseSource(fake.api);
+  const events: string[] = [];
+  let releaseFirst: (() => void) | null = null;
+  const firstGate = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+
+  source.start(async (route) => {
+    events.push(`start:${route.flowId}`);
+    if (route.flowId === 'a') await firstGate;
+    events.push(`end:${route.flowId}`);
+  });
+  await flush();
+
+  fake.emit(response('warm-a', { kind: 'flow', flowId: 'a' }));
+  fake.emit(response('warm-b', { kind: 'flow', flowId: 'b' }));
+  await flush();
+
+  assert.deepEqual(events, ['start:a']);
+  releaseFirst?.();
+  await flush();
+  await flush();
+
+  assert.deepEqual(events, ['start:a', 'end:a', 'start:b', 'end:b']);
+});

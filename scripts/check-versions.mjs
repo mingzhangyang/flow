@@ -58,8 +58,10 @@ for (const required of ['expo-notifications', 'expo-secure-store', 'expo-localiz
 }
 
 if (eas.cli?.appVersionSource !== 'local') fail('eas.cli.appVersionSource must stay local');
-if (!Object.prototype.hasOwnProperty.call(eas.build ?? {}, 'production')) fail('EAS production build profile missing');
-if (!Object.prototype.hasOwnProperty.call(eas.submit ?? {}, 'production')) fail('EAS production submit profile missing');
+
+const isProfileObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+if (!isProfileObject(eas.build?.production)) fail('EAS production build profile must be an object');
+if (!isProfileObject(eas.submit?.production)) fail('EAS production submit profile must be an object');
 
 assertConfiguredAsset('expo.icon', app.expo.icon);
 assertConfiguredAsset('android.adaptiveIcon.foregroundImage', app.expo.android?.adaptiveIcon?.foregroundImage);

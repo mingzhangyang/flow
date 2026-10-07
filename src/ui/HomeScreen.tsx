@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
 import { type Flow, type Topology } from '../domain/types';
 import { type Library } from '../session/library';
-import { examplesVisibleAlongsideOwned } from '../session/flowCatalog';
+import { examplesVisibleAlongsideOwned, reminderEnrollmentKey } from '../session/flowCatalog';
 import { type Sharer, type ShareOutcome } from '../sharing/sharer';
 import { nextEvents, type ScheduledOccurrence } from '../runtime/engine';
 import { timeOfDay, MS_PER_DAY } from '../runtime/clock';
@@ -48,7 +48,7 @@ export function HomeScreen(props: {
   examples: Flow[];
   refreshKey: number;
   sharer: Sharer;
-  onRun: (flow: Flow) => void;
+  onRun: (flow: Flow, enrollmentKey: string) => void;
   onNew: (topology: Topology) => void;
   onEdit: (flow: Flow) => void;
   onExport: (flow: Flow) => void;
@@ -92,14 +92,24 @@ export function HomeScreen(props: {
     [props.examples, mine],
   );
 
+  const enrollmentKeyOf = (flow: Flow, own: boolean): string =>
+    reminderEnrollmentKey(flow.id, own ? 'owned' : 'example', props.examples);
+
   // 接下来：所有可见日程型 flow 的最近一次提醒（我的优先，无则看未被同 id 用户 Flow 遮蔽的示例）
   const upNext = useMemo(() => {
     const mineSched = mine.filter((f) => f.topology === 'scheduled');
-    const pool = mineSched.length > 0 ? mineSched : visibleExamples.filter((f) => f.topology === 'scheduled');
-    let best: { flow: Flow; occ: ScheduledOccurrence } | null = null;
-    for (const flow of pool) {
-      const [occ] = nextEvents(flow, now, timeZoneForFlow(flow, systemTimeZone), MS_PER_DAY);
-      if (occ && (!best || occ.at < best.occ.at)) best = { flow, occ };
+    const pool = mineSched.length > 0
+      ? mineSched.map((flow) => ({ flow, own: true }))
+      : visibleExamples.filter((f) => f.topology === 'scheduled').map((flow) => ({ flow, own: false }));
+    let best: { flow: Flow; occ: ScheduledOccurrence; own: boolean } | null = null;
+    for (const candidate of pool) {
+      const [occ] = nextEvents(
+        candidate.flow,
+        now,
+        timeZoneForFlow(candidate.flow, systemTimeZone),
+        MS_PER_DAY,
+      );
+      if (occ && (!best || occ.at < best.occ.at)) best = { ...candidate, occ };
     }
     return best;
   }, [mine, visibleExamples, props.refreshKey]);
@@ -107,7 +117,7 @@ export function HomeScreen(props: {
   const card = (flow: Flow, own: boolean) => (
     <View key={flow.id} style={styles.card}>
       <View style={[styles.stripe, { backgroundColor: stripeOf(flow.id) }]} />
-      <Pressable onPress={() => props.onRun(flow)}>
+      <Pressable onPress={() => props.onRun(flow, enrollmentKeyOf(flow, own))}>
         <View style={styles.cardTop}>
           <Text style={styles.cardTitle}>{flow.title}</Text>
           <View style={styles.badge}>
@@ -146,7 +156,7 @@ export function HomeScreen(props: {
 
       <ScrollView contentContainerStyle={styles.content}>
         {upNext ? (
-          <Pressable style={styles.next} onPress={() => props.onRun(upNext.flow)}>
+          <Pressable style={styles.next} onPress={() => props.onRun(upNext.flow, enrollmentKeyOf(upNext.flow, upNext.own))}>
             <Text style={styles.nextTime}>{fmtTimeOfDay(timeOfDay(upNext.occ.at, systemTimeZone))}</Text>
             <View style={styles.nextBody}>
               <Text style={styles.nextKicker}>{t.upNext}</Text>

@@ -17,7 +17,7 @@ import { createStorage } from './src/storage/storage';
 import { asyncStorageKV } from './src/storage/asyncStorageKv';
 import { secureKV } from './src/storage/secureKv';
 import { createLibrary } from './src/session/library';
-import { catalogWithOwnedPrecedence, resolveCatalogFlow } from './src/session/flowCatalog';
+import { catalogEntriesWithOwnedPrecedence, reminderEnrollmentKey, resolveCatalogEntry } from './src/session/flowCatalog';
 import { createExpoNotifier } from './src/notifications/expoNotifier';
 import { createExpoNotificationResponseSource } from './src/notifications/notificationResponses';
 import { configureExpoNotificationPresentation } from './src/notifications/notificationPresentation';
@@ -42,7 +42,7 @@ const newFlowId = (): string => `flow-${Date.now().toString(36)}-${Math.random()
 
 type Screen =
   | { name: 'home' }
-  | { name: 'run'; flow: Flow }
+  | { name: 'run'; flow: Flow; enrollmentKey: string }
   | { name: 'edit'; flow: Flow }
   | { name: 'export'; flow: Flow }
   | { name: 'insight'; flow: Flow }
@@ -73,22 +73,21 @@ export default function App() {
   };
 
   const deleteOwnedFlow = useCallback(async (flowId: string): Promise<void> => {
-    // 先取消 enrollment，再删除定义。这样即使同 id 的内置示例随后重新可见，
-    // 也不会继承被删用户 Flow 的通知登记；finally 触发重排，清掉旧系统通知。
-    await unenrollFlow(asyncStorageKV, flowId);
+    // 只关闭 owned catalog identity；同 id 示例若曾单独登记，不会被误删。
+    await unenrollFlow(asyncStorageKV, reminderEnrollmentKey(flowId, 'owned', examples));
     try {
       await library.remove(flowId);
     } finally {
       setRefreshKey((k) => k + 1);
     }
-  }, [library]);
+  }, [examples, library]);
 
   // 通知只携带稳定 id；真正的 Flow 总是从当前示例/本地库重新读取，
   // 避免把可能过期的定义快照塞进系统通知（C6/E5）。
   const openFlowFromNotification = useCallback(async (flowId: string): Promise<void> => {
     const owned = await library.get(flowId);
-    const flow = resolveCatalogFlow(flowId, owned ? [owned] : [], examples);
-    if (flow) setScreen({ name: 'run', flow });
+    const entry = resolveCatalogEntry(flowId, owned ? [owned] : [], examples);
+    if (entry) setScreen({ name: 'run', flow: entry.flow, enrollmentKey: entry.enrollmentKey });
   }, [examples, library]);
 
   // 重排已登记 flow 未来数日的日程提醒——启动、回到前台、库变更时各续一次（C5）。
@@ -99,7 +98,7 @@ export default function App() {
         rescheduleReminders({
           kv: asyncStorageKV,
           notifier,
-          flows: catalogWithOwnedPrecedence(examples, flows),
+          flows: catalogEntriesWithOwnedPrecedence(examples, flows),
           now: Date.now(),
           deviceTz: systemTimeZone,
         }),
@@ -119,9 +118,13 @@ export default function App() {
   // 启动窗口先读 initial、缓冲 listener，再按顺序去重交付，避免重复/乱序导航。
   useEffect(() => {
     let active = true;
-    const unsubscribe = notificationResponses.start((route: NotificationRouteData) => {
+    const unsubscribe = notificationResponses.start(async (route: NotificationRouteData) => {
       if (!active) return;
-      openFlowFromNotification(route.flowId).catch(() => {});
+      try {
+        await openFlowFromNotification(route.flowId);
+      } catch {
+        // 单次路由失败不打断后续通知响应队列。
+      }
     });
     return () => {
       active = false;
@@ -140,7 +143,7 @@ export default function App() {
           examples={examples}
           refreshKey={refreshKey}
           sharer={systemSharer}
-          onRun={(flow) => setScreen({ name: 'run', flow })}
+          onRun={(flow, enrollmentKey) => setScreen({ name: 'run', flow, enrollmentKey })}
           onNew={(topology: Topology) => setScreen({ name: 'edit', flow: createFlow({ id: newFlowId(), title: '', topology }) })}
           onEdit={(flow) => setScreen({ name: 'edit', flow })}
           onExport={(flow) => setScreen({ name: 'export', flow })}
@@ -153,10 +156,11 @@ export default function App() {
         screen.flow.topology === 'scheduled' ? (
           <ScheduleScreen
             flow={screen.flow}
+            enrollmentKey={screen.enrollmentKey}
             storage={storage}
             notifier={notifier}
-            onEnrollReminders={(flowId) => {
-              enrollFlow(asyncStorageKV, flowId).then(refreshReminders).catch(() => {});
+            onEnrollReminders={(enrollmentKey) => {
+              enrollFlow(asyncStorageKV, enrollmentKey).then(refreshReminders).catch(() => {});
             }}
             onExit={home}
           />

@@ -69,10 +69,11 @@ function DoseBead(props: { status: DoseStatus; s: Styles; bs: BeadStyles }) {
 
 export function ScheduleScreen(props: {
   flow: Flow;
+  enrollmentKey: string;
   storage: Storage;
   notifier: Notifier;
   /** 打开即视为为这条 flow 开启提醒；实际登记与多日重排由 App 层编排。 */
-  onEnrollReminders: (flowId: string) => void;
+  onEnrollReminders: (enrollmentKey: string) => void;
   onExit: () => void;
 }) {
   const { flow, storage } = props;
@@ -101,11 +102,11 @@ export function ScheduleScreen(props: {
   useEffect(() => {
     let alive = true;
     storage.loadCheckIns(flow.id).then((log) => alive && setCheckIns(log)).catch(() => {});
-    props.onEnrollReminders(flow.id);
+    props.onEnrollReminders(props.enrollmentKey);
     return () => {
       alive = false;
     };
-  }, [flow]);
+  }, [flow, props.enrollmentKey]);
 
   // 让 due → missed 等状态随时间推移刷新
   useEffect(() => {
