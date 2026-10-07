@@ -52,8 +52,9 @@ export function applyEditorDurationPreset(
   const key = editorDurationInputKey(nodeId);
   let inputBuffers = state.inputBuffers;
   if (Object.prototype.hasOwnProperty.call(state.inputBuffers, key)) {
-    inputBuffers = { ...state.inputBuffers };
-    delete inputBuffers[key];
+    const nextInputBuffers: Record<string, string> = { ...state.inputBuffers };
+    delete nextInputBuffers[key];
+    inputBuffers = nextInputBuffers;
   }
 
   const flow =
