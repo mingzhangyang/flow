@@ -71,9 +71,9 @@ test('日程型 → 为每个 scheduled 事件生成提醒（id 含触发时刻�
   assert.deepEqual(
     rem.map((r) => r.id),
     [
-      scheduledOccurrenceReminderId('example.medication', 'noon', 50_400_000),
-      scheduledOccurrenceReminderId('example.medication', 'evening', 79_200_000),
-      scheduledOccurrenceReminderId('example.medication', 'morning', 115_200_000),
+      scheduledOccurrenceReminderId(definitionKey(medicationFlow), 'noon', 50_400_000),
+      scheduledOccurrenceReminderId(definitionKey(medicationFlow), 'evening', 79_200_000),
+      scheduledOccurrenceReminderId(definitionKey(medicationFlow), 'morning', 115_200_000),
     ],
   );
 });
@@ -107,12 +107,12 @@ test('daily + 重复触发器 → 每节点一条带 repeat 的提醒，id 稳�
   const rem = scheduled(medicationFlow, now, 0, MS_PER_DAY, { repeatingTriggers: true });
   assert.equal(rem.length, 3); // 每节点 1 条，而不是 3 × N 天
 
-  const morning = rem.find((r) => r.id === dailyReminderId('example.medication', 'morning'));
+  const morning = rem.find((r) => r.id === dailyReminderId(definitionKey(medicationFlow), 'morning'));
   assert.ok(morning);
   assert.deepEqual(morning.repeat, { kind: 'daily', hour: 8, minute: 0 });
   assert.equal(morning.at, MS_PER_DAY + 8 * 3_600_000); // 今天 08:00 已过 → 明天
 
-  const noon = rem.find((r) => r.id === dailyReminderId('example.medication', 'noon'));
+  const noon = rem.find((r) => r.id === dailyReminderId(definitionKey(medicationFlow), 'noon'));
   assert.deepEqual(noon?.repeat, { kind: 'daily', hour: 14, minute: 0 });
   assert.equal(noon?.at, 14 * 3_600_000); // 今天 14:00 未到
 });
@@ -128,12 +128,12 @@ test('weekly + 重复触发器 → 每「节点 × 星期」一条，weekday 同
   const rem = scheduled(weekly, now, 0, MS_PER_DAY, { repeatingTriggers: true });
   assert.deepEqual(
     rem.map((r) => r.id).sort(),
-    [weeklyReminderId('wk', 'dose', 1), weeklyReminderId('wk', 'dose', 4)].sort(),
+    [weeklyReminderId(definitionKey(weekly), 'dose', 1), weeklyReminderId(definitionKey(weekly), 'dose', 4)].sort(),
   );
-  const monday = rem.find((r) => r.id === weeklyReminderId('wk', 'dose', 1));
+  const monday = rem.find((r) => r.id === weeklyReminderId(definitionKey(weekly), 'dose', 1));
   assert.deepEqual(monday?.repeat, { kind: 'weekly', weekday: 1, hour: 9, minute: 0 });
   assert.equal(monday?.at, 4 * MS_PER_DAY + 9 * 3_600_000); // 下周一 = 第 4 天
-  const thursday = rem.find((r) => r.id === weeklyReminderId('wk', 'dose', 4));
+  const thursday = rem.find((r) => r.id === weeklyReminderId(definitionKey(weekly), 'dose', 4));
   assert.equal(thursday?.at, 7 * MS_PER_DAY + 9 * 3_600_000); // 今天已过 → 下周四
 });
 
