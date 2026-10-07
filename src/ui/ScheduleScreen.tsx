@@ -27,6 +27,7 @@ import { fmtTimeOfDay } from './format';
 import { useI18n } from './i18n';
 import { type Strings } from './strings';
 import { paletteFor, type Palette, spacing, radius, type, mono } from './theme';
+import { HeaderBackButton, HeaderSideSpacer, mobileControlSize } from './mobileControls';
 
 const GRACE_MINUTES = 120;
 
@@ -151,11 +152,9 @@ export function ScheduleScreen(props: {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={props.onExit} hitSlop={12}>
-          <Text style={styles.back}>{t.back}</Text>
-        </Pressable>
+        <HeaderBackButton accessibilityLabel={t.back} color={c.accent} onPress={props.onExit} />
         <Text style={styles.title} numberOfLines={1}>{flow.title}</Text>
-        <View style={{ width: 48 }} />
+        <HeaderSideSpacer />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -215,11 +214,15 @@ export function ScheduleScreen(props: {
                   </Text>
                 </View>
                 {d.status === 'taken' ? (
-                  <Pressable onPress={() => undo(d)} hitSlop={8}>
+                  <Pressable
+                    accessibilityRole="button"
+                    style={styles.undoButton}
+                    onPress={() => undo(d)}
+                  >
                     <Text style={styles.undo}>{t.undo}</Text>
                   </Pressable>
                 ) : (
-                  <Pressable style={styles.take} onPress={() => take(d)}>
+                  <Pressable accessibilityRole="button" style={styles.take} onPress={() => take(d)}>
                     <Text style={styles.takeText}>{t.checkIn}</Text>
                   </Pressable>
                 )}
@@ -264,11 +267,13 @@ const createBeadStyles = (c: Palette) => StyleSheet.create({
 const createStyles = (c: Palette) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: c.bg },
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
-  back: { fontSize: 16, color: c.accent, width: 48 },
-  title: { flex: 1, textAlign: 'center', fontSize: type.emphasis - 1, fontWeight: '600', color: c.text },
+  title: {
+    flex: 1, minWidth: 0, textAlign: 'center',
+    fontSize: type.emphasis - 1, fontWeight: '600', color: c.text,
+  },
   content: { padding: spacing.md, gap: spacing.sm },
   notifBanner: {
     backgroundColor: c.surface, borderRadius: radius.md, borderWidth: 1, borderColor: c.warn,
@@ -284,6 +289,7 @@ const createStyles = (c: Palette) => StyleSheet.create({
   },
   storageErrorText: { color: c.warn, fontSize: 14, lineHeight: 20 },
   retryButton: {
+    minHeight: mobileControlSize.compact, justifyContent: 'center',
     alignSelf: 'flex-start', borderRadius: radius.pill, borderWidth: 1, borderColor: c.accent,
     paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
   },
@@ -314,10 +320,15 @@ const createStyles = (c: Palette) => StyleSheet.create({
   labelTaken: { color: c.textMuted, textDecorationLine: 'line-through' },
   status: { fontSize: type.caption + 1, marginTop: 2 },
   take: {
+    minHeight: mobileControlSize.compact, justifyContent: 'center',
     backgroundColor: c.accent, borderRadius: radius.pill,
     paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
   },
   takeText: { color: c.accentText, fontSize: 14, fontWeight: '700' },
+  undoButton: {
+    minWidth: mobileControlSize.compact, minHeight: mobileControlSize.compact,
+    alignItems: 'center', justifyContent: 'center',
+  },
   undo: { color: c.textMuted, fontSize: 14, paddingHorizontal: spacing.sm },
   cursorRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 2 },
   cursorLabel: { fontSize: type.caption, color: c.accent, fontWeight: '700', fontVariant: ['tabular-nums'] },

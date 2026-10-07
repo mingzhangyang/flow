@@ -11,6 +11,7 @@ import { ProgressRing } from './ProgressRing';
 import { fmtDuration } from './format';
 import { useI18n } from './i18n';
 import { dark, spacing, radius, type, mono } from './theme';
+import { HeaderBackButton, HeaderSideSpacer, mobileControlSize } from './mobileControls';
 
 const RING = 268;
 
@@ -43,11 +44,9 @@ export function RunnerScreen(props: {
     return (
       <View style={styles.screen}>
         <View style={styles.header}>
-          <Pressable onPress={props.onExit} hitSlop={12}>
-            <Text style={styles.back}>{t.back}</Text>
-          </Pressable>
+          <HeaderBackButton accessibilityLabel={t.back} color={dark.accent} onPress={props.onExit} />
           <Text style={styles.title} numberOfLines={1}>{props.flow.title}</Text>
-          <View style={{ width: 48 }} />
+          <HeaderSideSpacer />
         </View>
         <View style={styles.loadError}>
           <Text style={styles.loadErrorText}>{t.runStorageUnavailable}</Text>
@@ -62,11 +61,9 @@ export function RunnerScreen(props: {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={props.onExit} hitSlop={12}>
-          <Text style={styles.back}>{t.back}</Text>
-        </Pressable>
+        <HeaderBackButton accessibilityLabel={t.back} color={dark.accent} onPress={props.onExit} />
         <Text style={styles.title} numberOfLines={1}>{flow.title}</Text>
-        <View style={{ width: 48 }} />
+        <HeaderSideSpacer />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -146,9 +143,11 @@ export function RunnerScreen(props: {
 function GhostButton(props: { label: string; onPress: () => void; disabled?: boolean }) {
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled: props.disabled ?? false }}
+      disabled={props.disabled}
       style={[styles.ghost, props.disabled && styles.ghostDisabled]}
-      onPress={props.disabled ? undefined : props.onPress}
-      hitSlop={8}
+      onPress={props.onPress}
     >
       <Text style={[styles.ghostText, props.disabled && styles.ghostTextDisabled]}>{props.label}</Text>
     </Pressable>
@@ -158,15 +157,18 @@ function GhostButton(props: { label: string; onPress: () => void; disabled?: boo
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: dark.bg },
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
-  back: { fontSize: 16, color: dark.accent, width: 48 },
-  title: { flex: 1, textAlign: 'center', fontSize: type.emphasis - 1, fontWeight: '600', color: dark.textMuted },
+  title: {
+    flex: 1, minWidth: 0, textAlign: 'center',
+    fontSize: type.emphasis - 1, fontWeight: '600', color: dark.textMuted,
+  },
   content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
   loadError: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.xl },
   loadErrorText: { color: dark.textMuted, fontSize: type.body, textAlign: 'center' },
   retry: {
+    minHeight: mobileControlSize.compact, justifyContent: 'center',
     borderRadius: radius.pill, borderWidth: 1, borderColor: dark.accent,
     paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
   },
@@ -189,7 +191,11 @@ const styles = StyleSheet.create({
   },
   primaryText: { color: dark.bg, fontSize: type.emphasis + 1, fontWeight: '700' },
   controls: { flexDirection: 'row', justifyContent: 'center', gap: spacing.xl, paddingVertical: spacing.xs },
-  ghost: { paddingVertical: spacing.sm, paddingHorizontal: spacing.sm },
+  ghost: {
+    minHeight: mobileControlSize.compact, minWidth: mobileControlSize.compact,
+    alignItems: 'center', justifyContent: 'center',
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.sm,
+  },
   ghostDisabled: { opacity: 0.35 },
   ghostText: { fontSize: type.body, color: dark.textMuted, fontWeight: '600' },
   ghostTextDisabled: { color: dark.faint },

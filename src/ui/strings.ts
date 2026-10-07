@@ -118,6 +118,9 @@ const zh = {
   editorAddEvent: '＋ 添加事件',
   editorAddStep: '＋ 添加步骤',
   editorAddWait: '＋ 等待',
+  editorMoveUp: '上移',
+  editorMoveDown: '下移',
+  editorDeleteNode: '删除',
   editorInvalidTimeZone: (name: string): string =>
     `时区名无效：${name}（应为 IANA 名，如 Asia/Shanghai）`,
 
@@ -277,6 +280,9 @@ const zhHant: Strings = {
   editorAddEvent: '＋ 新增事件',
   editorAddStep: '＋ 新增步驟',
   editorAddWait: '＋ 等待',
+  editorMoveUp: '上移',
+  editorMoveDown: '下移',
+  editorDeleteNode: '刪除',
   editorInvalidTimeZone: (name) => `時區名無效：${name}（應為 IANA 名，如 Asia/Taipei）`,
 
   exportTitle: '分享 · 匯出',
@@ -431,6 +437,9 @@ const en: Strings = {
   editorAddEvent: '＋ Add event',
   editorAddStep: '＋ Add step',
   editorAddWait: '＋ Wait',
+  editorMoveUp: 'Move up',
+  editorMoveDown: 'Move down',
+  editorDeleteNode: 'Delete',
   editorInvalidTimeZone: (name) =>
     `Invalid time zone: ${name} (use an IANA name like Asia/Shanghai)`,
 

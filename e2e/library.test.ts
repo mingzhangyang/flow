@@ -72,6 +72,39 @@ test('顺序型编辑器：快捷等待与时长 preset 保存后可 round-trip'
   assert.equal(await page.getByLabel('自定义（秒）').last().inputValue(), '600');
 });
 
+test('顺序型编辑器：节点操作使用可访问标签并保持重排/删除语义', async () => {
+  const page = await e2e.openApp();
+
+  await page.getByText('＋ 顺序', { exact: true }).click();
+  await page.getByPlaceholder('流程名称').fill('节点操作测试');
+  await page.getByRole('button', { name: '＋ 添加步骤' }).click();
+  await page.getByRole('button', { name: '＋ 添加步骤' }).click();
+
+  const labels = page.getByPlaceholder('这一步做什么');
+  await labels.first().fill('第一步');
+  await labels.last().fill('第二步');
+
+  const moveUp = page.getByRole('button', { name: '上移' });
+  const moveDown = page.getByRole('button', { name: '下移' });
+  assert.equal(await moveUp.count(), 2);
+  assert.equal(await moveDown.count(), 2);
+  assert.equal(await moveUp.first().isDisabled(), true);
+  assert.equal(await moveDown.last().isDisabled(), true);
+
+  await moveUp.last().click();
+  assert.equal(await labels.first().inputValue(), '第二步');
+  assert.equal(await labels.last().inputValue(), '第一步');
+
+  const deleteNode = page.getByRole('button', { name: '删除' });
+  assert.equal(await deleteNode.count(), 2);
+  await deleteNode.last().click();
+  assert.equal(await labels.count(), 1);
+  assert.equal(await labels.first().inputValue(), '第二步');
+
+  await page.getByText('保存', { exact: true }).click();
+  await expectText(page, '节点操作测试');
+});
+
 test('日程型编辑器：once「过时不候」提示可见，选每天后消失', async () => {
   const page = await e2e.openApp();
 
@@ -115,7 +148,7 @@ test('运行后退出并删除，重新导入相同 ID 得到新的空白运行'
   await page.getByText(flow.title, { exact: true }).click();
   await page.getByText('开始', { exact: true }).click();
   await page.getByText('暂停', { exact: true }).click();
-  await page.getByText('‹ 返回', { exact: true }).click();
+  await page.getByRole('button', { name: '‹ 返回' }).click();
   await page.getByText('删除', { exact: true }).click();
   await page.getByText(flow.title, { exact: true }).waitFor({ state: 'detached' });
 

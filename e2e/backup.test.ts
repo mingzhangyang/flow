@@ -20,7 +20,7 @@ test('打卡 → 备份到剪贴板 → 新环境导入 → 打卡记录恢复',
   await a.getByText('每日服药提醒', { exact: true }).first().click();
   await a.getByText('打卡', { exact: true }).first().click();
   await expectText(a, '已服 · 09:00');
-  await a.getByText('‹ 返回', { exact: true }).click();
+  await a.getByRole('button', { name: '‹ 返回' }).click();
 
   await a.getByText('备份', { exact: true }).click();
   await expectText(a, /已复制备份数据/); // headless 无 Web Share → 剪贴板回退
