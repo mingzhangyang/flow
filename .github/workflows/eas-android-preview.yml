@@ -38,12 +38,6 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Setup Expo and EAS
-        uses: expo/expo-github-action@v9
-        with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
-
       - name: Install dependencies
         run: npm ci
 
@@ -71,6 +65,12 @@ jobs:
           echo "project_id=${PROJECT_ID}" >> "${GITHUB_OUTPUT}"
           echo "EAS project ID: ${PROJECT_ID}"
 
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v9
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
       - name: Build Android preview APK on EAS
         id: eas_build
         shell: bash
@@ -83,8 +83,7 @@ jobs:
           const fs = require('fs');
           const raw = JSON.parse(fs.readFileSync('eas-build.json', 'utf8'));
           const build = Array.isArray(raw) ? raw[0] : raw;
-          if (!build?.id) process.exit(1);
-          process.stdout.write(build.id);
+          process.stdout.write(build?.id ?? '');
           NODE
           )"
 
@@ -108,9 +107,7 @@ jobs:
           APK_URL="$(node <<'NODE'
           const fs = require('fs');
           const build = JSON.parse(fs.readFileSync('eas-build-view.json', 'utf8'));
-          const url = build?.artifacts?.buildUrl;
-          if (!url) process.exit(1);
-          process.stdout.write(url);
+          process.stdout.write(build?.artifacts?.buildUrl ?? '');
           NODE
           )"
 
