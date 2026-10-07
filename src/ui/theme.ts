@@ -55,20 +55,20 @@ export const light: Palette = {
 
   text: '#17231C',
   textMuted: '#58685E',
-  textFaint: '#819087',
+  textFaint: '#627368',
 
   primary: '#18794E',
   onPrimary: '#FFFFFF',
   primarySoft: '#E4F4EA',
   onPrimarySoft: '#155C3B',
 
-  secondary: '#3E78BC',
+  secondary: '#3970AE',
   secondarySoft: '#EAF2FC',
 
   success: '#2F7A50',
-  warning: '#9A650F',
+  warning: '#8F5D0C',
   warningSoft: '#FFF3D8',
-  danger: '#B64B45',
+  danger: '#A9433D',
   dangerSoft: '#FCEBE9',
 
   inputSurface: '#F4F7F4',
