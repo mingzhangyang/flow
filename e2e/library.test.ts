@@ -51,7 +51,11 @@ test('日程型编辑器：once「过时不候」提示可见，选每天后消�
   await expectText(page, /过时不候/); // 缺省即 once，语义在选择处说明
   await page.getByText('每天', { exact: true }).click();
   await page.getByText(/过时不候/).waitFor({ state: 'detached' });
-  await page.getByText('取消', { exact: true }).click();
+
+  // 回到初始 once 语义后 draft 再次 clean；顶部返回应直接退出。
+  await page.getByText('仅今天', { exact: true }).click();
+  await expectText(page, /过时不候/);
+  await page.getByText('‹ 返回', { exact: true }).click();
   await expectText(page, '示例');
 });
 
