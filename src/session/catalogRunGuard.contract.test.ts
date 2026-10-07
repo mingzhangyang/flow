@@ -11,7 +11,7 @@ const sequential: Flow = {
   id: 'same',
   title: 'Sequential',
   topology: 'sequential',
-  nodes: [],
+  nodes: [{ id: 'step', label: 'Step', kind: 'instant' }],
 };
 const scheduled: Flow = {
   ...sequential,
@@ -80,6 +80,34 @@ test('只有空闲 Run 时 mutation 可以继续', async () => {
       currentOwned: sequential,
       examples: [],
       runs: lookup({ [run.id]: run }),
+    }),
+  );
+});
+
+test('completed sequential Run 不再阻止 topology replacement 或 same-ID shadow', async () => {
+  const events: Run['events'] = [
+    { type: 'started', at: 1 },
+    { type: 'stepCompleted', index: 0, at: 2 },
+  ];
+  const ownedKey = catalogDefinitionKey('same', 'owned');
+  const exampleKey = catalogDefinitionKey('same', 'example');
+  const ownedRun: Run = { id: activeRunId(ownedKey), flow: sequential, events };
+  const exampleRun: Run = { id: activeRunId(exampleKey), flow: sequential, events };
+
+  await assert.doesNotReject(() =>
+    assertFlowMutationKeepsActiveRunReachable({
+      nextFlow: scheduled,
+      currentOwned: sequential,
+      examples: [],
+      runs: lookup({ [ownedRun.id]: ownedRun }),
+    }),
+  );
+  await assert.doesNotReject(() =>
+    assertFlowMutationKeepsActiveRunReachable({
+      nextFlow: sequential,
+      currentOwned: null,
+      examples: [sequential],
+      runs: lookup({ [exampleRun.id]: exampleRun }),
     }),
   );
 });

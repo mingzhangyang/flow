@@ -3,6 +3,7 @@
 
 import { type Flow } from '../domain/types';
 import { coerceFlow } from '../domain/serialize';
+import { parseDefinitionKey } from '../domain/definitionIdentity';
 import { type CheckIn, isCheckIn } from '../runtime/adherence';
 import { type Instant } from '../runtime/clock';
 import { setStringRecordValue } from './stringRecord';
@@ -92,7 +93,7 @@ export function parseBackup(text: string): Backup | null {
   const checkIns: Record<string, CheckIn[]> = {};
   if (typeof raw.checkIns === 'object' && raw.checkIns !== null) {
     for (const [definitionKey, list] of Object.entries(raw.checkIns as Record<string, unknown>)) {
-      if (!Array.isArray(list)) continue;
+      if (parseDefinitionKey(definitionKey) === null || !Array.isArray(list)) continue;
       const kept = list.filter(isCheckIn);
       if (kept.length > 0) setStringRecordValue(checkIns, definitionKey, kept);
     }

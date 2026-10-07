@@ -3,8 +3,9 @@
 // 任何开发中间格式的 legacy alias / migration / tombstone 兼容。
 
 import { type Flow } from '../domain/types';
+import { definitionKey, type DefinitionSource } from '../domain/definitionIdentity';
 
-export type FlowCatalogSource = 'owned' | 'example';
+export type FlowCatalogSource = DefinitionSource;
 
 export interface CatalogEntry {
   flow: Flow;
@@ -24,13 +25,11 @@ export type OwnedCatalogSnapshot =
 export const LOADING_CATALOG: OwnedCatalogSnapshot = { status: 'loading' };
 export const ERROR_CATALOG: OwnedCatalogSnapshot = { status: 'error' };
 
-const DEFINITION_KEY_VERSION = 'definition-v1';
-
 export function catalogDefinitionKey(
   flowId: string,
   source: FlowCatalogSource,
 ): string {
-  return JSON.stringify([DEFINITION_KEY_VERSION, source, flowId]);
+  return definitionKey({ flowId, source });
 }
 
 export function examplesVisibleAlongsideOwned(

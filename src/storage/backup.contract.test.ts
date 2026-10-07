@@ -59,14 +59,15 @@ test('打卡合并同一占位本机优先', () => {
   assert.equal(merged.find((c) => c.nodeId === 'b')?.at, 2001);
 });
 
-test('开放字符串键按普通 own property round-trip', () => {
+test('特殊 Flow ID 在 revision 与 canonical check-in identity 中 round-trip', () => {
   const special = { ...medicationFlow, id: '__proto__', title: '特殊 ID' };
   const revisions = Object.fromEntries([['__proto__', [{ ...special, title: '旧版' }]]]);
-  const checkIns = Object.fromEntries([['__proto__', [checkIn('dose', 1000, true, 1001)]]]);
+  const checkInKey = catalogDefinitionKey(special.id, 'owned');
+  const checkIns = Object.fromEntries([[checkInKey, [checkIn('dose', 1000, true, 1001)]]]);
   const parsed = parseBackup(buildBackup({ flows: [special], revisions, checkIns, exportedAt: 7 }));
   assert.ok(parsed);
   assert.equal(Object.prototype.hasOwnProperty.call(parsed.revisions, '__proto__'), true);
-  assert.equal(Object.prototype.hasOwnProperty.call(parsed.checkIns, '__proto__'), true);
+  assert.equal(Object.prototype.hasOwnProperty.call(parsed.checkIns, checkInKey), true);
 });
 
 
@@ -79,4 +80,16 @@ test('revision record key 与 snapshot.id 不一致时丢弃该快照', () => {
   const parsed = parseBackup(JSON.stringify(raw));
   assert.ok(parsed);
   assert.equal(Object.prototype.hasOwnProperty.call(parsed.revisions, coffeeFlow.id), false);
+});
+
+test('check-in record 跳过 bare flowId 与非 canonical definition key', () => {
+  const raw = JSON.parse(buildBackup(sampleData())) as {
+    checkIns: Record<string, unknown[]>;
+  };
+  raw.checkIns[medicationFlow.id] = [checkIn('legacy', 2000, true, 2001)];
+  raw.checkIns[` ${medKey}`] = [checkIn('spaced', 3000, true, 3001)];
+
+  const parsed = parseBackup(JSON.stringify(raw));
+  assert.ok(parsed);
+  assert.deepEqual(parsed.checkIns, sampleData().checkIns);
 });
