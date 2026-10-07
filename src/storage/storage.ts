@@ -11,6 +11,7 @@ import { setStringRecordValue } from './stringRecord';
 const FLOW = 'flow:';
 const RUN = 'run:';
 const CHECKINS = 'checkins:';
+const DEFINITION_CHECKINS = 'checkins-v2:';
 const REV = 'rev:';
 
 // ---- 持久数据回到纯核心前的闸门 ----
@@ -62,11 +63,17 @@ export interface Storage {
   listRuns(): Promise<Run[]>;
   deleteRun(id: string): Promise<void>;
 
-  /** 日程型 Flow 的打卡日志（按 flowId 存）。 */
+  /** v1 legacy：按裸 flowId 存，仅用于旧数据/旧备份迁移。 */
   saveCheckIns(flowId: string, log: CheckIn[]): Promise<void>;
   loadCheckIns(flowId: string): Promise<CheckIn[]>;
-  /** 全部打卡日志（含示例 flow 的——打卡是用户数据，不依附于 flow 是否入库）。 */
+  deleteCheckIns(flowId: string): Promise<void>;
   listAllCheckIns(): Promise<Record<string, CheckIn[]>>;
+
+  /** v2：按 catalog definitionKey 存，example/owned 同 id 完全隔离。 */
+  saveDefinitionCheckIns(definitionKey: string, log: CheckIn[]): Promise<void>;
+  loadDefinitionCheckIns(definitionKey: string): Promise<CheckIn[]>;
+  deleteDefinitionCheckIns(definitionKey: string): Promise<void>;
+  listAllDefinitionCheckIns(): Promise<Record<string, CheckIn[]>>;
 
   /** Flow 的历史修订快照（按 flowId 存，旧版本追加保留）。 */
   saveRevisions(flowId: string, revisions: Flow[]): Promise<void>;
@@ -81,16 +88,29 @@ export function createStorage(kv: KVStore): Storage {
   async function saveFlow(flow: Flow): Promise<void> {
     await kv.setItem(FLOW + flow.id, serializeFlow(flow)); // serializeFlow 会校验
   }
-  async function loadCheckIns(flowId: string): Promise<CheckIn[]> {
-    const text = await kv.getItem(CHECKINS + flowId);
+  async function loadCheckInsAt(prefix: string, id: string): Promise<CheckIn[]> {
+    const text = await kv.getItem(prefix + id);
     if (!text) return [];
     try {
       const raw = JSON.parse(text) as unknown;
-      // 每条打卡相互独立：坏条目单独丢弃，不拖累其余记录。
       return Array.isArray(raw) ? raw.filter(isCheckIn) : [];
     } catch {
       return [];
     }
+  }
+  const loadCheckIns = (flowId: string): Promise<CheckIn[]> => loadCheckInsAt(CHECKINS, flowId);
+  const loadDefinitionCheckIns = (definitionKey: string): Promise<CheckIn[]> =>
+    loadCheckInsAt(DEFINITION_CHECKINS, definitionKey);
+
+  async function listCheckInsAt(prefix: string): Promise<Record<string, CheckIn[]>> {
+    const keys = (await kv.keys()).filter((k) => k.startsWith(prefix));
+    const all: Record<string, CheckIn[]> = {};
+    for (const k of keys) {
+      const id = k.slice(prefix.length);
+      const log = await loadCheckInsAt(prefix, id);
+      if (log.length > 0) setStringRecordValue(all, id, log);
+    }
+    return all;
   }
 
   return {
@@ -144,16 +164,19 @@ export function createStorage(kv: KVStore): Storage {
       await kv.setItem(CHECKINS + flowId, JSON.stringify(log));
     },
     loadCheckIns,
-    async listAllCheckIns() {
-      const keys = (await kv.keys()).filter((k) => k.startsWith(CHECKINS));
-      const all: Record<string, CheckIn[]> = {};
-      for (const k of keys) {
-        const id = k.slice(CHECKINS.length);
-        const log = await loadCheckIns(id);
-        if (log.length > 0) setStringRecordValue(all, id, log);
-      }
-      return all;
+    async deleteCheckIns(flowId) {
+      await kv.removeItem(CHECKINS + flowId);
     },
+    listAllCheckIns: () => listCheckInsAt(CHECKINS),
+
+    async saveDefinitionCheckIns(definitionKey, log) {
+      await kv.setItem(DEFINITION_CHECKINS + definitionKey, JSON.stringify(log));
+    },
+    loadDefinitionCheckIns,
+    async deleteDefinitionCheckIns(definitionKey) {
+      await kv.removeItem(DEFINITION_CHECKINS + definitionKey);
+    },
+    listAllDefinitionCheckIns: () => listCheckInsAt(DEFINITION_CHECKINS),
 
     async saveRevisions(flowId, revisions) {
       await kv.setItem(REV + flowId, JSON.stringify(revisions));

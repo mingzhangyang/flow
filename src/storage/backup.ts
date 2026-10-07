@@ -11,7 +11,7 @@ import { setStringRecordValue } from './stringRecord';
 
 export const BACKUP_KIND = 'zhunshi-backup';
 /** 备份信封自身的版本；flow 各自携带 schemaVersion，两者独立演进（E5 加法演进）。 */
-export const BACKUP_VERSION = 1;
+export const BACKUP_VERSION = 2;
 
 export interface Backup {
   kind: typeof BACKUP_KIND;
@@ -20,8 +20,10 @@ export interface Backup {
   flows: Flow[];
   /** 按 flowId 的历史修订快照。 */
   revisions: Record<string, Flow[]>;
-  /** 按 flowId 的打卡日志（含示例 flow 的——打卡是用户的健康数据）。 */
+  /** v1 legacy：按裸 flowId 的打卡日志。 */
   checkIns: Record<string, CheckIn[]>;
+  /** v2 additive：按 catalog definitionKey 的打卡日志。旧 Backup 对此字段可缺省。 */
+  definitionCheckIns?: Record<string, CheckIn[]>;
 }
 
 /** 组装备份文本（缩进 2、末尾换行，与 serializeFlow 同一可读约定）。 */
@@ -29,6 +31,7 @@ export function buildBackup(data: {
   flows: Flow[];
   revisions: Record<string, Flow[]>;
   checkIns: Record<string, CheckIn[]>;
+  definitionCheckIns?: Record<string, CheckIn[]>;
   exportedAt: Instant;
 }): string {
   const backup: Backup = {
@@ -38,6 +41,7 @@ export function buildBackup(data: {
     flows: data.flows,
     revisions: data.revisions,
     checkIns: data.checkIns,
+    definitionCheckIns: data.definitionCheckIns ?? {},
   };
   return JSON.stringify(backup, null, 2) + '\n';
 }
@@ -54,6 +58,7 @@ export function parseBackup(text: string): Backup | null {
     flows?: unknown;
     revisions?: unknown;
     checkIns?: unknown;
+    definitionCheckIns?: unknown;
   };
   try {
     raw = JSON.parse(text) as typeof raw;
@@ -98,6 +103,15 @@ export function parseBackup(text: string): Backup | null {
     }
   }
 
+  const definitionCheckIns: Record<string, CheckIn[]> = {};
+  if (typeof raw.definitionCheckIns === 'object' && raw.definitionCheckIns !== null) {
+    for (const [id, list] of Object.entries(raw.definitionCheckIns as Record<string, unknown>)) {
+      if (!Array.isArray(list)) continue;
+      const kept = list.filter(isCheckIn);
+      if (kept.length > 0) setStringRecordValue(definitionCheckIns, id, kept);
+    }
+  }
+
   return {
     kind: BACKUP_KIND,
     backupVersion: typeof raw.backupVersion === 'number' ? raw.backupVersion : 1,
@@ -105,6 +119,7 @@ export function parseBackup(text: string): Backup | null {
     flows,
     revisions,
     checkIns,
+    definitionCheckIns,
   };
 }
 

@@ -150,3 +150,18 @@ test('listAllCheckIns 保留 "__proto__" 这类开放 flowId，而不触发对�
   assert.equal(Object.prototype.hasOwnProperty.call(all, '__proto__'), true);
   assert.deepEqual(all.__proto__, log);
 });
+
+
+test('definition-scoped 打卡与 legacy flowId 打卡使用不同命名空间', async () => {
+  const s = fresh();
+  const legacy = [{ nodeId: 'legacy', scheduledFor: 1, taken: true, at: 2 }];
+  const scoped = [{ nodeId: 'scoped', scheduledFor: 3, taken: true, at: 4 }];
+  const definitionKey = JSON.stringify(['v2', 'owned', 'same']);
+
+  await s.saveCheckIns(definitionKey, legacy);
+  await s.saveDefinitionCheckIns(definitionKey, scoped);
+
+  assert.deepEqual(await s.loadCheckIns(definitionKey), legacy);
+  assert.deepEqual(await s.loadDefinitionCheckIns(definitionKey), scoped);
+  assert.deepEqual((await s.listAllDefinitionCheckIns())[definitionKey], scoped);
+});

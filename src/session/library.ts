@@ -72,7 +72,13 @@ export function createLibrary(storage: Storage): Library {
         const history = await storage.loadRevisions(flow.id);
         if (history.length > 0) setStringRecordValue(revisions, flow.id, history);
       }
-      return buildBackup({ flows, revisions, checkIns: await storage.listAllCheckIns(), exportedAt: now });
+      return buildBackup({
+        flows,
+        revisions,
+        checkIns: await storage.listAllCheckIns(),
+        definitionCheckIns: await storage.listAllDefinitionCheckIns(),
+        exportedAt: now,
+      });
     },
 
     async importBackup(backup) {
@@ -97,6 +103,10 @@ export function createLibrary(storage: Storage): Library {
       for (const [flowId, incoming] of Object.entries(backup.checkIns)) {
         const local = await storage.loadCheckIns(flowId);
         await storage.saveCheckIns(flowId, mergeCheckIns(local, incoming));
+      }
+      for (const [definitionKey, incoming] of Object.entries(backup.definitionCheckIns ?? {})) {
+        const local = await storage.loadDefinitionCheckIns(definitionKey);
+        await storage.saveDefinitionCheckIns(definitionKey, mergeCheckIns(local, incoming));
       }
       return backup.flows.length;
     },

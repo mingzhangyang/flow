@@ -102,7 +102,7 @@ test('journal 写入失败时绝不执行破坏性操作', async () => {
 
 test('坏 journal fail closed，不猜测删除目标', async () => {
   const kv = createInMemoryKV();
-  await kv.setItem('txn:delete-owned-flow:broken', '{"v":1,"enrollmentKey":"key","flowId":7}');
+  await kv.setItem('txn:delete-owned-flow:broken', '{"v":1,"definitionKey":"key","flowId":7}');
   const calls: string[] = [];
 
   await assert.rejects(() =>
@@ -134,8 +134,8 @@ test('journal 只保存稳定删除标识，不依赖 Flow schema 快照', async
   assert.deepEqual(raw, {
     v: 1,
     flowId: 'owned',
-    enrollmentKey: 'key',
-    legacyEnrollmentId: 'legacy',
+    definitionKey: 'key',
+    legacyFlowId: 'legacy',
   });
   assert.equal('flow' in raw, false);
 

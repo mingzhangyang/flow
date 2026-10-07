@@ -12,6 +12,9 @@ const sampleData = () => ({
   flows: [coffeeFlow, medicationFlow],
   revisions: { [coffeeFlow.id]: [{ ...coffeeFlow, title: '旧标题', version: 1 }] },
   checkIns: { [medicationFlow.id]: [checkIn('n1', 1000, true, 1010)] },
+  definitionCheckIns: {
+    [JSON.stringify(['v2', 'example', medicationFlow.id])]: [checkIn('n2', 2000, true, 2010)],
+  },
   exportedAt: 42,
 });
 
@@ -25,6 +28,7 @@ test('备份 round-trip 无损', () => {
   assert.deepEqual(parsed.flows, data.flows);
   assert.deepEqual(parsed.revisions, data.revisions);
   assert.deepEqual(parsed.checkIns, data.checkIns);
+  assert.deepEqual(parsed.definitionCheckIns, data.definitionCheckIns);
 });
 
 test('非备份文本 → null（据此与单条 flow 导入区分）', () => {
@@ -39,16 +43,19 @@ test('读入闸门：坏 flow / 坏快照 / 坏打卡条目单独丢弃，其余
     flows: unknown[];
     revisions: Record<string, unknown[]>;
     checkIns: Record<string, unknown[]>;
+    definitionCheckIns: Record<string, unknown[]>;
   };
   raw.flows.push({ id: 'bad', nodes: 'nope' });
   raw.revisions.bad = [{ garbage: true }];
   raw.checkIns[medicationFlow.id].push({ nodeId: 1, scheduledFor: 'x' });
+  raw.definitionCheckIns[JSON.stringify(['v2', 'example', medicationFlow.id])].push({ nodeId: 1 });
 
   const parsed = parseBackup(JSON.stringify(raw));
   assert.ok(parsed);
   assert.deepEqual(parsed.flows, data.flows); // 坏 flow 被丢弃
   assert.deepEqual(parsed.revisions, data.revisions); // 全坏的修订组整组消失
-  assert.deepEqual(parsed.checkIns, data.checkIns); // 坏打卡条目被过滤
+  assert.deepEqual(parsed.checkIns, data.checkIns); // 坏 legacy 打卡条目被过滤
+  assert.deepEqual(parsed.definitionCheckIns, data.definitionCheckIns); // v2 同样逐条过滤
 });
 
 test('打卡合并：同一占位本机优先，其余并入', () => {
@@ -84,4 +91,14 @@ test('开放 flowId = "__proto__" 的 revisions / checkIns 仍作为普通数据
   assert.equal(parsed.revisions.__proto__[0]?.title, '旧版');
   assert.equal(Object.prototype.hasOwnProperty.call(parsed.checkIns, '__proto__'), true);
   assert.equal(parsed.checkIns.__proto__[0]?.nodeId, 'dose');
+});
+
+
+test('v1 备份没有 definitionCheckIns 时仍解析为空集合', () => {
+  const raw = JSON.parse(buildBackup(sampleData())) as Record<string, unknown>;
+  delete raw.definitionCheckIns;
+  raw.backupVersion = 1;
+  const parsed = parseBackup(JSON.stringify(raw));
+  assert.ok(parsed);
+  assert.deepEqual(parsed.definitionCheckIns, {});
 });

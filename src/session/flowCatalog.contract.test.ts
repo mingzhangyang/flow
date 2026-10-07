@@ -8,9 +8,10 @@ import {
   catalogEntriesWithOwnedPrecedence,
   catalogWithOwnedPrecedence,
   examplesVisibleAlongsideOwned,
-  reminderEnrollmentIdentity,
+  catalogDefinitionIdentity,
   reminderEnrollmentKey,
   resolveCatalogEntry,
+  resolveCatalogEntryForRoute,
   resolveCatalogFlow,
 } from './flowCatalog';
 
@@ -43,24 +44,37 @@ test('没有冲突时示例仍可见、仍可解析', () => {
 });
 
 test('source + flowId 编码对任意开放 ID 保持唯一', () => {
-  const shadow = reminderEnrollmentIdentity('x', 'owned', [{ ...example, id: 'x' }]);
+  const shadow = catalogDefinitionIdentity('x', 'owned', [{ ...example, id: 'x' }]);
   const literalCollisionId = shadow.key;
-  const unrelated = reminderEnrollmentIdentity(literalCollisionId, 'owned', [example]);
+  const unrelated = catalogDefinitionIdentity(literalCollisionId, 'owned', [example]);
 
   assert.notEqual(shadow.key, unrelated.key);
-  assert.equal(shadow.legacyId, undefined);
-  assert.equal(unrelated.legacyId, literalCollisionId);
+  assert.equal(shadow.legacyFlowId, undefined);
+  assert.equal(unrelated.legacyFlowId, literalCollisionId);
 });
 
 test('shadowing owned 不接受裸 flowId 迁移；非冲突定义保留 legacy alias', () => {
-  const shadow = reminderEnrollmentIdentity(example.id, 'owned', [example]);
-  assert.equal(shadow.legacyId, undefined);
+  const shadow = catalogDefinitionIdentity(example.id, 'owned', [example]);
+  assert.equal(shadow.legacyFlowId, undefined);
 
   const other = { ...owned, id: 'mine' };
-  const normal = reminderEnrollmentIdentity(other.id, 'owned', [example]);
-  assert.equal(normal.legacyId, 'mine');
+  const normal = catalogDefinitionIdentity(other.id, 'owned', [example]);
+  assert.equal(normal.legacyFlowId, 'mine');
 
   const [entry] = catalogEntriesWithOwnedPrecedence([example], [owned]);
-  assert.equal(entry.enrollmentKey, reminderEnrollmentKey(owned.id, 'owned', [example]));
-  assert.equal(resolveCatalogEntry('shared-id', [owned], [example])?.legacyEnrollmentId, undefined);
+  assert.equal(entry.definitionKey, reminderEnrollmentKey(owned.id, 'owned', [example]));
+  assert.equal(resolveCatalogEntry('shared-id', [owned], [example])?.legacyFlowId, undefined);
+});
+
+
+test('旧通知或错误 definitionKey 不会在 shadowing 后打开同 id 的另一份定义', () => {
+  const exampleIdentity = catalogDefinitionIdentity(example.id, 'example', [example]);
+  const ownedIdentity = catalogDefinitionIdentity(owned.id, 'owned', [example]);
+
+  assert.equal(resolveCatalogEntryForRoute(example.id, exampleIdentity.key, [owned], [example]), null);
+  assert.equal(
+    resolveCatalogEntryForRoute(owned.id, ownedIdentity.key, [owned], [example])?.source,
+    'owned',
+  );
+  assert.equal(resolveCatalogEntryForRoute(owned.id, undefined, [owned], [example]), null);
 });

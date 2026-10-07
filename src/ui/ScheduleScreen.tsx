@@ -85,6 +85,7 @@ export function ScheduleScreen(props: {
   // 显式注入时区（E3）：flow 锚定了 IANA 时区则按锚定时区，否则跟随设备；跨 DST 正确
   const tz = timeZoneForFlow(flow, systemTimeZone);
   const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
+  const [checkInsReady, setCheckInsReady] = useState(false);
   const [now, setNow] = useState<number>(() => Date.now());
   // 提醒可用状态：被拒/不支持时必须让用户看见（E6 诚实原则——静默失效会伤人）。
   // 打开与回到前台时各查一次（从系统设置回来后横幅要能消失）。
@@ -102,12 +103,32 @@ export function ScheduleScreen(props: {
 
   useEffect(() => {
     let alive = true;
-    storage.loadCheckIns(flow.id).then((log) => alive && setCheckIns(log)).catch(() => {});
+    setCheckIns([]);
+    setCheckInsReady(false);
+
+    void (async () => {
+      let log = await storage.loadDefinitionCheckIns(props.definitionKey);
+      if (log.length === 0 && props.legacyFlowId) {
+        const legacy = await storage.loadCheckIns(props.legacyFlowId);
+        if (legacy.length > 0) {
+          log = legacy;
+          await storage.saveDefinitionCheckIns(props.definitionKey, legacy);
+          await storage.deleteCheckIns(props.legacyFlowId);
+        }
+      }
+      if (alive) {
+        setCheckIns(log);
+        setCheckInsReady(true);
+      }
+    })().catch(() => {
+      // fail closed: don't expose unchecked doses or allow writes over unread persisted data.
+    });
+
     props.onEnrollReminders(props.definitionKey);
     return () => {
       alive = false;
     };
-  }, [flow, props.definitionKey]);
+  }, [flow, props.definitionKey, props.legacyFlowId, storage]);
 
   // 让 due → missed 等状态随时间推移刷新
   useEffect(() => {
@@ -115,7 +136,7 @@ export function ScheduleScreen(props: {
     return () => clearInterval(id);
   }, []);
 
-  const doses = todayDoses(flow, checkIns, now, tz, GRACE_MINUTES);
+  const doses = checkInsReady ? todayDoses(flow, checkIns, now, tz, GRACE_MINUTES) : [];
   // 节律在 flow 级：今天不在节律上时给出下一次的日子
   const cadence = describeRecurrence(flow.repeat ?? { kind: 'once' }, locale);
   const STATUS_LABEL = statusLabels(t);
@@ -127,7 +148,8 @@ export function ScheduleScreen(props: {
 
   const persist = (next: CheckIn[]): void => {
     setCheckIns(next);
-    storage.saveCheckIns(flow.id, next).catch(() => {});
+    if (!checkInsReady) return;
+    storage.saveDefinitionCheckIns(props.definitionKey, next).catch(() => {});
   };
   const take = (d: DoseState): void =>
     persist(recordCheckIn(checkIns, checkIn(d.nodeId, d.scheduledFor, true, Date.now())));
@@ -155,6 +177,7 @@ export function ScheduleScreen(props: {
         ) : null}
         <Text style={styles.sectionKicker}>{t.scheduleToday(cadence, flow.timeZone)}</Text>
 
+        {checkInsReady ? (
         <View style={styles.card}>
           {doses.length === 0 ? (
             <Text style={styles.empty}>
@@ -204,6 +227,7 @@ export function ScheduleScreen(props: {
           ))}
           {cursorAt === doses.length && doses.length > 0 ? <NowCursor minutes={nowMinutes} s={styles} t={t} /> : null}
         </View>
+        ) : null}
 
         {(flow.repeat ?? { kind: 'once' }).kind === 'once' ? (
           // once「过时不候」——在运行视图里明说，不让默认语义只活在文档里

@@ -12,11 +12,12 @@ import { type RunEvent } from '../domain/types';
 
 const T0 = 1_000_000;
 
-test('flowNotificationRoute 只携带稳定 id', () => {
+test('flowNotificationRoute 支持 definition identity；旧调用仍兼容', () => {
   assert.deepEqual(flowNotificationRoute('flow-1'), { kind: 'flow', flowId: 'flow-1' });
-  assert.deepEqual(flowNotificationRoute('flow-1', 'node-2'), {
+  assert.deepEqual(flowNotificationRoute('flow-1', 'node-2', 'definition-1'), {
     kind: 'flow',
     flowId: 'flow-1',
+    definitionKey: 'definition-1',
     nodeId: 'node-2',
   });
 });
@@ -55,4 +56,22 @@ test('顺序型计时提醒携带 flowId，日程提醒额外携带 nodeId', () 
     flowId: medicationFlow.id,
     nodeId: 'noon',
   });
+});
+
+
+test('parseNotificationRoute 保留 definitionKey 原值', () => {
+  assert.deepEqual(
+    parseNotificationRoute({
+      kind: 'flow',
+      flowId: 'same',
+      definitionKey: ' ["v2","owned","same"] ',
+      nodeId: 'dose',
+    }),
+    {
+      kind: 'flow',
+      flowId: 'same',
+      definitionKey: ' ["v2","owned","same"] ',
+      nodeId: 'dose',
+    },
+  );
 });

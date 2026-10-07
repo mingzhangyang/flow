@@ -78,3 +78,13 @@ test('waitForReady 在 loading/error 期间保留等待者，直到后续成功 
   await retry;
   assert.deepEqual(flows.map((item) => item.id), ['ready']);
 });
+
+
+test('background request 失败只发布 error，不暴露待观察 Promise', async () => {
+  const coordinator = createCatalogCoordinator(() => {});
+  coordinator.background(async () => {
+    throw new Error('background failed');
+  });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(coordinator.current().status, 'error');
+});

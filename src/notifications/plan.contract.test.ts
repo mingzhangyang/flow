@@ -145,3 +145,22 @@ test('开放 flow/node id 含冒号时，scheduled reminder identifier 仍唯一
   const br = planScheduledReminders(b, 0, 0, MS_PER_DAY);
   assert.notEqual(ar[0]?.id, br[0]?.id);
 });
+
+
+test('同 flowId 的不同 catalog definition 使用不同通知 identifier 与 route identity', () => {
+  const exampleKey = JSON.stringify(['v2', 'example', medicationFlow.id]);
+  const ownedKey = JSON.stringify(['v2', 'owned', medicationFlow.id]);
+  const exampleRem = planScheduledReminders(medicationFlow, 36_000_000, 0, MS_PER_DAY, {
+    definitionKey: exampleKey,
+  });
+  const ownedRem = planScheduledReminders(
+    { ...medicationFlow, title: 'owned' },
+    36_000_000,
+    0,
+    MS_PER_DAY,
+    { definitionKey: ownedKey },
+  );
+  assert.notEqual(exampleRem[0]?.id, ownedRem[0]?.id);
+  assert.equal(exampleRem[0]?.data?.definitionKey, exampleKey);
+  assert.equal(ownedRem[0]?.data?.definitionKey, ownedKey);
+});

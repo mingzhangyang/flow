@@ -7,7 +7,7 @@ import { createInMemoryKV } from '../storage/kv';
 import { fixedTimeZone, MS_PER_DAY } from '../runtime/clock';
 import { medicationFlow } from '../examples/medication';
 import { coffeeFlow } from '../examples/coffee';
-import { reminderEnrollmentIdentity } from '../session/flowCatalog';
+import { catalogDefinitionIdentity } from '../session/flowCatalog';
 import { type Reminder } from './plan';
 import { type Notifier } from './notifier';
 import { enrollFlow, enrolledFlowKeys, rescheduleReminders, unenrollFlow, RESCHEDULE_CAP } from './reschedule';
@@ -26,7 +26,7 @@ function recordingNotifier() {
 
 const NOW = 25_200_000;
 const tz = fixedTimeZone(0);
-const exampleIdentity = reminderEnrollmentIdentity(medicationFlow.id, 'example', [medicationFlow]);
+const exampleIdentity = catalogDefinitionIdentity(medicationFlow.id, 'example', [medicationFlow]);
 
 test('新 enrollment 用结构化记录，enroll / unenroll 幂等', async () => {
   const kv = createInMemoryKV();
@@ -34,8 +34,8 @@ test('新 enrollment 用结构化记录，enroll / unenroll 幂等', async () =>
   await enrollFlow(kv, exampleIdentity.key);
   assert.deepEqual(await enrolledFlowKeys(kv), [exampleIdentity.key]);
 
-  await unenrollFlow(kv, exampleIdentity.key, exampleIdentity.legacyId);
-  await unenrollFlow(kv, exampleIdentity.key, exampleIdentity.legacyId);
+  await unenrollFlow(kv, exampleIdentity.key, exampleIdentity.legacyFlowId);
+  await unenrollFlow(kv, exampleIdentity.key, exampleIdentity.legacyFlowId);
   assert.deepEqual(await enrolledFlowKeys(kv), []);
 });
 
@@ -47,7 +47,7 @@ test('legacy bare ID 在来源无歧义时迁移为 v2 并继续排提醒', asyn
   await rescheduleReminders({
     kv,
     notifier,
-    flows: [{ flow: medicationFlow, enrollmentKey: exampleIdentity.key, legacyEnrollmentId: medicationFlow.id }],
+    flows: [{ flow: medicationFlow, definitionKey: exampleIdentity.key, legacyFlowId: medicationFlow.id }],
     now: NOW,
     deviceTz: tz,
   });
@@ -61,9 +61,9 @@ test('legacy bare ID 在来源无歧义时迁移为 v2 并继续排提醒', asyn
 test('开放 ID 即使文本等于别人的 canonical key，也不会继承其结构化 enrollment', async () => {
   const kv = createInMemoryKV();
   const { notifier, scheduled } = recordingNotifier();
-  const shadowKey = reminderEnrollmentIdentity('x', 'owned', [{ ...medicationFlow, id: 'x' }]).key;
+  const shadowKey = catalogDefinitionIdentity('x', 'owned', [{ ...medicationFlow, id: 'x' }]).key;
   const collidingFlow = { ...medicationFlow, id: shadowKey, title: 'literal collision id' };
-  const collidingIdentity = reminderEnrollmentIdentity(collidingFlow.id, 'owned', [medicationFlow]);
+  const collidingIdentity = catalogDefinitionIdentity(collidingFlow.id, 'owned', [medicationFlow]);
 
   await enrollFlow(kv, shadowKey);
   await rescheduleReminders({
@@ -71,8 +71,8 @@ test('开放 ID 即使文本等于别人的 canonical key，也不会继承其�
     notifier,
     flows: [{
       flow: collidingFlow,
-      enrollmentKey: collidingIdentity.key,
-      legacyEnrollmentId: collidingFlow.id,
+      definitionKey: collidingIdentity.key,
+      legacyFlowId: collidingFlow.id,
     }],
     now: NOW,
     deviceTz: tz,
@@ -85,14 +85,14 @@ test('shadowing owned 不会继承示例 legacy bare enrollment', async () => {
   const kv = createInMemoryKV();
   const { notifier, scheduled } = recordingNotifier();
   const owned = { ...medicationFlow, title: 'owned shadow' };
-  const ownedIdentity = reminderEnrollmentIdentity(owned.id, 'owned', [medicationFlow]);
-  assert.equal(ownedIdentity.legacyId, undefined);
+  const ownedIdentity = catalogDefinitionIdentity(owned.id, 'owned', [medicationFlow]);
+  assert.equal(ownedIdentity.legacyFlowId, undefined);
   await kv.setItem('notif:enrolled', JSON.stringify([medicationFlow.id]));
 
   await rescheduleReminders({
     kv,
     notifier,
-    flows: [{ flow: owned, enrollmentKey: ownedIdentity.key }],
+    flows: [{ flow: owned, definitionKey: ownedIdentity.key }],
     now: NOW,
     deviceTz: tz,
   });
@@ -108,7 +108,7 @@ test('重排先取消上一批 id，不留孤儿通知', async () => {
   const opts = {
     kv,
     notifier,
-    flows: [{ flow: medicationFlow, enrollmentKey: exampleIdentity.key, legacyEnrollmentId: medicationFlow.id }],
+    flows: [{ flow: medicationFlow, definitionKey: exampleIdentity.key, legacyFlowId: medicationFlow.id }],
     now: NOW,
     deviceTz: tz,
   };
@@ -121,15 +121,15 @@ test('重排先取消上一批 id，不留孤儿通知', async () => {
 test('未登记或顺序型 entry 不排提醒', async () => {
   const kv = createInMemoryKV();
   const { notifier, scheduled } = recordingNotifier();
-  const coffeeIdentity = reminderEnrollmentIdentity(coffeeFlow.id, 'example', [coffeeFlow]);
+  const coffeeIdentity = catalogDefinitionIdentity(coffeeFlow.id, 'example', [coffeeFlow]);
   await enrollFlow(kv, coffeeIdentity.key);
 
   await rescheduleReminders({
     kv,
     notifier,
     flows: [
-      { flow: coffeeFlow, enrollmentKey: coffeeIdentity.key, legacyEnrollmentId: coffeeFlow.id },
-      { flow: medicationFlow, enrollmentKey: exampleIdentity.key, legacyEnrollmentId: medicationFlow.id },
+      { flow: coffeeFlow, definitionKey: coffeeIdentity.key, legacyFlowId: coffeeFlow.id },
+      { flow: medicationFlow, definitionKey: exampleIdentity.key, legacyFlowId: medicationFlow.id },
     ],
     now: NOW,
     deviceTz: tz,
@@ -142,10 +142,10 @@ test('提醒总量截断到 RESCHEDULE_CAP', async () => {
   const { notifier, scheduled } = recordingNotifier();
   const flows = [0, 1, 2, 3].map((i) => ({ ...medicationFlow, id: `med-${i}`, timeZone: 'UTC' }));
   const entries = flows.map((flow) => {
-    const identity = reminderEnrollmentIdentity(flow.id, 'owned', [medicationFlow]);
-    return { flow, enrollmentKey: identity.key, legacyEnrollmentId: identity.legacyId };
+    const identity = catalogDefinitionIdentity(flow.id, 'owned', [medicationFlow]);
+    return { flow, definitionKey: identity.key, legacyFlowId: identity.legacyFlowId };
   });
-  for (const item of entries) await enrollFlow(kv, item.enrollmentKey);
+  for (const item of entries) await enrollFlow(kv, item.definitionKey);
 
   await rescheduleReminders({ kv, notifier, flows: entries, now: NOW, deviceTz: tz });
   const batch = scheduled.at(-1) ?? [];
