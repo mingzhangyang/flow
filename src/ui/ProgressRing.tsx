@@ -47,7 +47,7 @@ export function ProgressRing(props: {
 }
 
 const styles = StyleSheet.create({
-  track: { position: 'absolute', borderColor: dark.faint },
+  track: { position: 'absolute', borderColor: dark.border },
   bead: { position: 'absolute' },
   center: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
