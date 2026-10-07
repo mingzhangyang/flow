@@ -26,6 +26,7 @@ import { fmtTimeOfDay } from './format';
 import { useI18n } from './i18n';
 import { type Strings } from './strings';
 import { paletteFor, type Palette, spacing, radius } from './theme';
+import { HeaderBackButton, HeaderSideSpacer, mobileControlSize } from './mobileControls';
 import {
   editorDurationInputKey,
   editorEveryNDaysInputKey,
@@ -280,18 +281,14 @@ export function EditorScreen(props: EditorScreenProps) {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
+        <HeaderBackButton
           accessibilityLabel={t.back}
+          color={c.accent}
           disabled={saving}
           onPress={requestExit}
-          hitSlop={8}
-          style={[styles.headerSide, saving && styles.backDisabled]}
-        >
-          <Text style={styles.headerBackIcon}>‹</Text>
-        </Pressable>
-        <Text style={styles.title}>{t.editorTitle}</Text>
-        <View style={styles.headerSide} />
+        />
+        <Text style={styles.title} numberOfLines={1}>{t.editorTitle}</Text>
+        <HeaderSideSpacer />
       </View>
 
       <ScrollView
@@ -333,12 +330,15 @@ export function EditorScreen(props: EditorScreenProps) {
             {/* 重复节律属于整个模式（flow 级），不属于单个事件 */}
             <View style={styles.repeatCard}>
               <Row label={t.editorRepeat}>
-                <View style={styles.kindRow}>
+                <View style={styles.chipRow}>
                   {repeatKinds(t).map((r) => {
                     const on = (flow.repeat ?? { kind: 'once' }).kind === r.kind;
                     return (
                       <Pressable
                         key={r.kind}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: on, disabled: saving }}
+                        disabled={saving}
                         style={[styles.kindBtn, on && styles.kindBtnOn]}
                         onPress={() => {
                           clearInputBufferKeys([editorEveryNDaysInputKey]);
@@ -353,12 +353,15 @@ export function EditorScreen(props: EditorScreenProps) {
               </Row>
               {flow.repeat?.kind === 'weekly' ? (
                 <Row label={t.editorWeekdaysLabel}>
-                  <View style={styles.kindRow}>
+                  <View style={styles.chipRow}>
                     {t.weekdayNames.map((name, d) => {
                       const on = flow.repeat?.kind === 'weekly' && flow.repeat.days.includes(d);
                       return (
                         <Pressable
                           key={name}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: on, disabled: saving }}
+                          disabled={saving}
                           style={[styles.kindBtn, on && styles.kindBtnOn]}
                           onPress={() =>
                             setFlow((f) => setMeta(f, { repeat: toggleWeekday(f.repeat ?? { kind: 'weekly', days: [] }, d) }))
@@ -419,10 +422,13 @@ export function EditorScreen(props: EditorScreenProps) {
             ) : null}
 
             {!isScheduled ? (
-              <View style={styles.kindRow}>
+              <View style={styles.chipRow}>
                 {seqKinds(t).map((k) => (
                   <Pressable
                     key={k.kind}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: node.kind === k.kind, disabled: saving }}
+                    disabled={saving}
                     style={[styles.kindBtn, node.kind === k.kind && styles.kindBtnOn]}
                     onPress={() => changeKind(node.id, k.kind)}
                   >
@@ -491,14 +497,42 @@ export function EditorScreen(props: EditorScreenProps) {
             />
 
             <View style={styles.nodeActions}>
-              <Pressable onPress={() => setFlow((f) => moveNode(f, node.id, -1))} disabled={i === 0}>
-                <Text style={[styles.action, i === 0 && styles.actionOff]}>↑</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t.editorMoveUp}
+                accessibilityState={{ disabled: i === 0 || saving }}
+                disabled={i === 0 || saving}
+                style={[styles.nodeActionButton, (i === 0 || saving) && styles.nodeActionDisabled]}
+                onPress={() => setFlow((f) => moveNode(f, node.id, -1))}
+              >
+                <Text style={styles.nodeActionText}>↑</Text>
               </Pressable>
-              <Pressable onPress={() => setFlow((f) => moveNode(f, node.id, 1))} disabled={i === flow.nodes.length - 1}>
-                <Text style={[styles.action, i === flow.nodes.length - 1 && styles.actionOff]}>↓</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t.editorMoveDown}
+                accessibilityState={{ disabled: i === flow.nodes.length - 1 || saving }}
+                disabled={i === flow.nodes.length - 1 || saving}
+                style={[
+                  styles.nodeActionButton,
+                  (i === flow.nodes.length - 1 || saving) && styles.nodeActionDisabled,
+                ]}
+                onPress={() => setFlow((f) => moveNode(f, node.id, 1))}
+              >
+                <Text style={styles.nodeActionText}>↓</Text>
               </Pressable>
-              <Pressable onPress={() => setFlow((f) => removeNode(f, node.id))}>
-                <Text style={[styles.action, styles.remove]}>{t.delete}</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t.editorDeleteNode}
+                accessibilityState={{ disabled: saving }}
+                disabled={saving}
+                style={[
+                  styles.nodeActionButton,
+                  styles.removeActionButton,
+                  saving && styles.nodeActionDisabled,
+                ]}
+                onPress={() => setFlow((f) => removeNode(f, node.id))}
+              >
+                <Text style={[styles.nodeActionText, styles.remove]}>{t.editorDeleteNode}</Text>
               </Pressable>
             </View>
           </View>
@@ -554,7 +588,7 @@ function Row(props: { label: string; children: React.ReactNode }) {
   return (
     <View style={rowStyles.fieldRow}>
       <Text style={[rowStyles.fieldLabel, { color: c.textMuted }]}>{props.label}</Text>
-      {props.children}
+      <View style={rowStyles.fieldContent}>{props.children}</View>
     </View>
   );
 }
@@ -562,6 +596,7 @@ function Row(props: { label: string; children: React.ReactNode }) {
 const rowStyles = StyleSheet.create({
   fieldRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   fieldLabel: { fontSize: 13, width: 64 },
+  fieldContent: { flex: 1, minWidth: 0, alignItems: 'flex-start' },
 });
 
 const createStyles = (c: Palette) => StyleSheet.create({
@@ -571,10 +606,10 @@ const createStyles = (c: Palette) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
   },
-  headerSide: { flex: 1, minHeight: 44, justifyContent: 'center', alignItems: 'flex-start' },
-  headerBackIcon: { fontSize: 32, lineHeight: 32, color: c.accent, marginTop: -2 },
-  backDisabled: { opacity: 0.45 },
-  title: { fontSize: 16, lineHeight: 22, fontWeight: '600', color: c.text, textAlign: 'center' },
+  title: {
+    flex: 1, minWidth: 0, fontSize: 16, lineHeight: 22,
+    fontWeight: '600', color: c.text, textAlign: 'center',
+  },
   content: { padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xl },
   titleInput: {
     minHeight: 56, lineHeight: 28,
@@ -600,19 +635,22 @@ const createStyles = (c: Palette) => StyleSheet.create({
   nodeTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   nodeIndex: { fontSize: 13, color: c.textMuted, width: 18 },
   nodeLabel: { flex: 1, fontSize: 16, lineHeight: 22, color: c.text, paddingHorizontal: 0 },
-  kindRow: { flexDirection: 'row', gap: spacing.xs },
+  chipRow: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   kindBtn: {
+    minWidth: mobileControlSize.compact, minHeight: mobileControlSize.compact,
+    flexShrink: 0, alignItems: 'center', justifyContent: 'center',
     paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radius.pill,
     borderWidth: 1, borderColor: c.border,
   },
   kindBtnOn: { backgroundColor: c.accent, borderColor: c.accent },
-  kindText: { fontSize: 13, color: c.textMuted },
+  kindText: { fontSize: 13, color: c.textMuted, textAlign: 'center' },
   kindTextOn: { color: c.accentText, fontWeight: '700' },
   durationEditor: { gap: spacing.xs },
   durationLabel: { fontSize: 13, color: c.textMuted },
   durationPresetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   durationPresetBtn: {
-    minHeight: 44, justifyContent: 'center',
+    minWidth: mobileControlSize.compact, minHeight: mobileControlSize.compact,
+    justifyContent: 'center', alignItems: 'center',
     paddingHorizontal: spacing.md, borderRadius: radius.pill,
     borderWidth: 1, borderColor: c.border,
   },
@@ -637,9 +675,16 @@ const createStyles = (c: Palette) => StyleSheet.create({
     borderRadius: radius.sm, borderWidth: 1, borderColor: c.border,
     paddingHorizontal: spacing.sm,
   },
-  nodeActions: { flexDirection: 'row', gap: spacing.lg, alignItems: 'center' },
-  action: { fontSize: 15, color: c.accent },
-  actionOff: { color: c.pending },
+  nodeActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, alignItems: 'center' },
+  nodeActionButton: {
+    minWidth: mobileControlSize.compact, minHeight: mobileControlSize.compact,
+    alignItems: 'center', justifyContent: 'center',
+    borderRadius: radius.sm, borderWidth: 1, borderColor: c.border,
+    paddingHorizontal: spacing.sm,
+  },
+  nodeActionDisabled: { opacity: 0.38 },
+  nodeActionText: { fontSize: 15, color: c.accent, fontWeight: '600' },
+  removeActionButton: { borderColor: c.warn },
   remove: { color: c.warn },
   addActions: {
     flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.xs,

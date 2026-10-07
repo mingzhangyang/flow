@@ -18,6 +18,8 @@ test('法压咖啡：开始 → 计时 → 暂停 → 刷新后恢复 → 跳过
 
   // 打开即可开始（C4）
   await page.getByText('法压咖啡', { exact: true }).first().click();
+  assert.equal(await page.getByRole('button', { name: '‹ 返回' }).count(), 1);
+  assert.equal(await page.getByText('‹ 返回', { exact: true }).count(), 0);
   await expectText(page, '共 5 步');
   await expectText(page, '04:30'); // 计时步骤合计 270s
 
