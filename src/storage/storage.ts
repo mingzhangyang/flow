@@ -71,6 +71,8 @@ export interface Storage {
 
   /** v2：按 catalog definitionKey 存，example/owned 同 id 完全隔离。 */
   saveDefinitionCheckIns(definitionKey: string, log: CheckIn[]): Promise<void>;
+  /** null = key 不存在；[] = key 已存在但当前没有打卡。 */
+  loadDefinitionCheckInsRecord(definitionKey: string): Promise<CheckIn[] | null>;
   loadDefinitionCheckIns(definitionKey: string): Promise<CheckIn[]>;
   deleteDefinitionCheckIns(definitionKey: string): Promise<void>;
   listAllDefinitionCheckIns(): Promise<Record<string, CheckIn[]>>;
@@ -88,27 +90,35 @@ export function createStorage(kv: KVStore): Storage {
   async function saveFlow(flow: Flow): Promise<void> {
     await kv.setItem(FLOW + flow.id, serializeFlow(flow)); // serializeFlow 会校验
   }
-  async function loadCheckInsAt(prefix: string, id: string): Promise<CheckIn[]> {
+  async function loadCheckInsRecordAt(prefix: string, id: string): Promise<CheckIn[] | null> {
     const text = await kv.getItem(prefix + id);
-    if (!text) return [];
+    if (text === null) return null;
     try {
       const raw = JSON.parse(text) as unknown;
       return Array.isArray(raw) ? raw.filter(isCheckIn) : [];
     } catch {
+      // Present-but-invalid still counts as present: do not resurrect unrelated legacy data.
       return [];
     }
   }
+  const loadCheckInsAt = async (prefix: string, id: string): Promise<CheckIn[]> =>
+    (await loadCheckInsRecordAt(prefix, id)) ?? [];
   const loadCheckIns = (flowId: string): Promise<CheckIn[]> => loadCheckInsAt(CHECKINS, flowId);
-  const loadDefinitionCheckIns = (definitionKey: string): Promise<CheckIn[]> =>
-    loadCheckInsAt(DEFINITION_CHECKINS, definitionKey);
+  const loadDefinitionCheckInsRecord = (definitionKey: string): Promise<CheckIn[] | null> =>
+    loadCheckInsRecordAt(DEFINITION_CHECKINS, definitionKey);
+  const loadDefinitionCheckIns = async (definitionKey: string): Promise<CheckIn[]> =>
+    (await loadDefinitionCheckInsRecord(definitionKey)) ?? [];
 
-  async function listCheckInsAt(prefix: string): Promise<Record<string, CheckIn[]>> {
+  async function listCheckInsAt(
+    prefix: string,
+    includeEmpty: boolean,
+  ): Promise<Record<string, CheckIn[]>> {
     const keys = (await kv.keys()).filter((k) => k.startsWith(prefix));
     const all: Record<string, CheckIn[]> = {};
     for (const k of keys) {
       const id = k.slice(prefix.length);
-      const log = await loadCheckInsAt(prefix, id);
-      if (log.length > 0) setStringRecordValue(all, id, log);
+      const log = await loadCheckInsRecordAt(prefix, id);
+      if (log !== null && (includeEmpty || log.length > 0)) setStringRecordValue(all, id, log);
     }
     return all;
   }
@@ -167,16 +177,18 @@ export function createStorage(kv: KVStore): Storage {
     async deleteCheckIns(flowId) {
       await kv.removeItem(CHECKINS + flowId);
     },
-    listAllCheckIns: () => listCheckInsAt(CHECKINS),
+    listAllCheckIns: () => listCheckInsAt(CHECKINS, false),
 
     async saveDefinitionCheckIns(definitionKey, log) {
       await kv.setItem(DEFINITION_CHECKINS + definitionKey, JSON.stringify(log));
     },
+    loadDefinitionCheckInsRecord,
     loadDefinitionCheckIns,
     async deleteDefinitionCheckIns(definitionKey) {
       await kv.removeItem(DEFINITION_CHECKINS + definitionKey);
     },
-    listAllDefinitionCheckIns: () => listCheckInsAt(DEFINITION_CHECKINS),
+    // Empty arrays are durable migration markers and must survive backup/export.
+    listAllDefinitionCheckIns: () => listCheckInsAt(DEFINITION_CHECKINS, true),
 
     async saveRevisions(flowId, revisions) {
       await kv.setItem(REV + flowId, JSON.stringify(revisions));

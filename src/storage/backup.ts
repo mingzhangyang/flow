@@ -108,7 +108,8 @@ export function parseBackup(text: string): Backup | null {
     for (const [id, list] of Object.entries(raw.definitionCheckIns as Record<string, unknown>)) {
       if (!Array.isArray(list)) continue;
       const kept = list.filter(isCheckIn);
-      if (kept.length > 0) setStringRecordValue(definitionCheckIns, id, kept);
+      // Empty arrays are meaningful v2 migration markers; preserve their presence.
+      setStringRecordValue(definitionCheckIns, id, kept);
     }
   }
 

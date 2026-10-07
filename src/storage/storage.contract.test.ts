@@ -165,3 +165,15 @@ test('definition-scoped 打卡与 legacy flowId 打卡使用不同命名空间',
   assert.deepEqual(await s.loadDefinitionCheckIns(definitionKey), scoped);
   assert.deepEqual((await s.listAllDefinitionCheckIns())[definitionKey], scoped);
 });
+
+
+test('definition-scoped 打卡区分 missing 与 present-empty，并在列表中保留空 marker', async () => {
+  const s = fresh();
+  const key = JSON.stringify(['v2', 'owned', 'empty']);
+  assert.equal(await s.loadDefinitionCheckInsRecord(key), null);
+
+  await s.saveDefinitionCheckIns(key, []);
+  assert.deepEqual(await s.loadDefinitionCheckInsRecord(key), []);
+  assert.equal(Object.prototype.hasOwnProperty.call(await s.listAllDefinitionCheckIns(), key), true);
+  assert.deepEqual((await s.listAllDefinitionCheckIns())[key], []);
+});

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { type Flow, type Run } from '../domain/types';
-import { activeRunId, legacyActiveRunId, runForCurrentDefinition } from './runPersistence';
+import { activeRunId, legacyActiveRunId, loadRunForDefinition, runForCurrentDefinition } from './runPersistence';
 
 const v1: Flow = {
   schemaVersion: 2,
@@ -38,4 +38,53 @@ test('尚未开始的旧 Run 不冻结旧定义，重新打开使用当前版本
   const next = runForCurrentDefinition(saved, v2, 'new');
   assert.equal(next.flow.title, 'v2');
   assert.deepEqual(next.events, []);
+});
+
+
+test('legacy Run 迁移先持久化 v2 seed，再返回可运行状态', async () => {
+  const legacyId = legacyActiveRunId(v1.id);
+  const legacy: Run = { id: legacyId, flow: v1, events: [{ type: 'started', at: 1 }] };
+  const calls: string[] = [];
+  const result = await loadRunForDefinition(
+    {
+      async loadRun(id) {
+        calls.push(`load:${id}`);
+        return id === legacyId ? legacy : null;
+      },
+      async saveRun(run) {
+        calls.push(`save:${run.id}`);
+      },
+    },
+    v2,
+    'definition',
+    v1.id,
+  );
+
+  assert.deepEqual(calls, [
+    `load:${activeRunId('definition')}`,
+    `load:${legacyId}`,
+    `save:${activeRunId('definition')}`,
+  ]);
+  assert.equal(result.run.flow.title, 'v1');
+  assert.equal(result.cleanupLegacyRunId, legacyId);
+});
+
+test('v2 读取失败时直接拒绝，绝不退化成空 Run 或触发迁移写', async () => {
+  let saves = 0;
+  await assert.rejects(() =>
+    loadRunForDefinition(
+      {
+        async loadRun() {
+          throw new Error('storage unavailable');
+        },
+        async saveRun() {
+          saves += 1;
+        },
+      },
+      v2,
+      'definition',
+      v1.id,
+    ),
+  );
+  assert.equal(saves, 0);
 });

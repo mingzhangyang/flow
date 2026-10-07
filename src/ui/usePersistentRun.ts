@@ -10,7 +10,7 @@ import { type Storage } from '../storage/storage';
 import { type Notifier } from '../notifications/notifier';
 import { planSequentialReminder } from '../notifications/plan';
 import { sequentialReminderId } from '../notifications/notificationIdentity';
-import { activeRunId, legacyActiveRunId, runForCurrentDefinition } from '../session/runPersistence';
+import { activeRunId, loadRunForDefinition } from '../session/runPersistence';
 import {
   startAction,
   completeCurrentAction,
@@ -53,27 +53,19 @@ export function usePersistentRun(
     setStatus('loading');
 
     void (async () => {
-      let saved = await storage.loadRun(runId);
-      let legacyRunId: string | null = null;
-
-      if (!saved && legacyFlowId) {
-        legacyRunId = legacyActiveRunId(legacyFlowId);
-        saved = await storage.loadRun(legacyRunId);
-      }
+      const loaded = await loadRunForDefinition(storage, flow, definitionKey, legacyFlowId);
       if (!alive) return;
 
-      const next = runForCurrentDefinition(saved, flow, runId);
-      setRun(next);
+      setRun(loaded.run);
       setStatus('ready');
 
-      if (legacyRunId && saved) {
-        const oldId = legacyRunId;
-        storage
-          .saveRun(next)
-          .then(() => notifier.cancel([oldId, sequentialReminderId(oldId)]))
+      if (loaded.cleanupLegacyRunId) {
+        const oldId = loaded.cleanupLegacyRunId;
+        notifier
+          .cancel([oldId, sequentialReminderId(oldId)])
           .then(() => storage.deleteRun(oldId))
           .catch(() => {
-            // Keep legacy state/reminder if migration is incomplete; a later load can retry.
+            // v2 is already durable; stale legacy cleanup is safe to retry on a later load.
           });
       }
     })().catch(() => {

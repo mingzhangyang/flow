@@ -102,3 +102,19 @@ test('v1 备份没有 definitionCheckIns 时仍解析为空集合', () => {
   assert.ok(parsed);
   assert.deepEqual(parsed.definitionCheckIns, {});
 });
+
+
+test('definitionCheckIns 的 present-empty marker 备份 round-trip 不丢失', () => {
+  const key = JSON.stringify(['v2', 'owned', 'empty']);
+  const text = buildBackup({
+    flows: [],
+    revisions: {},
+    checkIns: {},
+    definitionCheckIns: { [key]: [] },
+    exportedAt: 9,
+  });
+  const parsed = parseBackup(text);
+  assert.ok(parsed);
+  assert.equal(Object.prototype.hasOwnProperty.call(parsed.definitionCheckIns ?? {}, key), true);
+  assert.deepEqual(parsed.definitionCheckIns?.[key], []);
+});

@@ -76,6 +76,7 @@ const zh = {
   scheduleNotifDenied: '提醒未开启：通知权限被拒绝，到点不会有提醒。',
   scheduleNotifSettings: '去系统设置开启 ›',
   scheduleNotifWeb: '网页版不支持定时提醒；请在手机 App 上使用提醒功能。',
+  scheduleStorageUnavailable: '打卡记录暂时无法读取。为避免覆盖已有记录，已暂停打卡。',
 
   // 编辑器
   editorTitle: '编辑',
@@ -221,6 +222,7 @@ const zhHant: Strings = {
   scheduleNotifDenied: '提醒未開啟：通知權限被拒絕，到點不會有提醒。',
   scheduleNotifSettings: '去系統設定開啟 ›',
   scheduleNotifWeb: '網頁版不支援定時提醒；請在手機 App 上使用提醒功能。',
+  scheduleStorageUnavailable: '打卡記錄暫時無法讀取。為避免覆蓋既有記錄，已暫停打卡。',
 
   editorTitle: '編輯',
   editorFlowName: '流程名稱',
@@ -359,6 +361,7 @@ const en: Strings = {
   scheduleNotifDenied: 'Reminders are off: notification permission was denied, so nothing will fire on time.',
   scheduleNotifSettings: 'Enable in system settings ›',
   scheduleNotifWeb: 'The web version cannot deliver scheduled reminders — use the mobile app for reminders.',
+  scheduleStorageUnavailable: 'Check-in history could not be read. Check-ins are paused to avoid overwriting saved records.',
 
   editorTitle: 'Edit',
   editorFlowName: 'Flow name',
