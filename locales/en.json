@@ -1,3 +1,8 @@
 {
-  "CFBundleDisplayName": "Zhunshi"
+  "ios": {
+    "CFBundleDisplayName": "Zhunshi"
+  },
+  "android": {
+    "app_name": "Zhunshi"
+  }
 }

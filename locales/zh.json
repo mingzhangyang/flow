@@ -1,3 +1,8 @@
 {
-  "CFBundleDisplayName": "准时"
+  "ios": {
+    "CFBundleDisplayName": "准时"
+  },
+  "android": {
+    "app_name": "准时"
+  }
 }
