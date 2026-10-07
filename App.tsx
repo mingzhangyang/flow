@@ -27,6 +27,9 @@ import {
 } from './src/session/flowCatalog';
 import { createCatalogCoordinator } from './src/session/catalogCoordinator';
 import { runCommittedCatalogMutation } from './src/session/catalogMutation';
+import { runCatalogCycle } from './src/session/catalogCycle';
+import { assertFlowMutationKeepsActiveRunReachable } from './src/session/catalogRunGuard';
+import { deserializeFlow } from './src/domain/serialize';
 import {
   deleteOwnedFlowDurably,
   recoverPendingOwnedFlowDeletions,
@@ -81,12 +84,8 @@ export default function App() {
 
   const home = (): void => setScreen({ name: 'home' });
 
-  const runCatalogTask = useCallback(async (
-    mutation?: () => Promise<void>,
-  ): Promise<CatalogProjection> => {
-    if (mutation) await mutation();
-
-    await recoverPendingOwnedFlowDeletions({
+  const recoverDeletions = useCallback(() =>
+    recoverPendingOwnedFlowDeletions({
       kv: asyncStorageKV,
       removeFlow: (id) => library.remove(id),
       unenroll: (key) => unenrollFlow(asyncStorageKV, key),
@@ -94,8 +93,10 @@ export default function App() {
       deleteRun: (id) => storage.deleteRun(id),
       deleteCheckIns: (key) => storage.deleteCheckIns(key),
       deleteRevisions: (id) => storage.deleteRevisions(id),
-    });
+    }),
+  [library, notifier, storage]);
 
+  const projectCatalog = useCallback(async (): Promise<CatalogProjection> => {
     const flows = await library.list();
     await rescheduleReminders({
       kv: asyncStorageKV,
@@ -105,7 +106,17 @@ export default function App() {
       deviceTz: systemTimeZone,
     });
     return { flows };
-  }, [examples, library, notifier, storage]);
+  }, [examples, library, notifier]);
+
+  const runCatalogTask = useCallback((
+    mutation?: () => Promise<void>,
+  ): Promise<CatalogProjection> =>
+    runCatalogCycle({
+      recover: recoverDeletions,
+      mutation,
+      project: projectCatalog,
+    }),
+  [projectCatalog, recoverDeletions]);
 
   const refreshCatalog = useCallback((
     mutation?: () => Promise<void>,
@@ -118,23 +129,46 @@ export default function App() {
     [refreshCatalog],
   );
 
+  const guardFlowMutation = useCallback(async (flow: Flow): Promise<void> => {
+    await assertFlowMutationKeepsActiveRunReachable({
+      nextFlow: flow,
+      currentOwned: await library.get(flow.id),
+      examples,
+      runs: storage,
+    });
+  }, [examples, library, storage]);
+
   const commitCatalogFlow = useCallback(
-    (flow: Flow): Promise<Flow> => runCatalogMutation(() => library.commit(flow)),
-    [library, runCatalogMutation],
+    (flow: Flow): Promise<Flow> =>
+      runCatalogMutation(async () => {
+        await guardFlowMutation(flow);
+        return library.commit(flow);
+      }),
+    [guardFlowMutation, library, runCatalogMutation],
   );
   const importCatalogFlow = useCallback(
     (text: string, now: number): Promise<Flow> =>
-      runCatalogMutation(() => library.importFlow(text, now)),
-    [library, runCatalogMutation],
+      runCatalogMutation(async () => {
+        await guardFlowMutation(deserializeFlow(text));
+        return library.importFlow(text, now);
+      }),
+    [guardFlowMutation, library, runCatalogMutation],
   );
   const importCatalogBackup = useCallback(
     (backup: Parameters<typeof library.importBackup>[0]): Promise<number> =>
-      runCatalogMutation(() => library.importBackup(backup)),
-    [library, runCatalogMutation],
+      runCatalogMutation(async () => {
+        for (const flow of backup.flows) await guardFlowMutation(flow);
+        return library.importBackup(backup);
+      }),
+    [guardFlowMutation, library, runCatalogMutation],
   );
   const restoreCatalogRevision = useCallback(
-    (flow: Flow): Promise<Flow> => runCatalogMutation(() => library.restore(flow)),
-    [library, runCatalogMutation],
+    (flow: Flow): Promise<Flow> =>
+      runCatalogMutation(async () => {
+        await guardFlowMutation(flow);
+        return library.restore(flow);
+      }),
+    [guardFlowMutation, library, runCatalogMutation],
   );
 
   const deleteOwnedFlow = useCallback((

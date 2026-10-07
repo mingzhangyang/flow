@@ -165,7 +165,8 @@ export function createStorage(kv: KVStore): Storage {
       const revisions: Flow[] = [];
       for (const item of raw) {
         try {
-          revisions.push(coerceFlow(item));
+          const revision = coerceFlow(item);
+          if (revision.id === flowId) revisions.push(revision);
         } catch {
           // One unusable snapshot does not invalidate the readable remainder.
         }

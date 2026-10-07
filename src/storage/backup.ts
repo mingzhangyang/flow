@@ -79,9 +79,10 @@ export function parseBackup(text: string): Backup | null {
       const kept: Flow[] = [];
       for (const item of list) {
         try {
-          kept.push(coerceFlow(item));
+          const revision = coerceFlow(item);
+          if (revision.id === id) kept.push(revision);
         } catch {
-          // skip invalid snapshot
+          // skip invalid or mis-keyed snapshot
         }
       }
       if (kept.length > 0) setStringRecordValue(revisions, id, kept);

@@ -155,3 +155,16 @@ test('listAllCheckIns 保留 "__proto__" 这类开放 flowId，而不触发对�
   assert.equal(Object.prototype.hasOwnProperty.call(all, '__proto__'), true);
   assert.deepEqual(all.__proto__, log);
 });
+
+
+test('本机 revision key 与 snapshot.id 不一致时不会流入历史', async () => {
+  const kv = createInMemoryKV();
+  const s = createStorage(kv);
+  await kv.setItem(
+    'rev:owner',
+    JSON.stringify([{ ...coffeeFlow, id: 'other', title: 'wrong owner' }, { ...coffeeFlow, id: 'owner' }]),
+  );
+  const revisions = await s.loadRevisions('owner');
+  assert.equal(revisions.length, 1);
+  assert.equal(revisions[0]?.id, 'owner');
+});

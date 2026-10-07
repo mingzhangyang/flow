@@ -69,6 +69,14 @@ assertConfiguredAsset('android.adaptiveIcon.backgroundImage', app.expo.android?.
 assertConfiguredAsset('android.adaptiveIcon.monochromeImage', app.expo.android?.adaptiveIcon?.monochromeImage);
 assertConfiguredAsset('web.favicon', app.expo.web?.favicon);
 
+const locales = app.expo.locales;
+if (locales === null || typeof locales !== 'object' || Array.isArray(locales)) {
+  fail('expo.locales must be an object');
+}
+for (const locale of ['zh', 'zh-Hant', 'en']) {
+  assertConfiguredAsset(`expo.locales.${locale}`, locales[locale]);
+}
+
 for (const asset of ['../assets/splash-icon.png', '../site/privacy/index.html']) {
   if (!existsSync(new URL(asset, import.meta.url))) fail(`release asset missing: ${asset.replace('../', '')}`);
 }

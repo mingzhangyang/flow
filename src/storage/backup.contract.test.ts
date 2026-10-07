@@ -68,3 +68,15 @@ test('开放字符串键按普通 own property round-trip', () => {
   assert.equal(Object.prototype.hasOwnProperty.call(parsed.revisions, '__proto__'), true);
   assert.equal(Object.prototype.hasOwnProperty.call(parsed.checkIns, '__proto__'), true);
 });
+
+
+test('revision record key 与 snapshot.id 不一致时丢弃该快照', () => {
+  const raw = JSON.parse(buildBackup(sampleData())) as {
+    revisions: Record<string, unknown[]>;
+  };
+  raw.revisions[coffeeFlow.id] = [{ ...coffeeFlow, id: 'other-flow', title: 'wrong owner' }];
+
+  const parsed = parseBackup(JSON.stringify(raw));
+  assert.ok(parsed);
+  assert.equal(Object.prototype.hasOwnProperty.call(parsed.revisions, coffeeFlow.id), false);
+});
