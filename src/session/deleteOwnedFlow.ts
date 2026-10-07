@@ -4,6 +4,7 @@
 
 import { type Flow } from '../domain/types';
 import { type KVStore } from '../storage/kv';
+import { activeRunId, legacyActiveRunId } from './runPersistence';
 
 const DELETE_INTENT_PREFIX = 'txn:delete-owned-flow:';
 
@@ -18,6 +19,10 @@ export interface DeleteOwnedFlowDeps {
   kv: KVStore;
   removeFlow(id: string): Promise<void>;
   unenroll(definitionKey: string, legacyFlowId?: string): Promise<void>;
+  markLegacyAmbiguous(flowId: string): Promise<void>;
+  deleteRun(id: string): Promise<void>;
+  deleteDefinitionCheckIns(definitionKey: string): Promise<void>;
+  deleteLegacyCheckIns(flowId: string): Promise<void>;
 }
 
 function intentKey(flowId: string): string {
@@ -58,8 +63,22 @@ async function completeIntent(
   intent: DeleteOwnedFlowIntent,
   deps: DeleteOwnedFlowDeps,
 ): Promise<void> {
+  const bareIdWasAmbiguous = intent.legacyFlowId === undefined;
+
+  // Tombstone must become durable before the owned definition disappears. Otherwise a crash
+  // after removeFlow could let the fallback example claim the same bare ID on restart.
+  if (bareIdWasAmbiguous) await deps.markLegacyAmbiguous(intent.flowId);
+
   await deps.removeFlow(intent.flowId);
-  await deps.unenroll(intent.definitionKey, intent.legacyFlowId);
+
+  // Deletion owns all runtime state for this definition. Bare-ID artifacts are legacy state;
+  // once an ID has ever been ambiguous they are quarantined rather than reassigned.
+  await deps.unenroll(intent.definitionKey, intent.legacyFlowId ?? intent.flowId);
+  await deps.deleteRun(activeRunId(intent.definitionKey));
+  await deps.deleteDefinitionCheckIns(intent.definitionKey);
+  await deps.deleteRun(legacyActiveRunId(intent.flowId));
+  await deps.deleteLegacyCheckIns(intent.flowId);
+
   await deps.kv.removeItem(key);
 }
 

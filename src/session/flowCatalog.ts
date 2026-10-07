@@ -19,9 +19,15 @@ export interface CatalogEntry {
   legacyFlowId?: string;
 }
 
+export interface CatalogProjection {
+  flows: Flow[];
+  /** 历史上曾发生 source 歧义的裸 ID；这些 ID 永远不能再作为 legacy alias。 */
+  legacyAmbiguousFlowIds: string[];
+}
+
 export type OwnedCatalogSnapshot =
   | { status: 'loading' }
-  | { status: 'ready'; flows: Flow[] }
+  | ({ status: 'ready' } & CatalogProjection)
   | { status: 'error' };
 
 export const LOADING_CATALOG: OwnedCatalogSnapshot = { status: 'loading' };
@@ -33,10 +39,12 @@ export function catalogDefinitionIdentity(
   flowId: string,
   source: FlowCatalogSource,
   examples: readonly Flow[],
+  legacyAmbiguousFlowIds: readonly string[] = [],
 ): CatalogDefinitionIdentity {
   const key = JSON.stringify([DEFINITION_KEY_VERSION, source, flowId]);
   const shadowsExample = source === 'owned' && examples.some((flow) => flow.id === flowId);
-  return shadowsExample ? { key } : { key, legacyFlowId: flowId };
+  const historicallyAmbiguous = legacyAmbiguousFlowIds.includes(flowId);
+  return shadowsExample || historicallyAmbiguous ? { key } : { key, legacyFlowId: flowId };
 }
 
 // Compatibility exports for tests/older callers while the semantic name is upgraded.
@@ -44,8 +52,9 @@ export function reminderEnrollmentIdentity(
   flowId: string,
   source: FlowCatalogSource,
   examples: readonly Flow[],
+  legacyAmbiguousFlowIds: readonly string[] = [],
 ): { key: string; legacyId?: string } {
-  const identity = catalogDefinitionIdentity(flowId, source, examples);
+  const identity = catalogDefinitionIdentity(flowId, source, examples, legacyAmbiguousFlowIds);
   return identity.legacyFlowId
     ? { key: identity.key, legacyId: identity.legacyFlowId }
     : { key: identity.key };
@@ -55,8 +64,9 @@ export function reminderEnrollmentKey(
   flowId: string,
   source: FlowCatalogSource,
   examples: readonly Flow[],
+  legacyAmbiguousFlowIds: readonly string[] = [],
 ): string {
-  return catalogDefinitionIdentity(flowId, source, examples).key;
+  return catalogDefinitionIdentity(flowId, source, examples, legacyAmbiguousFlowIds).key;
 }
 
 export function examplesVisibleAlongsideOwned(
@@ -67,8 +77,13 @@ export function examplesVisibleAlongsideOwned(
   return examples.filter((flow) => !ownedIds.has(flow.id));
 }
 
-function entryFor(flow: Flow, source: FlowCatalogSource, examples: readonly Flow[]): CatalogEntry {
-  const identity = catalogDefinitionIdentity(flow.id, source, examples);
+function entryFor(
+  flow: Flow,
+  source: FlowCatalogSource,
+  examples: readonly Flow[],
+  legacyAmbiguousFlowIds: readonly string[],
+): CatalogEntry {
+  const identity = catalogDefinitionIdentity(flow.id, source, examples, legacyAmbiguousFlowIds);
   return {
     flow,
     source,
@@ -80,30 +95,35 @@ function entryFor(flow: Flow, source: FlowCatalogSource, examples: readonly Flow
 export function catalogEntriesWithOwnedPrecedence(
   examples: readonly Flow[],
   owned: readonly Flow[],
+  legacyAmbiguousFlowIds: readonly string[] = [],
 ): CatalogEntry[] {
   return [
-    ...owned.map((flow) => entryFor(flow, 'owned', examples)),
-    ...examplesVisibleAlongsideOwned(examples, owned).map((flow) => entryFor(flow, 'example', examples)),
+    ...owned.map((flow) => entryFor(flow, 'owned', examples, legacyAmbiguousFlowIds)),
+    ...examplesVisibleAlongsideOwned(examples, owned)
+      .map((flow) => entryFor(flow, 'example', examples, legacyAmbiguousFlowIds)),
   ];
 }
 
 export function catalogWithOwnedPrecedence(
   examples: readonly Flow[],
   owned: readonly Flow[],
+  legacyAmbiguousFlowIds: readonly string[] = [],
 ): Flow[] {
-  return catalogEntriesWithOwnedPrecedence(examples, owned).map((entry) => entry.flow);
+  return catalogEntriesWithOwnedPrecedence(examples, owned, legacyAmbiguousFlowIds)
+    .map((entry) => entry.flow);
 }
 
 export function resolveCatalogEntry(
   flowId: string,
   owned: readonly Flow[],
   examples: readonly Flow[],
+  legacyAmbiguousFlowIds: readonly string[] = [],
 ): CatalogEntry | null {
   const ownedFlow = owned.find((flow) => flow.id === flowId);
-  if (ownedFlow) return entryFor(ownedFlow, 'owned', examples);
+  if (ownedFlow) return entryFor(ownedFlow, 'owned', examples, legacyAmbiguousFlowIds);
 
   const example = examples.find((flow) => flow.id === flowId);
-  return example ? entryFor(example, 'example', examples) : null;
+  return example ? entryFor(example, 'example', examples, legacyAmbiguousFlowIds) : null;
 }
 
 /** 新通知必须匹配 definitionKey；旧通知只在裸 flowId 来源无歧义时兼容。 */
@@ -112,8 +132,9 @@ export function resolveCatalogEntryForRoute(
   definitionKey: string | undefined,
   owned: readonly Flow[],
   examples: readonly Flow[],
+  legacyAmbiguousFlowIds: readonly string[] = [],
 ): CatalogEntry | null {
-  const entry = resolveCatalogEntry(flowId, owned, examples);
+  const entry = resolveCatalogEntry(flowId, owned, examples, legacyAmbiguousFlowIds);
   if (!entry) return null;
   if (definitionKey !== undefined) return entry.definitionKey === definitionKey ? entry : null;
   return entry.legacyFlowId === flowId ? entry : null;
@@ -123,6 +144,7 @@ export function resolveCatalogFlow(
   flowId: string,
   owned: readonly Flow[],
   examples: readonly Flow[],
+  legacyAmbiguousFlowIds: readonly string[] = [],
 ): Flow | null {
-  return resolveCatalogEntry(flowId, owned, examples)?.flow ?? null;
+  return resolveCatalogEntry(flowId, owned, examples, legacyAmbiguousFlowIds)?.flow ?? null;
 }

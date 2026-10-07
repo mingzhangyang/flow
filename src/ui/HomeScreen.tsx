@@ -64,6 +64,8 @@ export function HomeScreen(props: {
   const [backupNote, setBackupNote] = useState<string | null>(null);
   const catalogReady = props.catalog.status === 'ready';
   const mine: Flow[] = props.catalog.status === 'ready' ? props.catalog.flows : [];
+  const legacyAmbiguousFlowIds =
+    props.catalog.status === 'ready' ? props.catalog.legacyAmbiguousFlowIds : [];
 
   // 整库备份（C6 兜底）：全部 flow + 历史修订 + 打卡日志，经系统分享面板存文件/发给自己。
   const backup = (): void => {
@@ -79,7 +81,12 @@ export function HomeScreen(props: {
       .catch(() => setBackupNote(null)); // 用户取消等——不打扰
   };
   const del = (flow: Flow): void => {
-    const identity = catalogDefinitionIdentity(flow.id, 'owned', props.examples);
+    const identity = catalogDefinitionIdentity(
+      flow.id,
+      'owned',
+      props.examples,
+      legacyAmbiguousFlowIds,
+    );
     props.onDelete(flow, identity.key, identity.legacyFlowId).catch(() => {});
   };
 
@@ -91,7 +98,12 @@ export function HomeScreen(props: {
   );
 
   const run = (flow: Flow, own: boolean): void => {
-    const identity = catalogDefinitionIdentity(flow.id, own ? 'owned' : 'example', props.examples);
+    const identity = catalogDefinitionIdentity(
+      flow.id,
+      own ? 'owned' : 'example',
+      props.examples,
+      legacyAmbiguousFlowIds,
+    );
     props.onRun(flow, identity.key, identity.legacyFlowId);
   };
 

@@ -78,3 +78,19 @@ test('旧通知或错误 definitionKey 不会在 shadowing 后打开同 id 的�
   );
   assert.equal(resolveCatalogEntryForRoute(owned.id, undefined, [owned], [example]), null);
 });
+
+
+test('历史歧义 tombstone 会永久撤销 fallback example 的 bare-id legacy alias', () => {
+  const blocked = [example.id];
+  const fallback = catalogDefinitionIdentity(example.id, 'example', [example], blocked);
+  assert.equal(fallback.legacyFlowId, undefined);
+
+  assert.equal(
+    resolveCatalogEntryForRoute(example.id, undefined, [], [example], blocked),
+    null,
+  );
+  assert.equal(
+    resolveCatalogEntryForRoute(example.id, fallback.key, [], [example], blocked)?.source,
+    'example',
+  );
+});

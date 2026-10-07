@@ -21,10 +21,15 @@ import {
   catalogEntriesWithOwnedPrecedence,
   LOADING_CATALOG,
   resolveCatalogEntryForRoute,
+  type CatalogProjection,
   type FlowCatalogSource,
   type OwnedCatalogSnapshot,
 } from './src/session/flowCatalog';
 import { createCatalogCoordinator } from './src/session/catalogCoordinator';
+import {
+  markLegacyAmbiguousFlowId,
+  readLegacyAmbiguousFlowIds,
+} from './src/session/legacyIdentityRegistry';
 import { runCommittedCatalogMutation } from './src/session/catalogMutation';
 import {
   deleteOwnedFlowDurably,
@@ -82,25 +87,30 @@ export default function App() {
 
   const runCatalogTask = useCallback(async (
     mutation?: () => Promise<void>,
-  ): Promise<Flow[]> => {
+  ): Promise<CatalogProjection> => {
     if (mutation) await mutation();
 
     await recoverPendingOwnedFlowDeletions({
       kv: asyncStorageKV,
       removeFlow: (id) => library.remove(id),
       unenroll: (key, legacyId) => unenrollFlow(asyncStorageKV, key, legacyId),
+      markLegacyAmbiguous: (id) => markLegacyAmbiguousFlowId(asyncStorageKV, id),
+      deleteRun: (id) => storage.deleteRun(id),
+      deleteDefinitionCheckIns: (key) => storage.deleteDefinitionCheckIns(key),
+      deleteLegacyCheckIns: (id) => storage.deleteCheckIns(id),
     });
 
     const flows = await library.list();
+    const legacyAmbiguousFlowIds = await readLegacyAmbiguousFlowIds(asyncStorageKV);
     await rescheduleReminders({
       kv: asyncStorageKV,
       notifier,
-      flows: catalogEntriesWithOwnedPrecedence(examples, flows),
+      flows: catalogEntriesWithOwnedPrecedence(examples, flows, legacyAmbiguousFlowIds),
       now: Date.now(),
       deviceTz: systemTimeZone,
     });
-    return flows;
-  }, [examples, library, notifier]);
+    return { flows, legacyAmbiguousFlowIds };
+  }, [examples, library, notifier, storage]);
 
   const refreshCatalog = useCallback((
     mutation?: () => Promise<void>,
@@ -142,8 +152,12 @@ export default function App() {
         kv: asyncStorageKV,
         removeFlow: (id) => library.remove(id),
         unenroll: (key, legacyId) => unenrollFlow(asyncStorageKV, key, legacyId),
+        markLegacyAmbiguous: (id) => markLegacyAmbiguousFlowId(asyncStorageKV, id),
+        deleteRun: (id) => storage.deleteRun(id),
+        deleteDefinitionCheckIns: (key) => storage.deleteDefinitionCheckIns(key),
+        deleteLegacyCheckIns: (id) => storage.deleteCheckIns(id),
       })),
-  [library, runCatalogMutation]);
+  [library, runCatalogMutation, storage]);
 
   const refreshCatalogInBackground = useCallback((
     mutation?: () => Promise<void>,
@@ -164,13 +178,14 @@ export default function App() {
   useEffect(() => {
     let active = true;
     const unsubscribe = notificationResponses.start(async (route: NotificationRouteData) => {
-      const flows = await catalogCoordinator.waitForReady();
+      const projection = await catalogCoordinator.waitForReady();
       if (!active) return;
       const entry = resolveCatalogEntryForRoute(
         route.flowId,
         route.definitionKey,
-        flows,
+        projection.flows,
         examplesRef.current,
+        projection.legacyAmbiguousFlowIds,
       );
       if (entry) {
         setScreen({

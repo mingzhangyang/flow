@@ -26,12 +26,12 @@ test('并发 refresh 严格串行，旧请求没有 publish 权', async () => {
     events.push('first:start');
     await firstGate;
     events.push('first:end');
-    return [flow('old')];
+    return { flows: [flow('old')], legacyAmbiguousFlowIds: [] };
   });
   const second = coordinator.request(async () => {
     events.push('second:start');
     events.push('second:end');
-    return [flow('new')];
+    return { flows: [flow('new')], legacyAmbiguousFlowIds: [] };
   });
 
   await new Promise<void>((resolve) => setImmediate(resolve));
@@ -57,7 +57,7 @@ test('失败发布 error 但不毒死队列，retry 仍可 ready', async () => {
   );
   assert.equal(coordinator.current().status, 'error');
 
-  await coordinator.request(async () => [flow('recovered')]);
+  await coordinator.request(async () => ({ flows: [flow('recovered')], legacyAmbiguousFlowIds: [] }));
   const recovered = coordinator.current();
   assert.equal(recovered.status, 'ready');
   assert.equal(recovered.status === 'ready' ? recovered.flows[0]?.id : null, 'recovered');
@@ -73,10 +73,11 @@ test('waitForReady 在 loading/error 期间保留等待者，直到后续成功 
     }),
   );
 
-  const retry = coordinator.request(async () => [flow('ready')]);
-  const flows = await waiter;
+  const retry = coordinator.request(async () => ({ flows: [flow('ready')], legacyAmbiguousFlowIds: ['blocked'] }));
+  const projection = await waiter;
   await retry;
-  assert.deepEqual(flows.map((item) => item.id), ['ready']);
+  assert.deepEqual(projection.flows.map((item) => item.id), ['ready']);
+  assert.deepEqual(projection.legacyAmbiguousFlowIds, ['blocked']);
 });
 
 

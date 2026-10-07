@@ -2,17 +2,17 @@
 // request() 用于需要观察失败的调用；background() 用于 startup / foreground / retry 等
 // “失败已由 snapshot='error' 表达”的调用，避免产生第二条 unhandled rejection 通道。
 
-import { type Flow } from '../domain/types';
 import {
   ERROR_CATALOG,
   LOADING_CATALOG,
+  type CatalogProjection,
   type OwnedCatalogSnapshot,
 } from './flowCatalog';
 
 export interface CatalogCoordinator {
-  request(task: () => Promise<Flow[]>): Promise<void>;
-  background(task: () => Promise<Flow[]>): void;
-  waitForReady(): Promise<Flow[]>;
+  request(task: () => Promise<CatalogProjection>): Promise<void>;
+  background(task: () => Promise<CatalogProjection>): void;
+  waitForReady(): Promise<CatalogProjection>;
   current(): OwnedCatalogSnapshot;
 }
 
@@ -22,7 +22,7 @@ export function createCatalogCoordinator(
   let tail: Promise<void> = Promise.resolve();
   let latestRequest = 0;
   let snapshot: OwnedCatalogSnapshot = LOADING_CATALOG;
-  let readyWaiters: Array<(flows: Flow[]) => void> = [];
+  let readyWaiters: Array<(projection: CatalogProjection) => void> = [];
 
   const publishSnapshot = (next: OwnedCatalogSnapshot): void => {
     snapshot = next;
@@ -30,18 +30,22 @@ export function createCatalogCoordinator(
     if (next.status === 'ready') {
       const waiters = readyWaiters;
       readyWaiters = [];
-      for (const resolve of waiters) resolve(next.flows);
+      const projection: CatalogProjection = {
+        flows: next.flows,
+        legacyAmbiguousFlowIds: next.legacyAmbiguousFlowIds,
+      };
+      for (const resolve of waiters) resolve(projection);
     }
   };
 
-  const request = (task: () => Promise<Flow[]>): Promise<void> => {
+  const request = (task: () => Promise<CatalogProjection>): Promise<void> => {
     const requestId = ++latestRequest;
     publishSnapshot(LOADING_CATALOG);
 
     const run = tail.then(async () => {
       try {
-        const flows = await task();
-        if (requestId === latestRequest) publishSnapshot({ status: 'ready', flows });
+        const projection = await task();
+        if (requestId === latestRequest) publishSnapshot({ status: 'ready', ...projection });
       } catch (error) {
         if (requestId === latestRequest) publishSnapshot(ERROR_CATALOG);
         throw error;
@@ -60,8 +64,13 @@ export function createCatalogCoordinator(
       });
     },
     waitForReady() {
-      if (snapshot.status === 'ready') return Promise.resolve(snapshot.flows);
-      return new Promise<Flow[]>((resolve) => {
+      if (snapshot.status === 'ready') {
+        return Promise.resolve({
+          flows: snapshot.flows,
+          legacyAmbiguousFlowIds: snapshot.legacyAmbiguousFlowIds,
+        });
+      }
+      return new Promise<CatalogProjection>((resolve) => {
         readyWaiters.push(resolve);
       });
     },
