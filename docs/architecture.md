@@ -47,13 +47,11 @@
 - 接口：`saveFlow / loadFlow / listFlows / exportFlow / importFlow / appendRunEvent / loadRun`。
 - **不变式**：导出/导入用开放格式，round-trip 无损（C6/E5）。
 - **开放 ID 作为数据**：Flow/Node ID 不参与分隔符命名空间，也不直接用普通对象赋值承载映射；notification identity 使用 versioned tuple，备份中的 ID-keyed record 通过 own data property 写入，因此 `__proto__` 等字符串不获得对象原型语义。
-- **读入闸门**：持久数据回到纯核心前先过校验——flow 快照（含 Run 内嵌、历史修订）走
-  迁移 + 校验（`coerceFlow`），Run 事件日志用 `reduce` 从头重放验证（重放即校验，E4）；
-  坏数据返回 null / 逐条跳过，绝不让非法状态流入运行时。definition-scoped check-in 的精确 save/load/delete 与整库枚举都先验证 canonical `definitionKey`；枚举遇到坏 identity 直接 fail closed，绝不导出一个随后会被 restore 静默丢弃的日志。
+- **读入闸门 / presence ≠ validity**：持久数据回到纯核心前先过校验——只有 key 真正不存在（`null`）才能解释成“没有数据”；已存在但 JSON、容器或 identity 不合法的精确读取必须 fail closed，绝不能退化成空状态再覆盖原数据。flow 快照（含 Run 内嵌、历史修订）走迁移 + 校验（`coerceFlow`），Run 还必须满足 KV key = embedded `run.id`，definition-scoped 加载再验证 `definitionKey ↔ flow.id ↔ run.id`，事件日志用 `reduce` 从头重放验证（重放即校验，E4）。只有在外层容器/identity 已验证后，契约明确允许独立损坏的内部条目才可逐条跳过。definition-scoped check-in 的精确 save/load/delete 与整库枚举都先验证 canonical `definitionKey`；枚举遇到坏 identity 直接 fail closed，绝不导出一个随后会被 restore 静默丢弃的日志。
 - **机密走窄端口**：`SecretStore`（getItem/setItem/removeItem，无枚举）。适配器
   `secureKv.native`（iOS Keychain / Android Keystore，expo-secure-store）、Web 回落
   AsyncStorage；AI 模型密钥经此存储，不与普通数据混在一个后端（C6）。
-- **整库备份（`backup.ts` + `library.exportBackup/importBackup`）**：正式 backup v1 仅包含全部 flow、owned 历史修订和按 `definitionKey` 存储的打卡日志；不含瞬态 Run 或 AI 密钥。项目首发前不解析任何开发中间备份格式。恢复不覆盖本机：同 id Flow 走 commit 入历史，打卡按占位合并且本机记录优先；多写恢复可安全重试——已经应用的同内容 Flow 不重复生成 revision，commit 若在 history/current 两步之间失败也不会重复追加历史。
+- **整库备份（`backup.ts` + `library.exportBackup/importBackup`）**：正式 backup v1 仅包含全部 flow、owned 历史修订和按 `definitionKey` 存储的打卡日志；不含瞬态 Run 或 AI 密钥。parser 先验证完整 v1 envelope（有限数值 `exportedAt`、`flows` 数组、非数组对象 `revisions/checkIns`），容器缺失/截断/错型整体拒绝，只有 envelope 合法后才对内部独立坏记录逐条过滤。项目首发前不解析任何开发中间备份格式。恢复不覆盖本机：同 id Flow 走 commit 入历史，打卡按占位合并且本机记录优先；多写恢复可安全重试——已经应用的同内容 Flow 不重复生成 revision，commit 若在 history/current 两步之间失败也不会重复追加历史。
 - **Flow ID 冲突规则**：用户库是权威层，内置示例是只读 fallback。导入/备份允许保留外部稳定 id；若与示例同 id，用户 Flow 在首页、提醒重排和通知点击路由中一致地遮蔽示例。删除该用户 Flow 后示例重新可见。
 - **Owned revision boundary**：修订历史只属于 owned catalog definition。fallback example 即使与已删除 owned Flow 同 id，也不得读取、展示或恢复该 owned history。
 - **Catalog definition identity**：正式 v1 中，所有属于某个 Flow 定义的运行时状态统一以 `(source, flowId)` 的 versioned `definitionKey` 为唯一身份；reminder enrollment、notification route/identifier、active Run、scheduled check-ins、React run-screen instance 全部遵守这一规则。项目尚未发布且从未产生用户/测试数据，因此 v1 **不包含** bare-ID legacy alias、迁移器、tombstone/quarantine 或双命名空间兼容层。Run 一旦产生事件，继续使用 `run.flow` 的不可变定义快照；存储读取失败时 fail closed，绝不写空状态覆盖潜在进度。

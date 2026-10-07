@@ -47,3 +47,20 @@ export function assertDefinitionKey(value: string): void {
     throw new Error('invalid definitionKey');
   }
 }
+
+
+export function parseDefinitionKeyForFlow(
+  value: string,
+  flowId: string,
+): DefinitionIdentity | null {
+  const identity = parseDefinitionKey(value);
+  return identity !== null && identity.flowId === flowId ? identity : null;
+}
+
+export function assertDefinitionKeyForFlow(value: string, flowId: string): DefinitionIdentity {
+  const identity = parseDefinitionKeyForFlow(value, flowId);
+  if (identity === null) {
+    throw new Error('definitionKey does not match flow');
+  }
+  return identity;
+}

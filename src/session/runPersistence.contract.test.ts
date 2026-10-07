@@ -48,3 +48,49 @@ test('存储读取失败直接拒绝，绝不退化成空 Run', async () => {
     ),
   );
 });
+
+
+test('存在的 Run identity mismatch 是读取错误，绝不归一化或退化为空 Run', () => {
+  const expectedId = activeRunId(key());
+  assert.throws(() =>
+    runForCurrentDefinition(
+      { id: 'wrong-run-id', flow: v1, events: [{ type: 'started', at: 1 }] },
+      v2,
+      expectedId,
+    ),
+  );
+  assert.throws(() =>
+    runForCurrentDefinition(
+      { id: expectedId, flow: { ...v1, id: 'other-flow' }, events: [] },
+      v2,
+      expectedId,
+    ),
+  );
+});
+
+test('definitionKey 与 current Flow 错配时在读取存储前 fail closed', async () => {
+  let touched = false;
+  await assert.rejects(() =>
+    loadRunForDefinition(
+      {
+        async loadRun() {
+          touched = true;
+          return null;
+        },
+      },
+      { ...v2, id: 'other-flow' },
+      key(),
+    ),
+  );
+  assert.equal(touched, false);
+});
+
+test('只有真正缺失的 Run 才创建空 Run', async () => {
+  const expectedId = activeRunId(key());
+  const loaded = await loadRunForDefinition(
+    { async loadRun(id) { assert.equal(id, expectedId); return null; } },
+    v2,
+    key(),
+  );
+  assert.deepEqual(loaded, { id: expectedId, flow: v2, events: [] });
+});

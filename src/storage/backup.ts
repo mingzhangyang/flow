@@ -39,70 +39,66 @@ export function buildBackup(data: {
   return JSON.stringify(backup, null, 2) + '\n';
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 export function parseBackup(text: string): Backup | null {
-  let raw: {
-    kind?: unknown;
-    backupVersion?: unknown;
-    exportedAt?: unknown;
-    flows?: unknown;
-    revisions?: unknown;
-    checkIns?: unknown;
-  };
+  let raw: unknown;
   try {
-    raw = JSON.parse(text) as typeof raw;
+    raw = JSON.parse(text) as unknown;
   } catch {
     return null;
   }
+
+  if (!isRecord(raw)) return null;
   if (
-    typeof raw !== 'object' ||
-    raw === null ||
     raw.kind !== BACKUP_KIND ||
-    raw.backupVersion !== BACKUP_VERSION
+    raw.backupVersion !== BACKUP_VERSION ||
+    typeof raw.exportedAt !== 'number' ||
+    !Number.isFinite(raw.exportedAt) ||
+    !Array.isArray(raw.flows) ||
+    !isRecord(raw.revisions) ||
+    !isRecord(raw.checkIns)
   ) {
     return null;
   }
 
   const flows: Flow[] = [];
-  if (Array.isArray(raw.flows)) {
-    for (const item of raw.flows) {
-      try {
-        flows.push(coerceFlow(item));
-      } catch {
-        // skip invalid flow
-      }
+  for (const item of raw.flows) {
+    try {
+      flows.push(coerceFlow(item));
+    } catch {
+      // Envelope is valid; individual unusable Flow records may be skipped.
     }
   }
 
   const revisions: Record<string, Flow[]> = {};
-  if (typeof raw.revisions === 'object' && raw.revisions !== null) {
-    for (const [id, list] of Object.entries(raw.revisions as Record<string, unknown>)) {
-      if (!Array.isArray(list)) continue;
-      const kept: Flow[] = [];
-      for (const item of list) {
-        try {
-          const revision = coerceFlow(item);
-          if (revision.id === id) kept.push(revision);
-        } catch {
-          // skip invalid or mis-keyed snapshot
-        }
+  for (const [id, list] of Object.entries(raw.revisions)) {
+    if (!Array.isArray(list)) continue;
+    const kept: Flow[] = [];
+    for (const item of list) {
+      try {
+        const revision = coerceFlow(item);
+        if (revision.id === id) kept.push(revision);
+      } catch {
+        // Envelope is valid; one unusable or mis-keyed revision may be skipped.
       }
-      if (kept.length > 0) setStringRecordValue(revisions, id, kept);
     }
+    if (kept.length > 0) setStringRecordValue(revisions, id, kept);
   }
 
   const checkIns: Record<string, CheckIn[]> = {};
-  if (typeof raw.checkIns === 'object' && raw.checkIns !== null) {
-    for (const [definitionKey, list] of Object.entries(raw.checkIns as Record<string, unknown>)) {
-      if (parseDefinitionKey(definitionKey) === null || !Array.isArray(list)) continue;
-      const kept = list.filter(isCheckIn);
-      if (kept.length > 0) setStringRecordValue(checkIns, definitionKey, kept);
-    }
+  for (const [definitionKey, list] of Object.entries(raw.checkIns)) {
+    if (parseDefinitionKey(definitionKey) === null || !Array.isArray(list)) continue;
+    const kept = list.filter(isCheckIn);
+    if (kept.length > 0) setStringRecordValue(checkIns, definitionKey, kept);
   }
 
   return {
     kind: BACKUP_KIND,
     backupVersion: BACKUP_VERSION,
-    exportedAt: typeof raw.exportedAt === 'number' ? raw.exportedAt : 0,
+    exportedAt: raw.exportedAt,
     flows,
     revisions,
     checkIns,

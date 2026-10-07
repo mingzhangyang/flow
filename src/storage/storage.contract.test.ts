@@ -197,3 +197,19 @@ test('listAllCheckIns 遇到 malformed identity fail closed，避免导出后静
   await assert.rejects(() => s.listAllCheckIns());
   assert.equal(await kv.getItem('checkins:v1:bare-flow-id'), raw);
 });
+
+
+test('Run storage key 与 embedded id 不一致时精确读取 fail closed，枚举也不归一化', async () => {
+  const kv = createInMemoryKV();
+  const s = createStorage(kv);
+  const persisted = JSON.stringify({
+    id: 'other-run',
+    flow: coffeeFlow,
+    events: [{ type: 'started', at: 1 }],
+  });
+  await kv.setItem('run:expected-run', persisted);
+
+  await assert.rejects(() => s.loadRun('expected-run'));
+  assert.deepEqual(await s.listRuns(), []);
+  assert.equal(await kv.getItem('run:expected-run'), persisted);
+});

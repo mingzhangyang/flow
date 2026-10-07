@@ -30,10 +30,13 @@ function isRunEvent(value: unknown): value is RunEvent {
   return typeof e.type === 'string' && EVENT_TYPES.has(e.type as RunEventType) && typeof e.at === 'number';
 }
 
-function parseRun(text: string): Run {
+function parseRun(text: string, expectedId?: string): Run {
   const raw = JSON.parse(text) as { id?: unknown; flow?: unknown; events?: unknown };
   if (typeof raw.id !== 'string' || !Array.isArray(raw.events)) {
     throw new Error('invalid persisted Run');
+  }
+  if (expectedId !== undefined && raw.id !== expectedId) {
+    throw new Error('persisted Run id does not match storage key');
   }
   if (!raw.events.every(isRunEvent)) throw new Error('invalid persisted Run events');
   const flow = coerceFlow(raw.flow);
@@ -118,7 +121,7 @@ export function createStorage(kv: KVStore): Storage {
     },
     async loadRun(id) {
       const text = await kv.getItem(RUN + id);
-      return text === null ? null : parseRun(text);
+      return text === null ? null : parseRun(text, id);
     },
     async listRuns() {
       const keys = (await kv.keys()).filter((k) => k.startsWith(RUN));
@@ -126,10 +129,12 @@ export function createStorage(kv: KVStore): Storage {
       for (const key of keys) {
         const text = await kv.getItem(key);
         if (text === null) continue;
+        const id = key.slice(RUN.length);
         try {
-          runs.push(parseRun(text));
+          runs.push(parseRun(text, id));
         } catch {
-          // Enumeration can skip one unreadable Run; exact loadRun(id) remains fail-closed.
+          // Enumeration is explicitly best-effort, but a mismatched key/body identity is never
+          // normalized into a different Run. Exact loadRun(id) remains fail-closed.
         }
       }
       return runs;

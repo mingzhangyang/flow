@@ -1,7 +1,10 @@
 // 通知 route 的正式 v1 identity。
 // flowId 用于定位候选，definitionKey 必须 canonical 且必须指向同一个 flowId。
 
-import { parseDefinitionKey } from '../domain/definitionIdentity';
+import {
+  assertDefinitionKeyForFlow,
+  parseDefinitionKeyForFlow,
+} from '../domain/definitionIdentity';
 
 export interface NotificationRouteData {
   kind: 'flow';
@@ -10,20 +13,12 @@ export interface NotificationRouteData {
   nodeId?: string;
 }
 
-function routeIdentity(flowId: string, definitionKey: string) {
-  const identity = parseDefinitionKey(definitionKey);
-  if (flowId === '' || identity === null || identity.flowId !== flowId) {
-    throw new Error('invalid notification route identity');
-  }
-  return identity;
-}
-
 export function flowNotificationRoute(
   flowId: string,
   definitionKey: string,
   nodeId?: string,
 ): NotificationRouteData {
-  routeIdentity(flowId, definitionKey);
+  assertDefinitionKeyForFlow(definitionKey, flowId);
   return {
     kind: 'flow',
     flowId,
@@ -44,8 +39,7 @@ export function parseNotificationRoute(data: unknown): NotificationRouteData | n
     return null;
   }
 
-  const identity = parseDefinitionKey(raw.definitionKey);
-  if (identity === null || identity.flowId !== raw.flowId) return null;
+  if (parseDefinitionKeyForFlow(raw.definitionKey, raw.flowId) === null) return null;
 
   const route: NotificationRouteData = {
     kind: 'flow',

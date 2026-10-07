@@ -31,6 +31,7 @@ test('不是正式 v1 备份则返回 null', () => {
   assert.equal(parseBackup('not json'), null);
   assert.equal(parseBackup('{"schemaVersion":2,"id":"x"}'), null);
   assert.equal(parseBackup(JSON.stringify({ kind: BACKUP_KIND, backupVersion: 2 })), null);
+  assert.equal(parseBackup(JSON.stringify([])), null);
 });
 
 test('坏 flow / 快照 / check-in 单独丢弃，其余保留', () => {
@@ -92,4 +93,32 @@ test('check-in record 跳过 bare flowId 与非 canonical definition key', () =>
   const parsed = parseBackup(JSON.stringify(raw));
   assert.ok(parsed);
   assert.deepEqual(parsed.checkIns, sampleData().checkIns);
+});
+
+
+test('正式 v1 envelope 缺字段或容器 shape 错误时整体拒绝，不伪装成空恢复', () => {
+  const valid = {
+    kind: BACKUP_KIND,
+    backupVersion: BACKUP_VERSION,
+    exportedAt: 42,
+    flows: [],
+    revisions: {},
+    checkIns: {},
+  };
+
+  const invalid = [
+    { kind: BACKUP_KIND, backupVersion: BACKUP_VERSION, flows: [], revisions: {}, checkIns: {} },
+    { ...valid, exportedAt: '42' },
+    { kind: BACKUP_KIND, backupVersion: BACKUP_VERSION, exportedAt: 42, revisions: {}, checkIns: {} },
+    { ...valid, flows: {} },
+    { kind: BACKUP_KIND, backupVersion: BACKUP_VERSION, exportedAt: 42, flows: [], checkIns: {} },
+    { ...valid, revisions: [] },
+    { ...valid, revisions: null },
+    { kind: BACKUP_KIND, backupVersion: BACKUP_VERSION, exportedAt: 42, flows: [], revisions: {} },
+    { ...valid, checkIns: [] },
+    { ...valid, checkIns: 'truncated' },
+  ];
+  for (const value of invalid) {
+    assert.equal(parseBackup(JSON.stringify(value)), null);
+  }
 });

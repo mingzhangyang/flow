@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 
 import {
   assertDefinitionKey,
+  assertDefinitionKeyForFlow,
   definitionKey,
   parseDefinitionKey,
+  parseDefinitionKeyForFlow,
   type DefinitionSource,
 } from './definitionIdentity';
 
@@ -34,4 +36,17 @@ test('assertDefinitionKey 把 canonical identity 作为所有写边界的共享�
   assert.doesNotThrow(() => assertDefinitionKey(canonical));
   assert.throws(() => assertDefinitionKey('flow'));
   assert.throws(() => assertDefinitionKey(` ${canonical}`));
+});
+
+
+test('definitionKey 与 flowId 的关系也由共享 codec 校验', () => {
+  const canonical = definitionKey({ source: 'owned', flowId: 'flow-a' });
+  assert.deepEqual(parseDefinitionKeyForFlow(canonical, 'flow-a'), {
+    source: 'owned',
+    flowId: 'flow-a',
+  });
+  assert.equal(parseDefinitionKeyForFlow(canonical, 'flow-b'), null);
+  assert.equal(parseDefinitionKeyForFlow('bare', 'flow-a'), null);
+  assert.doesNotThrow(() => assertDefinitionKeyForFlow(canonical, 'flow-a'));
+  assert.throws(() => assertDefinitionKeyForFlow(canonical, 'flow-b'));
 });
