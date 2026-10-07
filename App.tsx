@@ -3,7 +3,7 @@
 // Home / 通知路由只消费 coordinator 发布的权威 snapshot。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, StyleSheet, useColorScheme } from 'react-native';
+import { AppState, BackHandler, Keyboard, Platform, StyleSheet, useColorScheme } from 'react-native';
 import { SafeAreaProvider, SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -53,6 +53,7 @@ import { InsightScreen } from './src/ui/InsightScreen';
 import { GenerateScreen } from './src/ui/GenerateScreen';
 import { useI18n } from './src/ui/i18n';
 import { dark, paletteFor } from './src/ui/theme';
+import { decideApplicationBack } from './src/ui/applicationBack';
 
 configureExpoNotificationPresentation();
 
@@ -83,14 +84,39 @@ export default function App() {
   const notificationResponses = useMemo(() => createExpoNotificationResponseSource(), []);
 
   const [screen, setScreen] = useState<Screen>({ name: 'home' });
+  const editorBackHandler = useRef<(() => void) | null>(null);
+  const registerEditorBackHandler = useCallback((handler: (() => void) | null): void => {
+    editorBackHandler.current = handler;
+  }, []);
   const [catalog, setCatalog] = useState<OwnedCatalogSnapshot>(LOADING_CATALOG);
   const catalogCoordinator = useMemo(() => createCatalogCoordinator(setCatalog), []);
 
-  const home = (): void => {
+  const home = useCallback((): void => {
     currentSession.current?.close();
     currentSession.current = null;
     setScreen({ name: 'home' });
-  };
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      // Keep the first Back native while the IME is visible. Android gets to
+      // dismiss the keyboard before application navigation is considered.
+      if (decideApplicationBack(screen.name, Keyboard.isVisible()) === 'system') return false;
+
+      if (screen.name === 'edit') {
+        (editorBackHandler.current ?? home)();
+      } else {
+        // Every other non-Home screen already exits through home(), including
+        // Runner/Schedule where home() closes the active RuntimeSession first.
+        home();
+      }
+      return true;
+    });
+
+    return () => subscription.remove();
+  }, [home, screen.name]);
 
   const openRun = useCallback((flowId: string, definitionKey: string): void => {
     const snapshot = catalogCoordinator.current();
@@ -305,7 +331,13 @@ export default function App() {
           />
         )
       ) : screen.name === 'edit' ? (
-        <EditorScreen draft={screen.flow} saveFlow={commitCatalogFlow} onSaved={() => home()} onCancel={home} />
+        <EditorScreen
+          draft={screen.flow}
+          saveFlow={commitCatalogFlow}
+          onSaved={() => home()}
+          onCancel={home}
+          onBackHandlerChange={registerEditorBackHandler}
+        />
       ) : screen.name === 'export' ? (
         <ExportScreen flow={screen.flow} sharer={systemSharer} onDone={home} />
       ) : screen.name === 'insight' ? (

@@ -1,12 +1,16 @@
 // Flow 编辑器。编辑“可以复杂”——这里可增删步骤、改类型、填 rationale（“为什么”，C2）。
 // 保存时经 library 提交为新修订（版本递增、旧版本入历史）。
 
-import { useState, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
+  Keyboard,
+  KeyboardAvoidingView,
   Platform,
   View,
   Text,
   TextInput,
+  type TextInputProps,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -22,6 +26,13 @@ import { fmtTimeOfDay } from './format';
 import { useI18n } from './i18n';
 import { type Strings } from './strings';
 import { paletteFor, type Palette, spacing, radius } from './theme';
+import {
+  editorDurationInputKey,
+  editorEveryNDaysInputKey,
+  editorScheduledTimeInputKey,
+  resolveEditorDraftState,
+  type EditorInputBuffers,
+} from './editorInputBuffers';
 
 const newNodeId = (): string => `n-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
@@ -39,15 +50,6 @@ function makeNode(kind: NodeKind, base: { id: string; label: string; rationale?:
     case 'parallel':
       return { kind: 'parallel', ...base, children: [] };
   }
-}
-
-function parseTimeOfDay(text: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(text.trim());
-  if (!m) return null;
-  const h = Number(m[1]);
-  const min = Number(m[2]);
-  if (h > 23 || min > 59) return null;
-  return h * 60 + min;
 }
 
 const seqKinds = (t: Strings): { kind: NodeKind; label: string }[] => [
@@ -70,20 +72,118 @@ function toggleWeekday(repeat: Recurrence, d: number): Recurrence {
   return { kind: 'weekly', days: next };
 }
 
-export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Promise<Flow>; onSaved: (f: Flow) => void; onCancel: () => void }) {
+const inputContractStyles = StyleSheet.create({
+  base: {
+    includeFontPadding: false,
+  },
+  singleLine: {
+    minHeight: 48,
+    lineHeight: 20,
+    paddingVertical: 0,
+  },
+  multiline: {
+    minHeight: 96,
+    lineHeight: 20,
+    paddingVertical: 12,
+  },
+});
+
+/**
+ * One mobile text-input contract for the whole Editor.
+ * Explicit metrics keep Android font/placeholder layout independent of
+ * platform font padding; multiline fields opt into top alignment.
+ */
+function EditorTextInput({ style, multiline = false, ...props }: TextInputProps) {
+  return (
+    <TextInput
+      {...props}
+      multiline={multiline}
+      underlineColorAndroid="transparent"
+      textAlignVertical={multiline ? 'top' : 'center'}
+      style={[
+        inputContractStyles.base,
+        multiline ? inputContractStyles.multiline : inputContractStyles.singleLine,
+        style,
+      ]}
+    />
+  );
+}
+
+interface EditorScreenProps {
+  draft: Flow;
+  saveFlow: (flow: Flow) => Promise<Flow>;
+  onSaved: (flow: Flow) => void;
+  onCancel: () => void;
+  onBackHandlerChange?: (handler: (() => void) | null) => void;
+}
+
+export function EditorScreen(props: EditorScreenProps) {
   const c = paletteFor(useColorScheme());
   const styles = useMemo(() => createStyles(c), [c]);
   const { t } = useI18n();
   const [flow, setFlow] = useState<Flow>(props.draft);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const [inputBuffers, setInputBuffers] = useState<EditorInputBuffers>({});
   const isScheduled = flow.topology === 'scheduled';
+  const resolvedDraft = useMemo(
+    () => resolveEditorDraftState(props.draft, flow, inputBuffers),
+    [flow, inputBuffers, props.draft],
+  );
+  const isDirty = resolvedDraft.dirty;
+
+  const setInputBuffer = useCallback((key: string, text: string): void => {
+    setInputBuffers((current) => ({ ...current, [key]: text }));
+  }, []);
+
+  const clearInputBufferKeys = useCallback((keys: string[]): void => {
+    setInputBuffers((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const key of keys) {
+        if (key in next) {
+          delete next[key];
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, []);
+
+  const requestExit = useCallback((): void => {
+    // Once a commit starts, navigation is temporarily owned by the save flow.
+    // This prevents Back/discard from racing the eventual onSaved transition.
+    if (savingRef.current) return;
+
+    if (!isDirty) {
+      props.onCancel();
+      return;
+    }
+
+    Alert.alert(
+      t.editorDiscardTitle,
+      t.editorDiscardMessage,
+      [
+        { text: t.editorContinueEditing, style: 'cancel' },
+        { text: t.editorDiscardChanges, style: 'destructive', onPress: props.onCancel },
+      ],
+    );
+  }, [isDirty, props.onCancel, t]);
+
+  useEffect(() => {
+    props.onBackHandlerChange?.(requestExit);
+    return () => props.onBackHandlerChange?.(null);
+  }, [props.onBackHandlerChange, requestExit]);
 
   const patch = (id: string, p: Partial<FlowNode>): void => setFlow((f) => updateNode(f, id, p));
-  const changeKind = (id: string, kind: NodeKind): void =>
+  const changeKind = (id: string, kind: NodeKind): void => {
+    clearInputBufferKeys([editorDurationInputKey(id), editorScheduledTimeInputKey(id)]);
     setFlow((f) => ({
       ...f,
       nodes: f.nodes.map((n) => (n.id === id ? makeNode(kind, { id: n.id, label: n.label, rationale: n.rationale }) : n)),
     }));
+  };
 
   const add = (): void => {
     const base = { id: newNodeId(), label: '' };
@@ -106,42 +206,76 @@ export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Pro
     }
   };
 
-  const save = (): void => {
-    const issues = validateFlow(flow);
+  const save = useCallback(async (): Promise<void> => {
+    if (savingRef.current) return;
+
+    if (resolvedDraft.invalid) {
+      setError(t.editorInvalidCompactInput);
+      return;
+    }
+
+    const candidate = resolvedDraft.flow;
+    const issues = validateFlow(candidate);
     if (issues.length > 0) {
       setError(issues[0].path + ': ' + issues[0].message);
       return;
     }
-    if (flow.timeZone && !isValidTimeZoneName(flow.timeZone)) {
-      setError(t.editorInvalidTimeZone(flow.timeZone));
+    if (candidate.timeZone && !isValidTimeZoneName(candidate.timeZone)) {
+      setError(t.editorInvalidTimeZone(candidate.timeZone));
       return;
     }
-    props.saveFlow(flow).then(props.onSaved).catch((e) => setError(String(e)));
-  };
+
+    // The ref closes the same-frame double-tap window before React can render
+    // the disabled button state.
+    savingRef.current = true;
+    setSaving(true);
+    Keyboard.dismiss();
+    setError(null);
+    try {
+      const saved = await props.saveFlow(candidate);
+      props.onSaved(saved);
+    } catch (e) {
+      savingRef.current = false;
+      setSaving(false);
+      setError(String(e));
+    }
+  }, [props.onSaved, props.saveFlow, resolvedDraft, t]);
 
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={props.onCancel} hitSlop={12}><Text style={styles.headerBtn}>{t.cancel}</Text></Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t.back}
+          disabled={saving}
+          onPress={requestExit}
+          hitSlop={8}
+          style={[styles.headerSide, saving && styles.backDisabled]}
+        >
+          <Text style={styles.headerBackIcon}>‹</Text>
+        </Pressable>
         <Text style={styles.title}>{t.editorTitle}</Text>
-        <Pressable onPress={save} hitSlop={12}><Text style={[styles.headerBtn, styles.save]}>{t.save}</Text></Pressable>
+        <View style={styles.headerSide} />
       </View>
 
       <ScrollView
+        pointerEvents={saving ? 'none' : 'auto'}
         style={styles.scroll}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
       >
-        <TextInput
+        <EditorTextInput
+          editable={!saving}
           style={styles.titleInput}
           value={flow.title}
           onChangeText={(text) => setFlow((f) => setMeta(f, { title: text }))}
           placeholder={t.editorFlowName}
           placeholderTextColor={c.pending}
         />
-        <TextInput
+        <EditorTextInput
+          editable={!saving}
           style={styles.descInput}
           value={flow.description ?? ''}
           onChangeText={(text) => setFlow((f) => setMeta(f, { description: text }))}
@@ -150,7 +284,8 @@ export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Pro
         />
         {isScheduled ? (
           <>
-            <TextInput
+            <EditorTextInput
+          editable={!saving}
               style={styles.descInput}
               value={flow.timeZone ?? ''}
               onChangeText={(text) => { setFlow((f) => setMeta(f, { timeZone: text })); setError(null); }}
@@ -169,7 +304,10 @@ export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Pro
                       <Pressable
                         key={r.kind}
                         style={[styles.kindBtn, on && styles.kindBtnOn]}
-                        onPress={() => setFlow((f) => setMeta(f, { repeat: defaultRepeat(r.kind) }))}
+                        onPress={() => {
+                          clearInputBufferKeys([editorEveryNDaysInputKey]);
+                          setFlow((f) => setMeta(f, { repeat: defaultRepeat(r.kind) }));
+                        }}
                       >
                         <Text style={[styles.kindText, on && styles.kindTextOn]}>{r.label}</Text>
                       </Pressable>
@@ -203,18 +341,12 @@ export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Pro
               ) : null}
               {flow.repeat?.kind === 'everyNDays' ? (
                 <Row label={t.editorEveryNDays}>
-                  <TextInput
+                  <EditorTextInput
+          editable={!saving}
                     style={styles.smallInput}
                     keyboardType="number-pad"
-                    defaultValue={String(flow.repeat.n)}
-                    onChangeText={(t) => {
-                      const n = Number(t);
-                      if (Number.isInteger(n) && n >= 1) {
-                        setFlow((f) =>
-                          f.repeat?.kind === 'everyNDays' ? setMeta(f, { repeat: { ...f.repeat, n } }) : f,
-                        );
-                      }
-                    }}
+                    value={inputBuffers[editorEveryNDaysInputKey] ?? String(flow.repeat.n)}
+                    onChangeText={(text) => setInputBuffer(editorEveryNDaysInputKey, text)}
                   />
                 </Row>
               ) : null}
@@ -227,7 +359,8 @@ export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Pro
           <View key={node.id} style={styles.nodeCard}>
             <View style={styles.nodeTop}>
               <Text style={styles.nodeIndex}>{i + 1}</Text>
-              <TextInput
+              <EditorTextInput
+          editable={!saving}
                 style={styles.nodeLabel}
                 value={node.label}
                 onChangeText={(text) => patch(node.id, { label: text })}
@@ -238,13 +371,11 @@ export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Pro
 
             {isScheduled && node.kind === 'scheduled' ? (
               <Row label={t.editorTime}>
-                <TextInput
+                <EditorTextInput
+          editable={!saving}
                   style={styles.smallInput}
-                  defaultValue={fmtTimeOfDay(node.at)}
-                  onChangeText={(text) => {
-                    const m = parseTimeOfDay(text);
-                    if (m !== null) patch(node.id, { at: m });
-                  }}
+                  value={inputBuffers[editorScheduledTimeInputKey(node.id)] ?? fmtTimeOfDay(node.at)}
+                  onChangeText={(text) => setInputBuffer(editorScheduledTimeInputKey(node.id), text)}
                   placeholder="08:00"
                   placeholderTextColor={c.pending}
                 />
@@ -267,19 +398,18 @@ export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Pro
 
             {node.kind === 'timed' ? (
               <Row label={t.editorDuration}>
-                <TextInput
+                <EditorTextInput
+          editable={!saving}
                   style={styles.smallInput}
                   keyboardType="number-pad"
-                  defaultValue={String(node.durationSec)}
-                  onChangeText={(text) => {
-                    const s = Number(text);
-                    if (Number.isFinite(s) && s > 0) patch(node.id, { durationSec: Math.floor(s) });
-                  }}
+                  value={inputBuffers[editorDurationInputKey(node.id)] ?? String(node.durationSec)}
+                  onChangeText={(text) => setInputBuffer(editorDurationInputKey(node.id), text)}
                 />
               </Row>
             ) : null}
 
-            <TextInput
+            <EditorTextInput
+          editable={!saving}
               style={styles.rationaleInput}
               value={node.rationale ?? ''}
               onChangeText={(text) => patch(node.id, { rationale: text || undefined })}
@@ -307,6 +437,24 @@ export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Pro
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
+
+      <KeyboardAvoidingView
+        enabled={Platform.OS === 'ios'}
+        behavior={Platform.OS === 'ios' ? 'position' : undefined}
+        style={styles.footerAvoider}
+        contentContainerStyle={styles.footerAvoiderContent}
+      >
+        <View style={styles.footer}>
+          <Pressable
+            accessibilityRole="button"
+            disabled={saving}
+            onPress={save}
+            style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+          >
+            <Text style={styles.saveButtonText}>{saving ? t.editorSaving : t.save}</Text>
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -330,20 +478,24 @@ const createStyles = (c: Palette) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: c.bg },
   scroll: { flex: 1 },
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
   },
-  headerBtn: { fontSize: 16, color: c.accent },
-  save: { fontWeight: '700' },
-  title: { fontSize: 16, fontWeight: '600', color: c.text },
+  headerSide: { flex: 1, minHeight: 44, justifyContent: 'center', alignItems: 'flex-start' },
+  headerBackIcon: { fontSize: 32, lineHeight: 32, color: c.accent, marginTop: -2 },
+  backDisabled: { opacity: 0.45 },
+  title: { fontSize: 16, lineHeight: 22, fontWeight: '600', color: c.text, textAlign: 'center' },
   content: { padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xl },
   titleInput: {
+    minHeight: 56, lineHeight: 28,
     fontSize: 22, fontWeight: '700', color: c.text, backgroundColor: c.surface,
-    borderRadius: radius.md, borderWidth: 1, borderColor: c.border, padding: spacing.md,
+    borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
+    paddingHorizontal: spacing.md,
   },
   descInput: {
     fontSize: 15, color: c.text, backgroundColor: c.surface,
-    borderRadius: radius.md, borderWidth: 1, borderColor: c.border, padding: spacing.md,
+    borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
+    paddingHorizontal: spacing.md,
   },
   sectionKicker: { fontSize: 13, color: c.textMuted, letterSpacing: 2, marginTop: spacing.sm, marginLeft: spacing.xs },
   repeatCard: {
@@ -357,7 +509,7 @@ const createStyles = (c: Palette) => StyleSheet.create({
   },
   nodeTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   nodeIndex: { fontSize: 13, color: c.textMuted, width: 18 },
-  nodeLabel: { flex: 1, fontSize: 16, color: c.text, paddingVertical: spacing.xs },
+  nodeLabel: { flex: 1, fontSize: 16, lineHeight: 22, color: c.text, paddingHorizontal: 0 },
   kindRow: { flexDirection: 'row', gap: spacing.xs },
   kindBtn: {
     paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radius.pill,
@@ -369,13 +521,15 @@ const createStyles = (c: Palette) => StyleSheet.create({
   fieldRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   fieldLabel: { fontSize: 13, color: c.textMuted, width: 64 },
   smallInput: {
+    minHeight: 44,
     fontSize: 15, color: c.text, backgroundColor: c.bg,
     borderRadius: radius.sm, borderWidth: 1, borderColor: c.border,
-    paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, minWidth: 80,
+    paddingHorizontal: spacing.sm, minWidth: 80,
   },
   rationaleInput: {
     fontSize: 14, color: c.textMuted, backgroundColor: c.bg,
-    borderRadius: radius.sm, borderWidth: 1, borderColor: c.border, padding: spacing.sm,
+    borderRadius: radius.sm, borderWidth: 1, borderColor: c.border,
+    paddingHorizontal: spacing.sm,
   },
   nodeActions: { flexDirection: 'row', gap: spacing.lg, alignItems: 'center' },
   action: { fontSize: 15, color: c.accent },
@@ -387,4 +541,16 @@ const createStyles = (c: Palette) => StyleSheet.create({
   },
   addText: { color: c.accent, fontSize: 15, fontWeight: '600' },
   error: { color: c.warn, fontSize: 14, marginTop: spacing.sm },
+  footerAvoider: { backgroundColor: c.bg },
+  footerAvoiderContent: { backgroundColor: c.bg },
+  footer: {
+    borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.bg,
+    paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm,
+  },
+  saveButton: {
+    minHeight: 48, borderRadius: radius.md, backgroundColor: c.accent,
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md,
+  },
+  saveButtonDisabled: { opacity: 0.55 },
+  saveButtonText: { color: c.accentText, fontSize: 16, lineHeight: 22, fontWeight: '700' },
 });

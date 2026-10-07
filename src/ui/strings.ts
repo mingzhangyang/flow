@@ -80,6 +80,12 @@ const zh = {
 
   // 编辑器
   editorTitle: '编辑',
+  editorDiscardTitle: '放弃未保存的更改？',
+  editorDiscardMessage: '这些更改还没有保存。',
+  editorContinueEditing: '继续编辑',
+  editorDiscardChanges: '放弃更改',
+  editorSaving: '保存中…',
+  editorInvalidCompactInput: '请完成或修正时长、时间或间隔输入。',
   editorFlowName: '流程名称',
   editorDescription: '一句话描述（可选）',
   editorTimeZone: '锚定时区（可选，如 Asia/Shanghai；留空跟随设备）',
@@ -225,6 +231,12 @@ const zhHant: Strings = {
   scheduleStorageUnavailable: '打卡記錄暫時無法讀取。為避免覆蓋既有記錄，已暫停打卡。',
 
   editorTitle: '編輯',
+  editorDiscardTitle: '放棄未儲存的變更？',
+  editorDiscardMessage: '這些變更還沒有儲存。',
+  editorContinueEditing: '繼續編輯',
+  editorDiscardChanges: '放棄變更',
+  editorSaving: '儲存中…',
+  editorInvalidCompactInput: '請完成或修正時長、時間或間隔輸入。',
   editorFlowName: '流程名稱',
   editorDescription: '一句話描述（可選）',
   editorTimeZone: '錨定時區（可選，如 Asia/Taipei；留空跟隨裝置）',
@@ -364,6 +376,12 @@ const en: Strings = {
   scheduleStorageUnavailable: 'Check-in history could not be read. Check-ins are paused to avoid overwriting saved records.',
 
   editorTitle: 'Edit',
+  editorDiscardTitle: 'Discard unsaved changes?',
+  editorDiscardMessage: 'Your changes have not been saved.',
+  editorContinueEditing: 'Keep editing',
+  editorDiscardChanges: 'Discard changes',
+  editorSaving: 'Saving…',
+  editorInvalidCompactInput: 'Finish or correct the duration, time, or interval input.',
   editorFlowName: 'Flow name',
   editorDescription: 'One-line description (optional)',
   editorTimeZone: 'Anchor time zone (optional, e.g. Asia/Shanghai; blank = device)',
