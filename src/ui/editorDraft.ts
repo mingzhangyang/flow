@@ -5,7 +5,11 @@ import type { Flow, FlowNode, Recurrence } from '../domain/types';
 
 function normalizeRepeat(flow: Flow): Recurrence | null {
   if (flow.topology !== 'scheduled') return null;
-  return flow.repeat ?? { kind: 'once' };
+  const repeat = flow.repeat ?? { kind: 'once' };
+  if (repeat.kind === 'weekly') {
+    return { ...repeat, days: [...repeat.days].sort((a, b) => a - b) };
+  }
+  return repeat;
 }
 
 function normalizeNode(node: FlowNode): unknown {
