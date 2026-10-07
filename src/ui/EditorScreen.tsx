@@ -26,12 +26,11 @@ import { fmtTimeOfDay } from './format';
 import { useI18n } from './i18n';
 import { type Strings } from './strings';
 import { paletteFor, type Palette, spacing, radius } from './theme';
-import { isEditorDraftDirty } from './editorDraft';
 import {
   editorDurationInputKey,
   editorEveryNDaysInputKey,
   editorScheduledTimeInputKey,
-  resolveEditorInputBuffers,
+  resolveEditorDraftState,
   type EditorInputBuffers,
 } from './editorInputBuffers';
 
@@ -128,14 +127,11 @@ export function EditorScreen(props: EditorScreenProps) {
   const savingRef = useRef(false);
   const [inputBuffers, setInputBuffers] = useState<EditorInputBuffers>({});
   const isScheduled = flow.topology === 'scheduled';
-  const resolvedBuffers = useMemo(
-    () => resolveEditorInputBuffers(flow, inputBuffers),
-    [flow, inputBuffers],
+  const resolvedDraft = useMemo(
+    () => resolveEditorDraftState(props.draft, flow, inputBuffers),
+    [flow, inputBuffers, props.draft],
   );
-  const isDirty = useMemo(
-    () => isEditorDraftDirty(props.draft, flow) || resolvedBuffers.dirty,
-    [flow, props.draft, resolvedBuffers.dirty],
-  );
+  const isDirty = resolvedDraft.dirty;
 
   const setInputBuffer = useCallback((key: string, text: string): void => {
     setInputBuffers((current) => ({ ...current, [key]: text }));
@@ -213,12 +209,12 @@ export function EditorScreen(props: EditorScreenProps) {
   const save = useCallback(async (): Promise<void> => {
     if (savingRef.current) return;
 
-    if (resolvedBuffers.invalid) {
+    if (resolvedDraft.invalid) {
       setError(t.editorInvalidCompactInput);
       return;
     }
 
-    const candidate = resolvedBuffers.flow;
+    const candidate = resolvedDraft.flow;
     const issues = validateFlow(candidate);
     if (issues.length > 0) {
       setError(issues[0].path + ': ' + issues[0].message);
@@ -243,7 +239,7 @@ export function EditorScreen(props: EditorScreenProps) {
       setSaving(false);
       setError(String(e));
     }
-  }, [props.onSaved, props.saveFlow, resolvedBuffers, t]);
+  }, [props.onSaved, props.saveFlow, resolvedDraft, t]);
 
   return (
     <View style={styles.screen}>
