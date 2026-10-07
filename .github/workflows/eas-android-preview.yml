@@ -95,7 +95,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          eas build             --platform android             --profile preview             --non-interactive             --wait             --json > eas-build.json
+          eas build --platform android --profile preview --non-interactive --freeze-credentials --wait --json > eas-build.json
 
           BUILD_ID="$(node <<'NODE'
           const fs = require('fs');
@@ -137,7 +137,7 @@ jobs:
             exit 1
           fi
 
-          curl --fail --location --retry 3             --output flow-android-preview.apk             "${APK_URL}"
+          curl --fail --location --retry 3 --output flow-android-preview.apk "${APK_URL}"
 
           test -s flow-android-preview.apk
 
