@@ -91,7 +91,8 @@ function resolveNodes(
  * Materialize currently visible compact-input buffers into a Flow candidate.
  *
  * Inactive buffers (for a node/repeat kind that is no longer visible) are
- * ignored. Invalid/intermediate text marks the editor dirty and blocks Save.
+ * ignored. Invalid/intermediate text is reported separately so the Editor can
+ * treat it as dirty and block Save.
  */
 export function resolveEditorInputBuffers(
   flow: Flow,
@@ -107,7 +108,6 @@ export function resolveEditorInputBuffers(
       if (n === null) {
         state.invalid = true;
       } else if (n !== repeat.n) {
-        state.dirty = true;
         repeat = { ...repeat, n };
       }
     }
