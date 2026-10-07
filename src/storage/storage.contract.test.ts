@@ -140,10 +140,11 @@ test('历史修订容器损坏 fail closed；坏快照跳过、其余保留', as
   await kv.setItem('rev:broken', '{not json');
   await assert.rejects(() => s.loadRevisions('broken'));
 
-  await kv.setItem('rev:x', JSON.stringify([coffeeFlow, { not: 'a flow' }]));
+  const ownedByX = { ...coffeeFlow, id: 'x' };
+  await kv.setItem('rev:x', JSON.stringify([ownedByX, { not: 'a flow' }]));
   const revisions = await s.loadRevisions('x');
   assert.equal(revisions.length, 1);
-  assert.equal(revisions[0].id, coffeeFlow.id);
+  assert.equal(revisions[0].id, 'x');
 });
 
 
