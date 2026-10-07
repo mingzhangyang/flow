@@ -6,6 +6,7 @@
 // text cannot be silently lost by Back/discard decisions.
 
 import type { Flow, FlowNode } from '../domain/types';
+import { isEditorDraftDirty } from './editorDraft';
 
 export type EditorInputBuffers = Readonly<Record<string, string>>;
 
@@ -42,14 +43,17 @@ export function parseEditorTimeOfDay(text: string): number | null {
 
 export interface ResolvedEditorInputBuffers {
   flow: Flow;
-  dirty: boolean;
   invalid: boolean;
+}
+
+export interface ResolvedEditorDraftState extends ResolvedEditorInputBuffers {
+  dirty: boolean;
 }
 
 function resolveNodes(
   nodes: FlowNode[],
   buffers: EditorInputBuffers,
-  state: { dirty: boolean; invalid: boolean },
+  state: { invalid: boolean },
 ): FlowNode[] {
   return nodes.map((node) => {
     if (node.kind === 'timed') {
@@ -57,11 +61,9 @@ function resolveNodes(
       if (text === undefined) return node;
       const durationSec = parseEditorDuration(text);
       if (durationSec === null) {
-        state.dirty = true;
         state.invalid = true;
         return node;
       }
-      if (durationSec !== node.durationSec) state.dirty = true;
       return durationSec === node.durationSec ? node : { ...node, durationSec };
     }
 
@@ -70,11 +72,9 @@ function resolveNodes(
       if (text === undefined) return node;
       const at = parseEditorTimeOfDay(text);
       if (at === null) {
-        state.dirty = true;
         state.invalid = true;
         return node;
       }
-      if (at !== node.at) state.dirty = true;
       return at === node.at ? node : { ...node, at };
     }
 
@@ -97,7 +97,7 @@ export function resolveEditorInputBuffers(
   flow: Flow,
   buffers: EditorInputBuffers,
 ): ResolvedEditorInputBuffers {
-  const state = { dirty: false, invalid: false };
+  const state = { invalid: false };
   let repeat = flow.repeat;
 
   if (flow.topology === 'scheduled' && repeat?.kind === 'everyNDays') {
@@ -105,7 +105,6 @@ export function resolveEditorInputBuffers(
     if (text !== undefined) {
       const n = parseEditorEveryNDays(text);
       if (n === null) {
-        state.dirty = true;
         state.invalid = true;
       } else if (n !== repeat.n) {
         state.dirty = true;
@@ -119,5 +118,24 @@ export function resolveEditorInputBuffers(
     ? flow
     : { ...flow, repeat, nodes };
 
-  return { flow: nextFlow, dirty: state.dirty, invalid: state.invalid };
+  return { flow: nextFlow, invalid: state.invalid };
+}
+
+/**
+ * Resolve one authoritative Editor state for both Back/discard and Save.
+ *
+ * Valid raw buffers first materialize into a candidate Flow, then that candidate
+ * is compared to the original draft. Only invalid/intermediate raw text is
+ * independently dirty because it cannot yet be represented in Flow.
+ */
+export function resolveEditorDraftState(
+  initial: Flow,
+  current: Flow,
+  buffers: EditorInputBuffers,
+): ResolvedEditorDraftState {
+  const resolved = resolveEditorInputBuffers(current, buffers);
+  return {
+    ...resolved,
+    dirty: resolved.invalid || isEditorDraftDirty(initial, resolved.flow),
+  };
 }
