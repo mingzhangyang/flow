@@ -18,6 +18,7 @@
     "android": {
       "package": "com.mingzhangyang.zhunshi",
       "versionCode": 1,
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#2F6F4F",
         "foregroundImage": "./assets/android-icon-foreground.png",
