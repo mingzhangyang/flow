@@ -31,8 +31,14 @@ import {
   editorEveryNDaysInputKey,
   editorScheduledTimeInputKey,
   resolveEditorDraftState,
-  type EditorInputBuffers,
 } from './editorInputBuffers';
+import {
+  applyEditorDurationPreset,
+  createQuickWaitNode,
+  selectedEditorDurationPreset,
+  type EditorAuthoringState,
+  type EditorDurationPreset,
+} from './editorAuthoring';
 
 const newNodeId = (): string => `n-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
@@ -56,6 +62,14 @@ const seqKinds = (t: Strings): { kind: NodeKind; label: string }[] => [
   { kind: 'timed', label: t.editorKindTimed },
   { kind: 'gate', label: t.editorKindGate },
   { kind: 'instant', label: t.editorKindInstant },
+];
+
+const durationPresets = (t: Strings): { durationSec: EditorDurationPreset; label: string }[] => [
+  { durationSec: 30, label: t.editorDurationPreset30Sec },
+  { durationSec: 60, label: t.editorDurationPreset1Min },
+  { durationSec: 300, label: t.editorDurationPreset5Min },
+  { durationSec: 600, label: t.editorDurationPreset10Min },
+  { durationSec: 1800, label: t.editorDurationPreset30Min },
 ];
 
 const repeatKinds = (t: Strings): { kind: Recurrence['kind']; label: string }[] => [
@@ -121,11 +135,14 @@ export function EditorScreen(props: EditorScreenProps) {
   const c = paletteFor(useColorScheme());
   const styles = useMemo(() => createStyles(c), [c]);
   const { t } = useI18n();
-  const [flow, setFlow] = useState<Flow>(props.draft);
+  const [authoringState, setAuthoringState] = useState<EditorAuthoringState>(() => ({
+    flow: props.draft,
+    inputBuffers: {},
+  }));
+  const { flow, inputBuffers } = authoringState;
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
-  const [inputBuffers, setInputBuffers] = useState<EditorInputBuffers>({});
   const isScheduled = flow.topology === 'scheduled';
   const resolvedDraft = useMemo(
     () => resolveEditorDraftState(props.draft, flow, inputBuffers),
@@ -133,22 +150,36 @@ export function EditorScreen(props: EditorScreenProps) {
   );
   const isDirty = resolvedDraft.dirty;
 
+  const setFlow = useCallback((update: (current: Flow) => Flow): void => {
+    setAuthoringState((current) => {
+      const flow = update(current.flow);
+      return flow === current.flow ? current : { ...current, flow };
+    });
+  }, []);
+
   const setInputBuffer = useCallback((key: string, text: string): void => {
-    setInputBuffers((current) => ({ ...current, [key]: text }));
+    setAuthoringState((current) => ({
+      ...current,
+      inputBuffers: { ...current.inputBuffers, [key]: text },
+    }));
   }, []);
 
   const clearInputBufferKeys = useCallback((keys: string[]): void => {
-    setInputBuffers((current) => {
+    setAuthoringState((current) => {
       let changed = false;
-      const next = { ...current };
+      const inputBuffers = { ...current.inputBuffers };
       for (const key of keys) {
-        if (key in next) {
-          delete next[key];
+        if (key in inputBuffers) {
+          delete inputBuffers[key];
           changed = true;
         }
       }
-      return changed ? next : current;
+      return changed ? { ...current, inputBuffers } : current;
     });
+  }, []);
+
+  const applyDurationPreset = useCallback((nodeId: string, durationSec: EditorDurationPreset): void => {
+    setAuthoringState((current) => applyEditorDurationPreset(current, nodeId, durationSec));
   }, []);
 
   const requestExit = useCallback((): void => {
@@ -188,6 +219,11 @@ export function EditorScreen(props: EditorScreenProps) {
   const add = (): void => {
     const base = { id: newNodeId(), label: '' };
     setFlow((f) => addNode(f, makeNode(isScheduled ? 'scheduled' : 'timed', base)));
+  };
+
+  const addWait = (): void => {
+    if (isScheduled) return;
+    setFlow((f) => addNode(f, createQuickWaitNode(newNodeId(), t.editorWaitLabel)));
   };
 
   // 切换重复方式时的初值：每周默认勾今天的星期，隔 N 天默认隔天、从今天起算。
@@ -396,16 +432,53 @@ export function EditorScreen(props: EditorScreenProps) {
               </View>
             ) : null}
 
-            {node.kind === 'timed' ? (
-              <Row label={t.editorDuration}>
-                <EditorTextInput
-          editable={!saving}
-                  style={styles.smallInput}
-                  keyboardType="number-pad"
-                  value={inputBuffers[editorDurationInputKey(node.id)] ?? String(node.durationSec)}
-                  onChangeText={(text) => setInputBuffer(editorDurationInputKey(node.id), text)}
-                />
-              </Row>
+            {!isScheduled && node.kind === 'timed' ? (
+              <View style={styles.durationEditor}>
+                <Text style={styles.durationLabel}>{t.editorDuration}</Text>
+                <View style={styles.durationPresetRow}>
+                  {durationPresets(t).map((preset) => {
+                    const selected =
+                      selectedEditorDurationPreset(
+                        node,
+                        inputBuffers[editorDurationInputKey(node.id)],
+                      ) === preset.durationSec;
+                    return (
+                      <Pressable
+                        key={preset.durationSec}
+                        accessibilityRole="button"
+                        accessibilityLabel={preset.label}
+                        accessibilityState={{ selected, disabled: saving }}
+                        disabled={saving}
+                        onPress={() => applyDurationPreset(node.id, preset.durationSec)}
+                        style={[
+                          styles.durationPresetBtn,
+                          selected && styles.durationPresetBtnOn,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.durationPresetText,
+                            selected && styles.durationPresetTextOn,
+                          ]}
+                        >
+                          {selected ? `✓ ${preset.label}` : preset.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <View style={styles.durationCustomRow}>
+                  <Text style={styles.durationCustomLabel}>{t.editorDurationCustomSeconds}</Text>
+                  <EditorTextInput
+                    accessibilityLabel={t.editorDurationCustomSeconds}
+                    editable={!saving}
+                    style={[styles.smallInput, styles.durationInput]}
+                    keyboardType="number-pad"
+                    value={inputBuffers[editorDurationInputKey(node.id)] ?? String(node.durationSec)}
+                    onChangeText={(text) => setInputBuffer(editorDurationInputKey(node.id), text)}
+                  />
+                </View>
+              </View>
             ) : null}
 
             <EditorTextInput
@@ -431,9 +504,26 @@ export function EditorScreen(props: EditorScreenProps) {
           </View>
         ))}
 
-        <Pressable style={styles.addBtn} onPress={add}>
-          <Text style={styles.addText}>{isScheduled ? t.editorAddEvent : t.editorAddStep}</Text>
-        </Pressable>
+        <View style={styles.addActions}>
+          <Pressable
+            accessibilityRole="button"
+            disabled={saving}
+            style={[styles.addBtn, styles.addAction]}
+            onPress={add}
+          >
+            <Text style={styles.addText}>{isScheduled ? t.editorAddEvent : t.editorAddStep}</Text>
+          </Pressable>
+          {!isScheduled ? (
+            <Pressable
+              accessibilityRole="button"
+              disabled={saving}
+              style={[styles.addBtn, styles.addAction, styles.quickWaitBtn]}
+              onPress={addWait}
+            >
+              <Text style={styles.addText}>{t.editorAddWait}</Text>
+            </Pressable>
+          ) : null}
+        </View>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
@@ -518,6 +608,22 @@ const createStyles = (c: Palette) => StyleSheet.create({
   kindBtnOn: { backgroundColor: c.accent, borderColor: c.accent },
   kindText: { fontSize: 13, color: c.textMuted },
   kindTextOn: { color: c.accentText, fontWeight: '700' },
+  durationEditor: { gap: spacing.xs },
+  durationLabel: { fontSize: 13, color: c.textMuted },
+  durationPresetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  durationPresetBtn: {
+    minHeight: 44, justifyContent: 'center',
+    paddingHorizontal: spacing.md, borderRadius: radius.pill,
+    borderWidth: 1, borderColor: c.border,
+  },
+  durationPresetBtnOn: { backgroundColor: c.accent, borderColor: c.accent },
+  durationPresetText: { fontSize: 13, color: c.textMuted },
+  durationPresetTextOn: { color: c.accentText, fontWeight: '700' },
+  durationCustomRow: {
+    flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm,
+  },
+  durationCustomLabel: { fontSize: 13, color: c.textMuted },
+  durationInput: { flexGrow: 1, minWidth: 96 },
   fieldRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   fieldLabel: { fontSize: 13, color: c.textMuted, width: 64 },
   smallInput: {
@@ -535,10 +641,16 @@ const createStyles = (c: Palette) => StyleSheet.create({
   action: { fontSize: 15, color: c.accent },
   actionOff: { color: c.pending },
   remove: { color: c.warn },
-  addBtn: {
-    borderRadius: radius.md, borderWidth: 1, borderColor: c.accent, borderStyle: 'dashed',
-    paddingVertical: spacing.md, alignItems: 'center', marginTop: spacing.xs,
+  addActions: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.xs,
   },
+  addBtn: {
+    minHeight: 48, justifyContent: 'center',
+    borderRadius: radius.md, borderWidth: 1, borderColor: c.accent, borderStyle: 'dashed',
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm, alignItems: 'center',
+  },
+  addAction: { flexGrow: 1, flexBasis: 136 },
+  quickWaitBtn: { borderStyle: 'solid', backgroundColor: c.surface },
   addText: { color: c.accent, fontSize: 15, fontWeight: '600' },
   error: { color: c.warn, fontSize: 14, marginTop: spacing.sm },
   footerAvoider: { backgroundColor: c.bg },
