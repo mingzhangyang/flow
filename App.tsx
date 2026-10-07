@@ -2,7 +2,7 @@
 // Catalog snapshot、提醒重排、提醒登记和持久化删除恢复统一走一个串行 coordinator。
 // Home / 通知路由只消费 coordinator 发布的权威 snapshot。
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, SafeAreaView, StyleSheet, useColorScheme } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -65,6 +65,8 @@ export default function App() {
   const c = paletteFor(scheme);
   const { locale } = useI18n();
   const examples = useMemo(() => examplesFor(locale), [locale]);
+  const examplesRef = useRef(examples);
+  examplesRef.current = examples;
   const storage = useMemo(() => createStorage(asyncStorageKV), []);
   const library = useMemo(() => createLibrary(storage), [storage]);
   const notifier = useMemo(() => createExpoNotifier(), []);
@@ -166,14 +168,14 @@ export default function App() {
     const unsubscribe = notificationResponses.start(async (route: NotificationRouteData) => {
       const flows = await catalogCoordinator.waitForReady();
       if (!active) return;
-      const entry = resolveCatalogEntry(route.flowId, flows, examples);
+      const entry = resolveCatalogEntry(route.flowId, flows, examplesRef.current);
       if (entry) setScreen({ name: 'run', flow: entry.flow, enrollmentKey: entry.enrollmentKey });
     });
     return () => {
       active = false;
       unsubscribe();
     };
-  }, [catalogCoordinator, examples, notificationResponses]);
+  }, [catalogCoordinator, notificationResponses]);
 
   if (!fontsLoaded) return null;
 
