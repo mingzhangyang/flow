@@ -36,7 +36,7 @@ test('新建顺序型 → 保存 → 导出 JSON → 改 id/标题后导入 → 
 
   // 改 id / 标题后导入 → 库中新增一条（不覆盖原条目）
   const copy = json.replace(flow.id, `${flow.id}-copy`).replace('手冲滴滤', '手冲滴滤 复制版');
-  await page.getByRole('button', { name: '‹ 返回' }).click();
+  await page.getByText('‹ 返回', { exact: true }).click();
   await page.getByText('导入', { exact: true }).click();
   await page.locator('textarea').fill(copy);
   await page.getByText('确认导入', { exact: true }).click();
@@ -55,7 +55,7 @@ test('日程型编辑器：once「过时不候」提示可见，选每天后消�
   // 回到初始 once 语义后 draft 再次 clean；顶部返回应直接退出。
   await page.getByText('仅今天', { exact: true }).click();
   await expectText(page, /过时不候/);
-  await page.getByText('‹ 返回', { exact: true }).click();
+  await page.getByRole('button', { name: '‹ 返回' }).click();
   await expectText(page, '示例');
 });
 
