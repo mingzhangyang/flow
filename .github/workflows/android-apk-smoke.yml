@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   apk:
-    name: Build debug APK
+    name: Build standalone test APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -38,14 +38,14 @@ jobs:
       - name: Generate Android project
         run: npx expo prebuild --platform android --clean --no-install
 
-      - name: Build debug APK
+      - name: Build standalone test APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: flow-android-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: flow-android-standalone-test-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 7
