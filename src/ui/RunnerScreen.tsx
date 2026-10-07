@@ -170,6 +170,7 @@ const styles = StyleSheet.create({
   retry: {
     minHeight: mobileControlSize.compact, justifyContent: 'center',
     borderRadius: radius.pill, borderWidth: 1, borderColor: dark.accent,
+    backgroundColor: dark.accentSoft,
     paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
   },
   retryText: { color: dark.accent, fontSize: type.body, fontWeight: '600' },
@@ -187,7 +188,7 @@ const styles = StyleSheet.create({
   rationale: { fontSize: type.body, color: dark.textMuted, textAlign: 'center', maxWidth: 300 },
   timeUp: { fontSize: type.body - 1, color: dark.accent },
   primary: {
-    backgroundColor: dark.text, borderRadius: radius.pill, paddingVertical: spacing.md, alignItems: 'center',
+    backgroundColor: dark.accent, borderRadius: radius.pill, paddingVertical: spacing.md, alignItems: 'center',
   },
   primaryText: { color: dark.bg, fontSize: type.emphasis + 1, fontWeight: '700' },
   controls: { flexDirection: 'row', justifyContent: 'center', gap: spacing.xl, paddingVertical: spacing.xs },
@@ -200,7 +201,7 @@ const styles = StyleSheet.create({
   ghostText: { fontSize: type.body, color: dark.textMuted, fontWeight: '600' },
   ghostTextDisabled: { color: dark.faint },
   timelineCard: {
-    backgroundColor: dark.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: dark.border,
+    backgroundColor: dark.surfaceRaised, borderRadius: radius.lg, borderWidth: 1, borderColor: dark.border,
     padding: spacing.md, marginTop: spacing.sm,
   },
 });

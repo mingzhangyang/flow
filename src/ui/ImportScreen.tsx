@@ -8,6 +8,7 @@ import { parseBackup, type Backup } from '../storage/backup';
 import { extractFlowJson } from '../sharing/share';
 import { useI18n } from './i18n';
 import { paletteFor, type Palette, spacing, radius } from './theme';
+import { HeaderBackButton, HeaderSideSpacer } from './mobileControls';
 
 export function ImportScreen(props: {
   importFlow: (text: string, now: number) => Promise<Flow>;
@@ -46,9 +47,9 @@ export function ImportScreen(props: {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={props.onCancel} hitSlop={12}><Text style={styles.back}>{t.back}</Text></Pressable>
-        <Text style={styles.title}>{t.importTitle}</Text>
-        <View style={{ width: 48 }} />
+        <HeaderBackButton accessibilityLabel={t.back} color={c.primary} onPress={props.onCancel} />
+        <Text style={styles.title} numberOfLines={1}>{t.importTitle}</Text>
+        <HeaderSideSpacer />
       </View>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.hint}>{t.importHint}</Text>
@@ -57,7 +58,7 @@ export function ImportScreen(props: {
           value={text}
           onChangeText={(t) => { setText(t); setError(null); }}
           placeholder='{ "schemaVersion": 1, ... }'
-          placeholderTextColor={c.pending}
+          placeholderTextColor={c.textFaint}
           multiline
           autoCapitalize="none"
           autoCorrect={false}
@@ -73,22 +74,21 @@ export function ImportScreen(props: {
 }
 
 const createStyles = (c: Palette) => StyleSheet.create({
-  screen: { flex: 1, backgroundColor: c.bg },
+  screen: { flex: 1, backgroundColor: c.canvas },
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
-  back: { fontSize: 16, color: c.accent, width: 48 },
-  title: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '600', color: c.text },
+  title: { flex: 1, minWidth: 0, textAlign: 'center', fontSize: 16, fontWeight: '600', color: c.text },
   content: { padding: spacing.md, gap: spacing.md },
   hint: { fontSize: 14, color: c.textMuted },
   input: {
-    backgroundColor: c.surface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
+    backgroundColor: c.inputSurface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
     padding: spacing.md, fontSize: 13, color: c.text, minHeight: 220, textAlignVertical: 'top',
   },
-  backupNote: { color: c.accent, fontSize: 14 },
-  error: { color: c.warn, fontSize: 14 },
-  primary: { backgroundColor: c.accent, borderRadius: radius.pill, paddingVertical: spacing.md, alignItems: 'center' },
+  backupNote: { color: c.success, fontSize: 14 },
+  error: { color: c.danger, fontSize: 14 },
+  primary: { backgroundColor: c.primary, borderRadius: radius.pill, paddingVertical: spacing.md, alignItems: 'center' },
   primaryOff: { opacity: 0.4 },
-  primaryText: { color: c.accentText, fontSize: 16, fontWeight: '700' },
+  primaryText: { color: c.onPrimary, fontSize: 16, fontWeight: '700' },
 });

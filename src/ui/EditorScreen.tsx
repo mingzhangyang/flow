@@ -283,7 +283,7 @@ export function EditorScreen(props: EditorScreenProps) {
       <View style={styles.header}>
         <HeaderBackButton
           accessibilityLabel={t.back}
-          color={c.accent}
+          color={c.primary}
           disabled={saving}
           onPress={requestExit}
         />
@@ -305,7 +305,7 @@ export function EditorScreen(props: EditorScreenProps) {
           value={flow.title}
           onChangeText={(text) => setFlow((f) => setMeta(f, { title: text }))}
           placeholder={t.editorFlowName}
-          placeholderTextColor={c.pending}
+          placeholderTextColor={c.textFaint}
         />
         <EditorTextInput
           editable={!saving}
@@ -313,7 +313,7 @@ export function EditorScreen(props: EditorScreenProps) {
           value={flow.description ?? ''}
           onChangeText={(text) => setFlow((f) => setMeta(f, { description: text }))}
           placeholder={t.editorDescription}
-          placeholderTextColor={c.pending}
+          placeholderTextColor={c.textFaint}
         />
         {isScheduled ? (
           <>
@@ -323,7 +323,7 @@ export function EditorScreen(props: EditorScreenProps) {
               value={flow.timeZone ?? ''}
               onChangeText={(text) => { setFlow((f) => setMeta(f, { timeZone: text })); setError(null); }}
               placeholder={t.editorTimeZone}
-              placeholderTextColor={c.pending}
+              placeholderTextColor={c.textFaint}
               autoCapitalize="none"
               autoCorrect={false}
             />
@@ -404,7 +404,7 @@ export function EditorScreen(props: EditorScreenProps) {
                 value={node.label}
                 onChangeText={(text) => patch(node.id, { label: text })}
                 placeholder={isScheduled ? t.editorEventPlaceholder : t.editorStepPlaceholder}
-                placeholderTextColor={c.pending}
+                placeholderTextColor={c.textFaint}
               />
             </View>
 
@@ -416,7 +416,7 @@ export function EditorScreen(props: EditorScreenProps) {
                   value={inputBuffers[editorScheduledTimeInputKey(node.id)] ?? fmtTimeOfDay(node.at)}
                   onChangeText={(text) => setInputBuffer(editorScheduledTimeInputKey(node.id), text)}
                   placeholder="08:00"
-                  placeholderTextColor={c.pending}
+                  placeholderTextColor={c.textFaint}
                 />
               </Row>
             ) : null}
@@ -493,7 +493,7 @@ export function EditorScreen(props: EditorScreenProps) {
               value={node.rationale ?? ''}
               onChangeText={(text) => patch(node.id, { rationale: text || undefined })}
               placeholder={t.editorWhy}
-              placeholderTextColor={c.pending}
+              placeholderTextColor={c.textFaint}
             />
 
             <View style={styles.nodeActions}>
@@ -600,7 +600,7 @@ const rowStyles = StyleSheet.create({
 });
 
 const createStyles = (c: Palette) => StyleSheet.create({
-  screen: { flex: 1, backgroundColor: c.bg },
+  screen: { flex: 1, backgroundColor: c.canvas },
   scroll: { flex: 1 },
   header: {
     flexDirection: 'row', alignItems: 'center',
@@ -613,23 +613,25 @@ const createStyles = (c: Palette) => StyleSheet.create({
   content: { padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xl },
   titleInput: {
     minHeight: 56, lineHeight: 28,
-    fontSize: 22, fontWeight: '700', color: c.text, backgroundColor: c.surface,
+    fontSize: 22, fontWeight: '700', color: c.text, backgroundColor: c.inputSurface,
     borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
     paddingHorizontal: spacing.md,
   },
   descInput: {
-    fontSize: 15, color: c.text, backgroundColor: c.surface,
+    fontSize: 15, color: c.text, backgroundColor: c.inputSurface,
     borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
     paddingHorizontal: spacing.md,
   },
-  sectionKicker: { fontSize: 13, color: c.textMuted, letterSpacing: 2, marginTop: spacing.sm, marginLeft: spacing.xs },
+  sectionKicker: { fontSize: 13, color: c.textFaint, letterSpacing: 2, marginTop: spacing.sm, marginLeft: spacing.xs },
   repeatCard: {
-    backgroundColor: c.surface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
+    backgroundColor: c.surfaceSubtle, borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: c.border,
     padding: spacing.md, gap: spacing.sm,
   },
   repeatHint: { fontSize: 13, color: c.textMuted, lineHeight: 18 },
   nodeCard: {
-    backgroundColor: c.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border,
+    backgroundColor: c.surfaceRaised, borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: c.border,
     padding: spacing.md, gap: spacing.sm,
   },
   nodeTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
@@ -640,11 +642,11 @@ const createStyles = (c: Palette) => StyleSheet.create({
     minWidth: mobileControlSize.compact, minHeight: mobileControlSize.compact,
     flexShrink: 0, alignItems: 'center', justifyContent: 'center',
     paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radius.pill,
-    borderWidth: 1, borderColor: c.border,
+    borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceSubtle,
   },
-  kindBtnOn: { backgroundColor: c.accent, borderColor: c.accent },
+  kindBtnOn: { backgroundColor: c.primarySoft, borderColor: c.primary },
   kindText: { fontSize: 13, color: c.textMuted, textAlign: 'center' },
-  kindTextOn: { color: c.accentText, fontWeight: '700' },
+  kindTextOn: { color: c.onPrimarySoft, fontWeight: '700' },
   durationEditor: { gap: spacing.xs },
   durationLabel: { fontSize: 13, color: c.textMuted },
   durationPresetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
@@ -654,9 +656,9 @@ const createStyles = (c: Palette) => StyleSheet.create({
     paddingHorizontal: spacing.md, borderRadius: radius.pill,
     borderWidth: 1, borderColor: c.border,
   },
-  durationPresetBtnOn: { backgroundColor: c.accent, borderColor: c.accent },
+  durationPresetBtnOn: { backgroundColor: c.primarySoft, borderColor: c.primary },
   durationPresetText: { fontSize: 13, color: c.textMuted },
-  durationPresetTextOn: { color: c.accentText, fontWeight: '700' },
+  durationPresetTextOn: { color: c.onPrimarySoft, fontWeight: '700' },
   durationCustomRow: {
     flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm,
   },
@@ -666,12 +668,12 @@ const createStyles = (c: Palette) => StyleSheet.create({
   fieldLabel: { fontSize: 13, color: c.textMuted, width: 64 },
   smallInput: {
     minHeight: 44,
-    fontSize: 15, color: c.text, backgroundColor: c.bg,
+    fontSize: 15, color: c.text, backgroundColor: c.inputSurface,
     borderRadius: radius.sm, borderWidth: 1, borderColor: c.border,
     paddingHorizontal: spacing.sm, minWidth: 80,
   },
   rationaleInput: {
-    fontSize: 14, color: c.textMuted, backgroundColor: c.bg,
+    fontSize: 14, color: c.textMuted, backgroundColor: c.inputSurface,
     borderRadius: radius.sm, borderWidth: 1, borderColor: c.border,
     paddingHorizontal: spacing.sm,
   },
@@ -680,34 +682,34 @@ const createStyles = (c: Palette) => StyleSheet.create({
     minWidth: mobileControlSize.compact, minHeight: mobileControlSize.compact,
     alignItems: 'center', justifyContent: 'center',
     borderRadius: radius.sm, borderWidth: 1, borderColor: c.border,
-    paddingHorizontal: spacing.sm,
+    backgroundColor: c.surfaceSubtle, paddingHorizontal: spacing.sm,
   },
   nodeActionDisabled: { opacity: 0.38 },
-  nodeActionText: { fontSize: 15, color: c.accent, fontWeight: '600' },
-  removeActionButton: { borderColor: c.warn },
-  remove: { color: c.warn },
+  nodeActionText: { fontSize: 15, color: c.primary, fontWeight: '600' },
+  removeActionButton: { borderColor: c.danger, backgroundColor: c.dangerSoft },
+  remove: { color: c.danger },
   addActions: {
     flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.xs,
   },
   addBtn: {
     minHeight: 48, justifyContent: 'center',
-    borderRadius: radius.md, borderWidth: 1, borderColor: c.accent, borderStyle: 'dashed',
+    borderRadius: radius.md, borderWidth: 1, borderColor: c.primary, borderStyle: 'dashed',
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm, alignItems: 'center',
   },
   addAction: { flexGrow: 1, flexBasis: 136 },
-  quickWaitBtn: { borderStyle: 'solid', backgroundColor: c.surface },
-  addText: { color: c.accent, fontSize: 15, fontWeight: '600' },
-  error: { color: c.warn, fontSize: 14, marginTop: spacing.sm },
-  footerAvoider: { backgroundColor: c.bg },
-  footerAvoiderContent: { backgroundColor: c.bg },
+  quickWaitBtn: { borderStyle: 'solid', backgroundColor: c.secondarySoft },
+  addText: { color: c.primary, fontSize: 15, fontWeight: '600' },
+  error: { color: c.danger, fontSize: 14, marginTop: spacing.sm },
+  footerAvoider: { backgroundColor: c.canvas },
+  footerAvoiderContent: { backgroundColor: c.canvas },
   footer: {
-    borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.bg,
+    borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.canvas,
     paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm,
   },
   saveButton: {
-    minHeight: 48, borderRadius: radius.md, backgroundColor: c.accent,
+    minHeight: 48, borderRadius: radius.md, backgroundColor: c.primary,
     alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md,
   },
   saveButtonDisabled: { opacity: 0.55 },
-  saveButtonText: { color: c.accentText, fontSize: 16, lineHeight: 22, fontWeight: '700' },
+  saveButtonText: { color: c.onPrimary, fontSize: 16, lineHeight: 22, fontWeight: '700' },
 });

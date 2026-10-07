@@ -12,6 +12,7 @@ import { analyze, type Finding } from '../ai/analyze';
 import { diffFlows, describeChange, type Change } from '../ai/diff';
 import { useI18n } from './i18n';
 import { paletteFor, type Palette, spacing, radius } from './theme';
+import { HeaderBackButton, HeaderSideSpacer } from './mobileControls';
 
 export function InsightScreen(props: {
   flow: Flow;
@@ -55,9 +56,9 @@ export function InsightScreen(props: {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={props.onExit} hitSlop={12}><Text style={styles.back}>{t.back}</Text></Pressable>
-        <Text style={styles.title}>{t.insightTitle}</Text>
-        <View style={{ width: 48 }} />
+        <HeaderBackButton accessibilityLabel={t.back} color={c.primary} onPress={props.onExit} />
+        <Text style={styles.title} numberOfLines={1}>{t.insightTitle}</Text>
+        <HeaderSideSpacer />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -108,33 +109,32 @@ export function InsightScreen(props: {
 }
 
 const createStyles = (c: Palette) => StyleSheet.create({
-  screen: { flex: 1, backgroundColor: c.bg },
+  screen: { flex: 1, backgroundColor: c.canvas },
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
-  back: { fontSize: 16, color: c.accent, width: 48 },
-  title: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '600', color: c.text },
+  title: { flex: 1, minWidth: 0, textAlign: 'center', fontSize: 16, fontWeight: '600', color: c.text },
   content: { padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xl },
-  sectionKicker: { fontSize: 13, color: c.textMuted, letterSpacing: 2, marginLeft: spacing.xs, marginTop: spacing.sm },
+  sectionKicker: { fontSize: 13, color: c.textFaint, letterSpacing: 2, marginLeft: spacing.xs, marginTop: spacing.sm },
   card: {
-    backgroundColor: c.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border,
+    backgroundColor: c.surfaceRaised, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth, borderColor: c.border,
     padding: spacing.md, gap: spacing.xs,
   },
   lead: { fontSize: 16, fontWeight: '700', color: c.text, marginBottom: spacing.xs },
   line: { fontSize: 14, color: c.text, lineHeight: 21 },
   finding: { flexDirection: 'row', gap: spacing.sm, paddingVertical: spacing.xs },
   dot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
-  dotWarn: { backgroundColor: c.warn },
-  dotInfo: { backgroundColor: c.accent },
+  dotWarn: { backgroundColor: c.warning },
+  dotInfo: { backgroundColor: c.secondary },
   findingTitle: { fontSize: 15, fontWeight: '600', color: c.text },
   findingDetail: { fontSize: 13, color: c.textMuted, lineHeight: 19, marginTop: 2 },
   change: { fontSize: 14, color: c.text, paddingVertical: 2 },
   restore: {
     marginTop: spacing.sm, alignSelf: 'flex-start',
-    borderWidth: 1, borderColor: c.accent, borderRadius: radius.pill,
+    borderWidth: 1, borderColor: c.primary, backgroundColor: c.primarySoft, borderRadius: radius.pill,
     paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
   },
-  restoreText: { color: c.accent, fontSize: 14, fontWeight: '600' },
+  restoreText: { color: c.onPrimarySoft, fontSize: 14, fontWeight: '600' },
   note: { fontSize: 12, color: c.textMuted, marginTop: spacing.md, lineHeight: 18 },
 });

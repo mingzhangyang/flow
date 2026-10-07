@@ -280,7 +280,7 @@ export default function App() {
   // Runner uses a dark immersive scene independent of the system appearance.
   // The shell owns safe-area paint and system-bar contrast for every screen.
   const immersiveRun = screen.name === 'run' && screen.flow.topology === 'sequential';
-  const appBackground = immersiveRun ? dark.bg : c.bg;
+  const appBackground = immersiveRun ? dark.bg : c.canvas;
   const statusBarStyle = immersiveRun || scheme === 'dark' ? 'light' : 'dark';
 
   return (

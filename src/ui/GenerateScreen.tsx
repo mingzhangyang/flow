@@ -20,6 +20,7 @@ import { localDayIndex } from '../runtime/clock';
 import { systemTimeZone } from '../runtime/systemTimeZone';
 import { useI18n } from './i18n';
 import { paletteFor, type Palette, spacing, radius } from './theme';
+import { HeaderBackButton, HeaderSideSpacer } from './mobileControls';
 
 const platformFetch: FetchLike = (url, init) =>
   fetch(url, init).then((r) => ({ ok: r.ok, status: r.status, text: () => r.text() }));
@@ -99,9 +100,9 @@ export function GenerateScreen(props: {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={props.onCancel} hitSlop={12}><Text style={styles.back}>{t.back}</Text></Pressable>
-        <Text style={styles.title}>{t.generateTitle}</Text>
-        <View style={{ width: 48 }} />
+        <HeaderBackButton accessibilityLabel={t.back} color={c.primary} onPress={props.onCancel} />
+        <Text style={styles.title} numberOfLines={1}>{t.generateTitle}</Text>
+        <HeaderSideSpacer />
       </View>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.hint}>{t.generateHint}</Text>
@@ -110,7 +111,7 @@ export function GenerateScreen(props: {
           value={description}
           onChangeText={(text) => { setDescription(text); setError(null); }}
           placeholder={t.generatePlaceholder}
-          placeholderTextColor={c.pending}
+          placeholderTextColor={c.textFaint}
           multiline
           testID="gen-description"
         />
@@ -138,7 +139,7 @@ export function GenerateScreen(props: {
               value={baseUrl}
               onChangeText={setBaseUrl}
               placeholder="https://api.deepseek.com/v1"
-              placeholderTextColor={c.pending}
+              placeholderTextColor={c.textFaint}
               autoCapitalize="none"
               autoCorrect={false}
             />
@@ -158,7 +159,7 @@ export function GenerateScreen(props: {
           value={model}
           onChangeText={setModel}
           placeholder={provider === 'anthropic' ? ANTHROPIC_DEFAULT_MODEL : t.generateModelPlaceholder}
-          placeholderTextColor={c.pending}
+          placeholderTextColor={c.textFaint}
           autoCapitalize="none"
           autoCorrect={false}
         />
@@ -169,7 +170,7 @@ export function GenerateScreen(props: {
           value={apiKey}
           onChangeText={setApiKey}
           placeholder={provider === 'openai-compatible' ? t.generateKeyOptional : 'sk-...'}
-          placeholderTextColor={c.pending}
+          placeholderTextColor={c.textFaint}
           secureTextEntry
           autoCapitalize="none"
           autoCorrect={false}
@@ -190,45 +191,44 @@ export function GenerateScreen(props: {
 }
 
 const createStyles = (c: Palette) => StyleSheet.create({
-  screen: { flex: 1, backgroundColor: c.bg },
+  screen: { flex: 1, backgroundColor: c.canvas },
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
-  back: { fontSize: 16, color: c.accent, width: 48 },
-  title: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '600', color: c.text },
+  title: { flex: 1, minWidth: 0, textAlign: 'center', fontSize: 16, fontWeight: '600', color: c.text },
   content: { padding: spacing.md, gap: spacing.sm },
   hint: { fontSize: 14, color: c.textMuted },
   input: {
-    backgroundColor: c.surface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
+    backgroundColor: c.inputSurface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
     padding: spacing.md, fontSize: 15, color: c.text, minHeight: 110, textAlignVertical: 'top',
   },
-  sectionKicker: { fontSize: 13, color: c.textMuted, letterSpacing: 2, marginTop: spacing.sm },
+  sectionKicker: { fontSize: 13, color: c.textFaint, letterSpacing: 2, marginTop: spacing.sm },
   row: { flexDirection: 'row', gap: spacing.sm },
   rowWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   chip: {
-    borderRadius: radius.pill, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface,
+    borderRadius: radius.pill, borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceSubtle,
     paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
   },
-  chipOn: { backgroundColor: c.accent, borderColor: c.accent },
+  chipOn: { backgroundColor: c.primarySoft, borderColor: c.primary },
   chipText: { fontSize: 14, color: c.text, fontWeight: '600' },
-  chipTextOn: { color: c.accentText },
+  chipTextOn: { color: c.onPrimarySoft },
   presetChip: {
     borderRadius: radius.pill, borderWidth: 1, borderColor: c.border,
-    paddingHorizontal: spacing.sm, paddingVertical: 2,
+    backgroundColor: c.secondarySoft, paddingHorizontal: spacing.sm, paddingVertical: 2,
   },
-  presetText: { fontSize: 12, color: c.textMuted },
+  presetText: { fontSize: 12, color: c.secondary },
   label: { fontSize: 13, color: c.textMuted, marginTop: spacing.xs },
   field: {
-    backgroundColor: c.surface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
+    backgroundColor: c.inputSurface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm, fontSize: 14, color: c.text,
   },
-  error: { color: c.warn, fontSize: 14, marginTop: spacing.xs },
+  error: { color: c.danger, fontSize: 14, marginTop: spacing.xs },
   primary: {
-    backgroundColor: c.accent, borderRadius: radius.pill, paddingVertical: spacing.md,
+    backgroundColor: c.primary, borderRadius: radius.pill, paddingVertical: spacing.md,
     alignItems: 'center', marginTop: spacing.sm,
   },
   primaryOff: { opacity: 0.4 },
-  primaryText: { color: c.accentText, fontSize: 16, fontWeight: '700' },
+  primaryText: { color: c.onPrimary, fontSize: 16, fontWeight: '700' },
   footnote: { fontSize: 12, color: c.textMuted, textAlign: 'center', marginTop: spacing.xs },
 });

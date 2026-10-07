@@ -1,14 +1,15 @@
 // Timeline Renderer：把一条顺序型 Flow 竖向铺开，高亮“当前/下一步”（C4）。
 // 纯展示组件，只读传入的状态，不含业务逻辑（架构分层）。
-// tone="dark" 用于沉浸式运行场景（与 Runner 的深墨绿一致）。
+// tone="dark" 用于沉浸式 Runner；普通 tone 跟随 Visual System v2 light/dark palette。
 
-import { View, Text, StyleSheet } from 'react-native';
+import { useMemo } from 'react';
+import { View, Text, StyleSheet, useColorScheme } from 'react-native';
 import { type FlowNode } from '../domain/types';
 import { type RunStatus } from '../runtime/engine';
 import { fmtDuration } from './format';
 import { useI18n } from './i18n';
 import { type Strings } from './strings';
-import { colors, dark, spacing, radius } from './theme';
+import { paletteFor, type Palette, dark, spacing, radius } from './theme';
 
 type StepState = 'done' | 'current' | 'pending';
 
@@ -38,8 +39,12 @@ export function Timeline(props: {
   status: RunStatus;
   tone?: 'light' | 'dark';
 }) {
-  const tone = props.tone === 'dark' ? darkTone : lightTone;
+  const scheme = useColorScheme();
+  const c = paletteFor(scheme);
+  const appTone = useMemo(() => createAppTone(c), [c]);
+  const tone = props.tone === 'dark' ? darkTone : appTone;
   const { t } = useI18n();
+
   return (
     <View style={styles.wrap}>
       {props.nodes.map((node, i) => {
@@ -81,23 +86,23 @@ const styles = StyleSheet.create({
   body: { flex: 1 },
 });
 
-const lightTone = StyleSheet.create({
-  dot: { backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.pending },
-  dotDone: { backgroundColor: colors.done, borderColor: colors.done },
-  dotCurrent: { borderColor: colors.accent, borderWidth: 2 },
-  dotNum: { color: colors.textMuted },
-  check: { color: colors.accentText },
-  label: { fontSize: 16, color: colors.text },
-  labelCurrent: { fontWeight: '700', color: colors.accent },
-  labelDone: { color: colors.textMuted },
-  rationale: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
-  meta: { fontSize: 13, color: colors.textMuted, fontVariant: ['tabular-nums'] },
+const createAppTone = (c: Palette) => StyleSheet.create({
+  dot: { backgroundColor: c.inputSurface, borderWidth: 1.5, borderColor: c.textFaint },
+  dotDone: { backgroundColor: c.success, borderColor: c.success },
+  dotCurrent: { backgroundColor: c.primarySoft, borderColor: c.primary, borderWidth: 2 },
+  dotNum: { color: c.textMuted },
+  check: { color: c.onPrimary },
+  label: { fontSize: 16, color: c.text },
+  labelCurrent: { fontWeight: '700', color: c.primary },
+  labelDone: { color: c.textMuted },
+  rationale: { fontSize: 13, color: c.textMuted, marginTop: 2 },
+  meta: { fontSize: 13, color: c.textMuted, fontVariant: ['tabular-nums'] },
 });
 
 const darkTone = StyleSheet.create({
-  dot: { backgroundColor: dark.surface, borderWidth: 1.5, borderColor: dark.faint },
+  dot: { backgroundColor: dark.surfaceRaised, borderWidth: 1.5, borderColor: dark.faint },
   dotDone: { backgroundColor: dark.faint, borderColor: dark.faint },
-  dotCurrent: { borderColor: dark.accent, borderWidth: 2 },
+  dotCurrent: { backgroundColor: dark.accentSoft, borderColor: dark.accent, borderWidth: 2 },
   dotNum: { color: dark.textMuted },
   check: { color: dark.text },
   label: { fontSize: 16, color: dark.text },

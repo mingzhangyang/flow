@@ -11,6 +11,7 @@ import { type Sharer, type ShareOutcome } from '../sharing/sharer';
 import { useI18n } from './i18n';
 import { type Strings } from './strings';
 import { paletteFor, type Palette, spacing, radius } from './theme';
+import { HeaderBackButton, HeaderSideSpacer } from './mobileControls';
 
 const outcomeText = (t: Strings): Record<ShareOutcome, string> => ({
   shared: t.shareOutcomeShared,
@@ -39,9 +40,9 @@ export function ExportScreen(props: { flow: Flow; sharer: Sharer; onDone: () => 
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={props.onDone} hitSlop={12}><Text style={styles.back}>{t.back}</Text></Pressable>
-        <Text style={styles.title}>{t.exportTitle}</Text>
-        <View style={{ width: 48 }} />
+        <HeaderBackButton accessibilityLabel={t.back} color={c.primary} onPress={props.onDone} />
+        <Text style={styles.title} numberOfLines={1}>{t.exportTitle}</Text>
+        <HeaderSideSpacer />
       </View>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.hint}>{t.exportHint}</Text>
@@ -50,7 +51,7 @@ export function ExportScreen(props: { flow: Flow; sharer: Sharer; onDone: () => 
           value={author}
           onChangeText={setAuthor}
           placeholder={t.exportAuthor}
-          placeholderTextColor={c.pending}
+          placeholderTextColor={c.textFaint}
         />
 
         <Text style={styles.sectionKicker}>{t.exportPreview}</Text>
@@ -72,32 +73,31 @@ export function ExportScreen(props: { flow: Flow; sharer: Sharer; onDone: () => 
 }
 
 const createStyles = (c: Palette) => StyleSheet.create({
-  screen: { flex: 1, backgroundColor: c.bg },
+  screen: { flex: 1, backgroundColor: c.canvas },
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
-  back: { fontSize: 16, color: c.accent, width: 48 },
-  title: { flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '600', color: c.text },
+  title: { flex: 1, minWidth: 0, textAlign: 'center', fontSize: 16, fontWeight: '600', color: c.text },
   content: { padding: spacing.md, gap: spacing.md },
   hint: { fontSize: 14, color: c.textMuted },
   field: {
-    backgroundColor: c.surface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
+    backgroundColor: c.inputSurface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm, fontSize: 14, color: c.text,
   },
-  sectionKicker: { fontSize: 13, color: c.textMuted, letterSpacing: 2, marginLeft: spacing.xs },
+  sectionKicker: { fontSize: 13, color: c.textFaint, letterSpacing: 2, marginLeft: spacing.xs },
   preview: {
-    backgroundColor: c.surface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
+    backgroundColor: c.surfaceRaised, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, borderColor: c.border,
     padding: spacing.md, fontSize: 14, color: c.text, lineHeight: 21,
   },
   json: {
-    backgroundColor: c.surface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
+    backgroundColor: c.surfaceSubtle, borderRadius: radius.md, borderWidth: StyleSheet.hairlineWidth, borderColor: c.border,
     padding: spacing.md, fontSize: 12, color: c.textMuted, minHeight: 160,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
-  primary: { backgroundColor: c.accent, borderRadius: radius.pill, paddingVertical: spacing.md, alignItems: 'center' },
-  primaryText: { color: c.accentText, fontSize: 16, fontWeight: '700' },
-  secondary: { backgroundColor: c.surface, borderWidth: 1, borderColor: c.border },
-  secondaryText: { color: c.text, fontSize: 15, fontWeight: '600' },
-  feedback: { color: c.accent, fontSize: 14, textAlign: 'center' },
+  primary: { backgroundColor: c.primary, borderRadius: radius.pill, paddingVertical: spacing.md, alignItems: 'center' },
+  primaryText: { color: c.onPrimary, fontSize: 16, fontWeight: '700' },
+  secondary: { backgroundColor: c.secondarySoft, borderWidth: 1, borderColor: c.secondary },
+  secondaryText: { color: c.secondary, fontSize: 15, fontWeight: '600' },
+  feedback: { color: c.success, fontSize: 14, textAlign: 'center' },
 });

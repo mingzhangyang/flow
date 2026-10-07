@@ -1,76 +1,159 @@
-// 统一的视觉基调：安静、克制。运行界面必须简单（C4）。
-// 深/浅色模式：界面调色板随系统模式切换（paletteFor）；
-// 运行页的深墨绿是「场景」不是「模式」，两种模式下都保持沉浸（dark 常量）。
+// Visual System v2: semantic presentation tokens only.
+// Flow / Node / Run never store color. Runner remains an immersive scene independent of system appearance.
 
-export interface Palette {
-  bg: string;
-  surface: string;
-  border: string;
-  text: string;
-  textMuted: string;
+export interface FlowIdentityTone {
   accent: string;
-  accentText: string;
-  done: string;
-  pending: string;
-  warn: string;
+  soft: string;
 }
 
-/** 浅色（默认）：暖米白 + 沉静绿。 */
+export interface Palette {
+  // Foundations
+  canvas: string;
+  surface: string;
+  surfaceRaised: string;
+  surfaceSubtle: string;
+
+  // Boundaries
+  border: string;
+
+  // Text
+  text: string;
+  textMuted: string;
+  textFaint: string;
+
+  // Brand / actions
+  primary: string;
+  onPrimary: string;
+  primarySoft: string;
+  onPrimarySoft: string;
+
+  // Supporting accents
+  secondary: string;
+  secondarySoft: string;
+
+  // Semantic states
+  success: string;
+  warning: string;
+  warningSoft: string;
+  danger: string;
+  dangerSoft: string;
+
+  // Controls
+  inputSurface: string;
+
+  // UI projection only: stable flow identity colors, never serialized.
+  flowAccents: readonly FlowIdentityTone[];
+}
+
+/** Light: airy warm-neutral canvas, fresh botanical primary, restrained supporting color. */
 export const light: Palette = {
-  bg: '#F6F6F3',
+  canvas: '#F7FAF7',
   surface: '#FFFFFF',
-  border: '#E7E7E1',
-  text: '#1B1B18',
-  textMuted: '#6E6E66',
-  accent: '#2F6F4F',
-  accentText: '#FFFFFF',
-  done: '#A6ADA4',
-  pending: '#C7C7BF',
-  warn: '#B4541E',
+  surfaceRaised: '#FFFFFF',
+  surfaceSubtle: '#F0F5F1',
+  border: '#DCE6DF',
+
+  text: '#17231C',
+  textMuted: '#58685E',
+  textFaint: '#627368',
+
+  primary: '#18794E',
+  onPrimary: '#FFFFFF',
+  primarySoft: '#E4F4EA',
+  onPrimarySoft: '#155C3B',
+
+  secondary: '#3970AE',
+  secondarySoft: '#EAF2FC',
+
+  success: '#2F7A50',
+  warning: '#8F5D0C',
+  warningSoft: '#FFF3D8',
+  danger: '#A9433D',
+  dangerSoft: '#FCEBE9',
+
+  inputSurface: '#F4F7F4',
+
+  flowAccents: [
+    { accent: '#27885A', soft: '#EAF7EF' },
+    { accent: '#4A80BF', soft: '#EDF4FC' },
+    { accent: '#7768BE', soft: '#F2EFFB' },
+    { accent: '#C46C5A', soft: '#FCEEEA' },
+    { accent: '#B47A20', soft: '#FBF3E1' },
+    { accent: '#2F8B86', soft: '#E9F6F4' },
+  ],
 };
 
-/** 深色：暖调近黑（微绿），强调色换亮薄荷保证对比度。 */
+/** Dark: green-black rather than pure black, with readable layered surfaces and quiet chroma. */
 export const darkScheme: Palette = {
-  bg: '#141614',
-  surface: '#1E211E',
-  border: '#32362F',
-  text: '#EDEDE8',
-  textMuted: '#9BA096',
-  accent: '#8FD0AC',
-  accentText: '#12241B',
-  done: '#4A5147',
-  pending: '#5C6357', // 兼作 placeholder，深底上需保有可读性
-  warn: '#D98B57',
+  canvas: '#101814',
+  surface: '#17221D',
+  surfaceRaised: '#1C2923',
+  surfaceSubtle: '#18251F',
+  border: '#2A3B32',
+
+  text: '#F0F5F1',
+  textMuted: '#A5B3AA',
+  textFaint: '#83938A',
+
+  primary: '#76D3A0',
+  onPrimary: '#10271B',
+  primarySoft: '#1C3B2B',
+  onPrimarySoft: '#B8EFCB',
+
+  secondary: '#82AFE8',
+  secondarySoft: '#1B2E43',
+
+  success: '#72CA94',
+  warning: '#E0B35E',
+  warningSoft: '#3A2F1B',
+  danger: '#EB8B82',
+  dangerSoft: '#402523',
+
+  inputSurface: '#18241E',
+
+  flowAccents: [
+    { accent: '#79D6A4', soft: '#173126' },
+    { accent: '#84B2EA', soft: '#1A2D40' },
+    { accent: '#AA9BE7', soft: '#292641' },
+    { accent: '#E99A89', soft: '#3B2724' },
+    { accent: '#E0B769', soft: '#372F1E' },
+    { accent: '#73CBC4', soft: '#183431' },
+  ],
 };
 
-/** 系统模式 → 调色板（接受 RN 的 ColorSchemeName，含 'unspecified'）。 */
+/** System appearance -> app palette. */
 export function paletteFor(scheme: string | null | undefined): Palette {
   return scheme === 'dark' ? darkScheme : light;
 }
 
-/** 兼容别名：静态引用视为浅色（正在逐屏迁移到 paletteFor）。 */
-export const colors = light;
+/** Stable UI-only flow identity derived from id. */
+export function flowIdentityFor(palette: Palette, id: string): FlowIdentityTone {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return palette.flowAccents[h % palette.flowAccents.length]!;
+}
 
 /**
- * 深色沉浸调色板：只用于「运行中」的仪式感场景（Runner），不随系统模式变。
- * 浅色首页 → 深墨绿运行，一开一合即是品牌体验；珠与环延续应用图标的形状语言。
+ * Runner immersive scene: a focused, deep botanical environment that deliberately does not
+ * follow the system light/dark switch.
  */
 export const dark = {
-  bg: '#143326',
-  surface: '#1C4132',
-  border: '#2C5341',
-  text: '#F6F6F3',
-  textMuted: '#8FAF9D',
-  faint: '#3A5C4B', // 环轨、分隔线
-  accent: '#8FD0AC', // 深底上的亮薄荷
-  warm: '#E8B04B', // 倒计时最后阶段的暖色
+  bg: '#0D241A',
+  surface: '#143326',
+  surfaceRaised: '#193C2D',
+  border: '#28513F',
+  text: '#F4F8F5',
+  textMuted: '#A4B9AC',
+  faint: '#3A6752',
+  accent: '#74D7A4',
+  accentSoft: '#1C4933',
+  warm: '#F0B16B',
+  danger: '#EF8C7F',
 };
 
 export const spacing = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32 } as const;
 export const radius = { sm: 8, md: 12, lg: 20, pill: 999 } as const;
 
-/** 字号阶梯：刻意拉开层级，避免"均匀的平淡"。 */
 export const type = { caption: 12, body: 15, emphasis: 17, title: 22, display: 34, clock: 64 } as const;
 
-/** 数字展示字体（IBM Plex Mono，App 启动时加载）：只用于时刻数字，仪器感。 */
 export const mono = { thin: 'IBMPlexMono_200ExtraLight', medium: 'IBMPlexMono_500Medium' } as const;
