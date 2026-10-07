@@ -24,6 +24,7 @@ import {
   type OwnedCatalogSnapshot,
 } from './src/session/flowCatalog';
 import { createCatalogCoordinator } from './src/session/catalogCoordinator';
+import { runCommittedCatalogMutation } from './src/session/catalogMutation';
 import {
   deleteOwnedFlowDurably,
   recoverPendingOwnedFlowDeletions,
@@ -105,21 +106,11 @@ export default function App() {
   ): Promise<void> => catalogCoordinator.request(() => runCatalogTask(mutation)),
   [catalogCoordinator, runCatalogTask]);
 
-  const runCatalogMutation = useCallback(async <T,>(
-    mutation: () => Promise<T>,
-  ): Promise<T> => {
-    let result!: T;
-    let mutationError: unknown;
-    await refreshCatalog(async () => {
-      try {
-        result = await mutation();
-      } catch (error) {
-        mutationError = error;
-      }
-    });
-    if (mutationError !== undefined) throw mutationError;
-    return result;
-  }, [refreshCatalog]);
+  const runCatalogMutation = useCallback(
+    <T,>(mutation: () => Promise<T>): Promise<T> =>
+      runCommittedCatalogMutation(refreshCatalog, mutation),
+    [refreshCatalog],
+  );
 
   const commitCatalogFlow = useCallback(
     (flow: Flow): Promise<Flow> => runCatalogMutation(() => library.commit(flow)),
