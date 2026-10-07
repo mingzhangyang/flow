@@ -11,6 +11,7 @@ import { reduce, project, type RunState } from '../runtime/engine';
 import { type Storage } from '../storage/storage';
 import { type Notifier } from '../notifications/notifier';
 import { planSequentialReminder } from '../notifications/plan';
+import { sequentialReminderId } from '../notifications/notificationIdentity';
 import {
   startAction,
   completeCurrentAction,
@@ -74,7 +75,8 @@ export function usePersistentRun(
     storage.saveRun(run).catch(() => {});
     const reminder = planSequentialReminder(flow, run.events, Date.now(), run.id, locale);
     notifier
-      .cancel([run.id])
+      // run.id 是旧版 identifier；同时取消新旧两种，升级后不会留下孤儿计时提醒。
+      .cancel([run.id, sequentialReminderId(run.id)])
       .then(() => (reminder ? notifier.schedule([reminder]) : undefined))
       .catch(() => {});
   }, [run, loaded]);

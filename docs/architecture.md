@@ -64,7 +64,7 @@
 ### 4. Notification Engine（`src/notifications/`）
 把 Runtime 给出的触发时刻翻译成平台的本地定时通知/闹钟（expo-notifications）。
 - 接口：`schedule(events) / cancel(ids) / rescheduleFor(run)`。
-- **不变式**：不含业务逻辑，只做"事件 → 平台通知"的翻译；掉电/重启后可由 Run 记录重建。
+- **不变式**：不含业务逻辑，只做"事件 → 平台通知"的翻译；掉电/重启后可由 Run 记录重建。平台 notification identifier 统一用 versioned tuple 编码，不用分隔符拼接开放 Flow/Node ID；升级时顺序型提醒同时取消旧 `run.id` identifier，日程型旧 id 由上一批清单自然清理。
 - **重复触发器优先（`plan.ts` 的 `ReminderRepeat`）**：跟随设备时区的 daily/weekly 节律
   不做预排，而是每「节点 × 星期槽位」排一条**系统级重复触发器**（iOS 为 repeats 的
   UNCalendarNotificationTrigger，随系统持久、重启仍在；Android 由 expo-notifications 续排）——

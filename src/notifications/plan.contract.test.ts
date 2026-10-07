@@ -5,6 +5,12 @@ import assert from 'node:assert/strict';
 
 import { type Flow, type RunEvent } from '../domain/types';
 import { planSequentialReminder, planScheduledReminders, planScheduledBatch } from './plan';
+import {
+  dailyReminderId,
+  scheduledOccurrenceReminderId,
+  sequentialReminderId,
+  weeklyReminderId,
+} from './notificationIdentity';
 import { MS_PER_DAY } from '../runtime/clock';
 import { coffeeFlow } from '../examples/coffee';
 import { medicationFlow } from '../examples/medication';
@@ -19,7 +25,7 @@ test('计时步进行中 → 生成结束时刻的提醒', () => {
   const r = planSequentialReminder(coffeeFlow, events, T0, 'run-1', 'zh');
   assert.ok(r);
   assert.equal(r.at, T0 + 240_000);
-  assert.equal(r.id, 'run-1');
+  assert.equal(r.id, sequentialReminderId('run-1'));
   assert.match(r.body, /浸泡/);
   const en = planSequentialReminder(coffeeFlow, events, T0, 'run-1', 'en');
   assert.ok(en);
@@ -45,9 +51,9 @@ test('日程型 → 为每个 scheduled 事件生成提醒（id 含触发时刻�
   assert.deepEqual(
     rem.map((r) => r.id),
     [
-      'example.medication:noon:50400000',
-      'example.medication:evening:79200000',
-      'example.medication:morning:115200000',
+      scheduledOccurrenceReminderId('example.medication', 'noon', 50_400_000),
+      scheduledOccurrenceReminderId('example.medication', 'evening', 79_200_000),
+      scheduledOccurrenceReminderId('example.medication', 'morning', 115_200_000),
     ],
   );
 });
@@ -81,12 +87,12 @@ test('daily + 重复触发器 → 每节点一条带 repeat 的提醒，id 稳�
   const rem = planScheduledReminders(medicationFlow, now, 0, MS_PER_DAY, { repeatingTriggers: true });
   assert.equal(rem.length, 3); // 每节点 1 条，而不是 3 × N 天
 
-  const morning = rem.find((r) => r.id === 'example.medication:morning:daily');
+  const morning = rem.find((r) => r.id === dailyReminderId('example.medication', 'morning'));
   assert.ok(morning);
   assert.deepEqual(morning.repeat, { kind: 'daily', hour: 8, minute: 0 });
   assert.equal(morning.at, MS_PER_DAY + 8 * 3_600_000); // 今天 08:00 已过 → 明天
 
-  const noon = rem.find((r) => r.id === 'example.medication:noon:daily');
+  const noon = rem.find((r) => r.id === dailyReminderId('example.medication', 'noon'));
   assert.deepEqual(noon?.repeat, { kind: 'daily', hour: 14, minute: 0 });
   assert.equal(noon?.at, 14 * 3_600_000); // 今天 14:00 未到
 });
@@ -102,12 +108,12 @@ test('weekly + 重复触发器 → 每「节点 × 星期」一条，weekday 同
   const rem = planScheduledReminders(weekly, now, 0, MS_PER_DAY, { repeatingTriggers: true });
   assert.deepEqual(
     rem.map((r) => r.id).sort(),
-    ['wk:dose:w1', 'wk:dose:w4'],
+    [weeklyReminderId('wk', 'dose', 1), weeklyReminderId('wk', 'dose', 4)].sort(),
   );
-  const monday = rem.find((r) => r.id === 'wk:dose:w1');
+  const monday = rem.find((r) => r.id === weeklyReminderId('wk', 'dose', 1));
   assert.deepEqual(monday?.repeat, { kind: 'weekly', weekday: 1, hour: 9, minute: 0 });
   assert.equal(monday?.at, 4 * MS_PER_DAY + 9 * 3_600_000); // 下周一 = 第 4 天
-  const thursday = rem.find((r) => r.id === 'wk:dose:w4');
+  const thursday = rem.find((r) => r.id === weeklyReminderId('wk', 'dose', 4));
   assert.equal(thursday?.at, 7 * MS_PER_DAY + 9 * 3_600_000); // 今天已过 → 下周四
 });
 
@@ -121,4 +127,21 @@ test('once / everyNDays 即便允许重复触发器也走预排窗口（无 repe
   const everyNRem = planScheduledReminders(everyN, 25_200_000, 0, 4 * MS_PER_DAY, { repeatingTriggers: true });
   assert.equal(everyNRem.length, 6); // 3 剂 × 2 个符合节律的日子
   assert.ok(everyNRem.every((r) => r.repeat === undefined));
+});
+
+
+test('开放 flow/node id 含冒号时，scheduled reminder identifier 仍唯一', () => {
+  const a: Flow = {
+    ...medicationFlow,
+    id: 'a:b',
+    nodes: [{ kind: 'scheduled', id: 'c', label: 'A', at: 9 * 60 }],
+  };
+  const b: Flow = {
+    ...medicationFlow,
+    id: 'a',
+    nodes: [{ kind: 'scheduled', id: 'b:c', label: 'B', at: 9 * 60 }],
+  };
+  const ar = planScheduledReminders(a, 0, 0, MS_PER_DAY);
+  const br = planScheduledReminders(b, 0, 0, MS_PER_DAY);
+  assert.notEqual(ar[0]?.id, br[0]?.id);
 });

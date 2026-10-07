@@ -13,6 +13,12 @@ import {
 } from '../runtime/clock';
 import { project, upcomingEvents } from '../runtime/engine';
 import { flowNotificationRoute, type NotificationRouteData } from './notificationRoute';
+import {
+  dailyReminderId,
+  scheduledOccurrenceReminderId,
+  sequentialReminderId,
+  weeklyReminderId,
+} from './notificationIdentity';
 
 /**
  * 系统级重复触发器（按**设备墙钟**的时/分表达；weekday 同 JS getDay，0=周日）。
@@ -57,7 +63,7 @@ export function planSequentialReminder(
     en: `"${node.label}" — time's up`,
   };
   return {
-    id: runId, // 每个运行实例仅保留一个“下一步计时”提醒，便于替换/取消
+    id: sequentialReminderId(runId), // 每个运行实例一个稳定、结构化 identifier
     at: now + s.remainingSec * 1000,
     title: flow.title,
     body: body[locale],
@@ -89,14 +95,16 @@ export function planScheduledReminders(
     const reminders: Reminder[] = [];
     for (const o of upcomingEvents(flow, now, tz, 7 * MS_PER_DAY)) {
       const weekday = weekdayOfDayIndex(localDayIndex(o.at, tz));
-      const key = repeat.kind === 'daily' ? `${o.nodeId}:daily` : `${o.nodeId}:w${weekday}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
+      const id = repeat.kind === 'daily'
+        ? dailyReminderId(flow.id, o.nodeId)
+        : weeklyReminderId(flow.id, o.nodeId, weekday);
+      if (seen.has(id)) continue;
+      seen.add(id);
       const minutes = timeOfDay(o.at, tz);
       const hour = Math.floor(minutes / 60);
       const minute = minutes % 60;
       reminders.push({
-        id: `${flow.id}:${key}`,
+        id,
         at: o.at,
         title: flow.title,
         body: o.label,
@@ -111,7 +119,7 @@ export function planScheduledReminders(
   }
 
   return upcomingEvents(flow, now, tz, horizonMs).map((o) => ({
-    id: `${flow.id}:${o.nodeId}:${o.at}`,
+    id: scheduledOccurrenceReminderId(flow.id, o.nodeId, o.at),
     at: o.at,
     title: flow.title,
     body: o.label,
