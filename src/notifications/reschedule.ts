@@ -2,6 +2,7 @@
 // 没有 bare flowId enrollment，也没有开发中间格式迁移。
 
 import { type Flow } from '../domain/types';
+import { parseDefinitionKey } from '../domain/definitionIdentity';
 import { type Instant, type TimeZone, MS_PER_DAY } from '../runtime/clock';
 import { timeZoneForFlow } from '../runtime/ianaTimeZone';
 import { type KVStore } from '../storage/kv';
@@ -19,19 +20,31 @@ export interface ScheduledCatalogEntry {
   definitionKey: string;
 }
 
-async function readStringArray(kv: KVStore, key: string): Promise<string[]> {
+async function readStringArray(
+  kv: KVStore,
+  key: string,
+  isValid: (value: string) => boolean = () => true,
+): Promise<string[]> {
   const text = await kv.getItem(key);
-  if (!text) return [];
+  if (text === null) return [];
+
+  let raw: unknown;
   try {
-    const raw = JSON.parse(text) as unknown;
-    return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : [];
+    raw = JSON.parse(text);
   } catch {
-    return [];
+    throw new Error(`invalid string registry: ${key}`);
   }
+  if (
+    !Array.isArray(raw) ||
+    !raw.every((value): value is string => typeof value === 'string' && isValid(value))
+  ) {
+    throw new Error(`invalid string registry: ${key}`);
+  }
+  return raw;
 }
 
 export function enrolledFlowKeys(kv: KVStore): Promise<string[]> {
-  return readStringArray(kv, ENROLLED_KEY);
+  return readStringArray(kv, ENROLLED_KEY, (value) => parseDefinitionKey(value) !== null);
 }
 
 export async function enrollFlow(kv: KVStore, definitionKey: string): Promise<void> {

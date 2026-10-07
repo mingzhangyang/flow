@@ -100,3 +100,43 @@ test('提醒总量截断到 RESCHEDULE_CAP', async () => {
   await rescheduleReminders({ kv, notifier, flows: entries, now: NOW, deviceTz: tz });
   assert.equal((scheduled.at(-1) ?? []).length, RESCHEDULE_CAP);
 });
+
+test('损坏 enrollment registry fail closed，enroll / unenroll 不覆盖原值', async () => {
+  for (const malformed of [
+    '',
+    '{not json',
+    JSON.stringify({ not: 'array' }),
+    JSON.stringify([medKey, 7]),
+    JSON.stringify([medicationFlow.id]),
+  ]) {
+    const kv = createInMemoryKV();
+    await kv.setItem('notif:enrolled:v1', malformed);
+
+    await assert.rejects(() => enrolledFlowKeys(kv));
+    await assert.rejects(() => enrollFlow(kv, medKey));
+    await assert.rejects(() => unenrollFlow(kv, medKey));
+    assert.equal(await kv.getItem('notif:enrolled:v1'), malformed);
+  }
+});
+
+test('损坏 previous notification id registry 时重排 fail closed，不取消也不覆盖', async () => {
+  const kv = createInMemoryKV();
+  const { notifier, scheduled, cancelled } = recordingNotifier();
+  await enrollFlow(kv, medKey);
+  const malformed = JSON.stringify(['valid-id', 7]);
+  await kv.setItem('notif:scheduled-ids:v1', malformed);
+
+  await assert.rejects(() =>
+    rescheduleReminders({
+      kv,
+      notifier,
+      flows: [{ flow: medicationFlow, definitionKey: medKey }],
+      now: NOW,
+      deviceTz: tz,
+    }),
+  );
+
+  assert.deepEqual(cancelled, []);
+  assert.deepEqual(scheduled, []);
+  assert.equal(await kv.getItem('notif:scheduled-ids:v1'), malformed);
+});

@@ -116,28 +116,33 @@ test('journal 写入失败时绝不执行破坏性操作', async () => {
   assert.equal(touched, false);
 });
 
-test('recovery 只从 flowId 推导 owned identity，不信任冗余 journal key', async () => {
+test('recovery 身份只来自 canonical journal key；value 不得携带第二份 flow 身份', async () => {
   const kv = createInMemoryKV();
-  const wrongKey = catalogDefinitionKey('other', 'owned');
-  await kv.setItem(journalKey(flow.id), JSON.stringify({
-    v: 1,
-    flowId: flow.id,
-    definitionKey: wrongKey,
-  }));
+  let touched = false;
+  await kv.setItem(journalKey(flow.id), JSON.stringify({ v: 1, flowId: 'other' }));
 
-  const calls: string[] = [];
-  await recoverPendingOwnedFlowDeletions(deps(kv, {
-    async unenroll(key) { calls.push(`unenroll:${key}`); },
-    async deleteRun(id) { calls.push(`run:${id}`); },
-    async deleteCheckIns(key) { calls.push(`checkins:${key}`); },
-  }));
+  await assert.rejects(() =>
+    recoverPendingOwnedFlowDeletions(deps(kv, {
+      async removeFlow() { touched = true; },
+    })),
+  );
+  assert.equal(touched, false);
+  assert.deepEqual(await journalKeys(kv), [journalKey(flow.id)]);
+});
 
-  assert.deepEqual(calls, [
-    `unenroll:${ownedKey}`,
-    `run:${activeRunId(ownedKey)}`,
-    `checkins:${ownedKey}`,
-  ]);
-  assert.ok(calls.every((call) => !call.includes(wrongKey)));
+test('非 canonical journal key 在任何破坏性操作前 fail closed', async () => {
+  const kv = createInMemoryKV();
+  let touched = false;
+  const malformedKey = 'txn:delete-owned-flow:v1: ["flow","owned"]';
+  await kv.setItem(malformedKey, JSON.stringify({ v: 1 }));
+
+  await assert.rejects(() =>
+    recoverPendingOwnedFlowDeletions(deps(kv, {
+      async removeFlow() { touched = true; },
+    })),
+  );
+  assert.equal(touched, false);
+  assert.equal(await kv.getItem(malformedKey), JSON.stringify({ v: 1 }));
 });
 
 test('空 journal value 是 malformed，不会被当作 absent 跳过', async () => {
@@ -149,7 +154,7 @@ test('空 journal value 是 malformed，不会被当作 absent 跳过', async ()
 
 test('坏 journal fail closed', async () => {
   const kv = createInMemoryKV();
-  await kv.setItem(journalKey('broken'), '{"v":1,"flowId":7}');
+  await kv.setItem(journalKey('broken'), '{"v":2}');
   await assert.rejects(() => recoverPendingOwnedFlowDeletions(deps(kv)));
 });
 
