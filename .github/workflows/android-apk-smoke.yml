@@ -38,6 +38,19 @@ jobs:
       - name: Generate Android project
         run: npx expo prebuild --platform android --clean --no-install
 
+      - name: Remove iOS-only metadata leaked into Android resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in android/app/src/main/res/values-b+*/strings.xml; do
+            [ -f "$file" ] || continue
+            sed -i '/name="CFBundleDisplayName"/d' "$file"
+          done
+          if grep -R 'name="CFBundleDisplayName"' android/app/src/main/res/values-b+* 2>/dev/null; then
+            echo "CFBundleDisplayName still present in Android localized resources"
+            exit 1
+          fi
+
       - name: Verify Android release lint
         working-directory: android
         run: ./gradlew lintRelease --no-daemon --stacktrace
