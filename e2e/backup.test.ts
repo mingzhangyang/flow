@@ -31,12 +31,12 @@ test('打卡 → 备份到剪贴板 → 新环境导入 → 打卡记录恢复',
   const backup = JSON.parse(text) as {
     kind: string;
     backupVersion: number;
-    definitionCheckIns?: Record<string, unknown[]>;
+    checkIns?: Record<string, unknown[]>;
   };
   assert.equal(backup.kind, 'zhunshi-backup');
-  assert.equal(backup.backupVersion, 2);
+  assert.equal(backup.backupVersion, 1);
   assert.equal(
-    Object.values(backup.definitionCheckIns ?? {}).reduce((count, log) => count + log.length, 0),
+    Object.values(backup.checkIns ?? {}).reduce((count, log) => count + log.length, 0),
     1,
   );
 

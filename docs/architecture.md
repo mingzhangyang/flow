@@ -53,15 +53,11 @@
 - **机密走窄端口**：`SecretStore`（getItem/setItem/removeItem，无枚举）。适配器
   `secureKv.native`（iOS Keychain / Android Keystore，expo-secure-store）、Web 回落
   AsyncStorage；AI 模型密钥经此存储，不与普通数据混在一个后端（C6）。
-- **整库备份（`backup.ts` + `library.exportBackup/importBackup`）**：全部 flow + 历史修订 +
-  打卡日志组装成一份开放格式 JSON（C6 兜底；不含瞬态 Run，不含 AI 密钥）。首页「备份」
-  经系统分享面板存文件/发给自己；导入框自动识别备份全文（`parseBackup`，非备份则按单条
-  flow 走）。恢复绝不覆盖本机：读回逐条过闸门（坏条目跳过），同 id 的 flow 走 commit
-  入历史，打卡按占位合并、本机记录优先。
+- **整库备份（`backup.ts` + `library.exportBackup/importBackup`）**：正式 backup v1 仅包含全部 flow、owned 历史修订和按 `definitionKey` 存储的打卡日志；不含瞬态 Run 或 AI 密钥。项目首发前不解析任何开发中间备份格式。恢复不覆盖本机：同 id Flow 走 commit 入历史，打卡按占位合并且本机记录优先。
 - **Flow ID 冲突规则**：用户库是权威层，内置示例是只读 fallback。导入/备份允许保留外部稳定 id；若与示例同 id，用户 Flow 在首页、提醒重排和通知点击路由中一致地遮蔽示例。删除该用户 Flow 后示例重新可见。
 - **Owned revision boundary**：修订历史只属于 owned catalog definition。fallback example 即使与已删除 owned Flow 同 id，也不得读取、展示或恢复该 owned history。
-- **Catalog definition identity**：所有“属于某个 Flow 定义”的运行时状态统一以 `(source, flowId)` 的 versioned tuple 为 identity；reminder enrollment、notification route、active Run、scheduled check-ins、React run-screen instance 都不得再用裸 `flowId` 作为主键。旧裸 ID 仅在来源从未发生歧义时迁移；shadowing owned 不接受 legacy alias。若同一 ID 曾同时代表 owned + example，**在该 shadowing catalog 第一次发布 ready snapshot 前**就持久化 legacy-ambiguity tombstone；删除路径再次保证 tombstone 先于破坏性写入。该裸 ID 此后永久退出迁移候选，且 tombstone 作为整库备份的 additive safety metadata 跨设备保留，避免 fallback example 在未来重新继承旧通知、Run、打卡或 enrollment。Run 一旦产生事件，继续使用 `run.flow` 的不可变定义快照，而不是后来编辑出的新版本；Run 存储读取失败时 fail closed，绝不把“读失败”解释成“没有旧 Run”再写入空状态。legacy Run 迁移必须先持久化 v2 seed 才开放用户操作，避免迁移写与新事件写竞速。
-- **Catalog snapshot 与删除事务**：App 是用户库 snapshot 的唯一拥有者；`loading / ready / error` 与“已加载且为空”明确区分。所有 catalog 写入（编辑保存、导入/备份恢复、历史恢复、enroll、delete）以及 refresh 都通过 `catalogCoordinator` 串行执行，提醒 cancel/schedule 不会并发互踩；只有最新请求可以发布 snapshot。业务 mutation 与派生同步结果分离：数据写入已成功但后续 reminder/catalog sync 失败时，不向编辑/导入 UI 伪报“保存失败”，而由 Home 的 error/retry 收口；mutation 本身失败才返回原错误。通知 listener 持续订阅，在 snapshot 未 ready 时等待 coordinator。删除不依赖脆弱的即时 rollback：先持久化最小 deletion intent（仅 flowId + definition identity）；journal 写入成功即视为业务提交；若裸 ID 存在歧义，先持久化 tombstone，再删除 Flow，并清理该 definition 的 enrollment / Run / check-ins 与旧 bare-ID runtime artifacts，最后清 intent。任一步失败 intent 都保留并由下一次 refresh 恢复，而不是向 UI 伪装成“删除未提交”。
+- **Catalog definition identity**：正式 v1 中，所有属于某个 Flow 定义的运行时状态统一以 `(source, flowId)` 的 versioned `definitionKey` 为唯一身份；reminder enrollment、notification route/identifier、active Run、scheduled check-ins、React run-screen instance 全部遵守这一规则。项目尚未发布且从未产生用户/测试数据，因此 v1 **不包含** bare-ID legacy alias、迁移器、tombstone/quarantine 或双命名空间兼容层。Run 一旦产生事件，继续使用 `run.flow` 的不可变定义快照；存储读取失败时 fail closed，绝不写空状态覆盖潜在进度。
+- **Catalog snapshot 与删除事务**：App 是用户库 snapshot 的唯一拥有者；`loading / ready / error` 与“已加载且为空”明确区分。所有 catalog 写入（编辑保存、导入/备份恢复、历史恢复、enroll、delete）以及 refresh 都通过 `catalogCoordinator` 串行执行，提醒 cancel/schedule 不会并发互踩；只有最新请求可以发布 snapshot。业务 mutation 与派生同步结果分离：数据写入已成功但后续 reminder/catalog sync 失败时，不向编辑/导入 UI 伪报“保存失败”，而由 Home 的 error/retry 收口；mutation 本身失败才返回原错误。通知 listener 持续订阅，在 snapshot 未 ready 时等待 coordinator。删除不依赖脆弱的即时 rollback：先持久化最小 v1 deletion intent，再按 remove Flow → unenroll → cancel sequential timer → delete Run/check-ins/revisions → 清 intent 的顺序 commit-forward；任一步失败都保留 intent，由下一次 refresh 幂等恢复。
 
 ### 4. Notification Engine（`src/notifications/`）
 把 Runtime 给出的触发时刻翻译成平台的本地定时通知/闹钟（expo-notifications）。
@@ -78,8 +74,7 @@
 - **登记与重排（`reschedule.ts`）**：用户打开某条日程型 flow 的运行视图即为它**登记**提醒
   （enroll，不为没打开过的 flow 自动推送）；App 启动 / 回到前台 / 库变更时把已登记 flow
   的提醒整批重排（上一批 id 记在 KV，先取消再排入；重复触发器 id 稳定，重排即同 id 替换）。
-  删除用户 Flow 的状态一致性由 Storage 层的 durable deletion intent 保证；catalog refresh 会先恢复未完成删除，
-  再以同一 ready snapshot 做提醒重排，因此 fallback 示例不会在删除事务未收口时继承或暴露旧状态。scheduled check-ins 的 v2 空数组也是持久化 presence marker，备份必须保留，避免 stale legacy 数据在“全部撤销后”复活。
+  删除用户 Flow 的状态一致性由 durable deletion intent 保证；catalog refresh 会先恢复未完成删除，再以同一 ready snapshot 做提醒重排。
   单批截断到 48 条（iOS 待决通知上限 64，留余量）；计划本身是纯函数（`plan.ts`），编排不含时钟隐读（E3）。
 
 ### 5. AI Assistant（`src/ai/`）

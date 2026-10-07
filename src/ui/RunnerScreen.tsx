@@ -18,7 +18,6 @@ const RING = 268;
 export function RunnerScreen(props: {
   flow: Flow;
   definitionKey: string;
-  legacyFlowId?: string;
   storage: Storage;
   notifier: Notifier;
   onExit: () => void;
@@ -27,7 +26,6 @@ export function RunnerScreen(props: {
   const run = usePersistentRun(
     props.flow,
     props.definitionKey,
-    props.legacyFlowId,
     props.storage,
     props.notifier,
     locale,

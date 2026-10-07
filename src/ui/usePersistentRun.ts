@@ -37,7 +37,6 @@ export interface PersistentRun {
 export function usePersistentRun(
   flow: Flow,
   definitionKey: string,
-  legacyFlowId: string | undefined,
   storage: Storage,
   notifier: Notifier,
   locale: Locale,
@@ -53,21 +52,11 @@ export function usePersistentRun(
     setStatus('loading');
 
     void (async () => {
-      const loaded = await loadRunForDefinition(storage, flow, definitionKey, legacyFlowId);
+      const loaded = await loadRunForDefinition(storage, flow, definitionKey);
       if (!alive) return;
 
-      setRun(loaded.run);
+      setRun(loaded);
       setStatus('ready');
-
-      if (loaded.cleanupLegacyRunId) {
-        const oldId = loaded.cleanupLegacyRunId;
-        notifier
-          .cancel([oldId, sequentialReminderId(oldId)])
-          .then(() => storage.deleteRun(oldId))
-          .catch(() => {
-            // v2 is already durable; stale legacy cleanup is safe to retry on a later load.
-          });
-      }
     })().catch(() => {
       if (!alive) return;
       // Fail closed: a transient read error must never be reinterpreted as "no saved run",
@@ -78,7 +67,7 @@ export function usePersistentRun(
     return () => {
       alive = false;
     };
-  }, [flow, legacyFlowId, loadAttempt, notifier, runId, storage]);
+  }, [definitionKey, flow, loadAttempt, storage]);
 
   const runtimeFlow = run.flow;
   const state = project(runtimeFlow, run.events, now);

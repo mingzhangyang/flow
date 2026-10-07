@@ -51,7 +51,7 @@ export function planSequentialReminder(
   now: Instant,
   runId: string,
   locale: Locale,
-  definitionKey?: string,
+  definitionKey: string,
 ): Reminder | null {
   if (flow.topology !== 'sequential') return null;
   const s = project(flow, events, now);
@@ -68,7 +68,7 @@ export function planSequentialReminder(
     at: now + s.remainingSec * 1000,
     title: flow.title,
     body: body[locale],
-    data: flowNotificationRoute(flow.id, undefined, definitionKey),
+    data: flowNotificationRoute(flow.id, definitionKey),
   };
 }
 
@@ -86,7 +86,7 @@ export function planScheduledReminders(
   now: Instant,
   tz: TimeZoneLike,
   horizonMs: number,
-  opts?: { repeatingTriggers?: boolean; definitionKey?: string },
+  opts: { definitionKey: string; repeatingTriggers?: boolean },
 ): Reminder[] {
   const repeat = flow.repeat;
   if (opts?.repeatingTriggers && (repeat?.kind === 'daily' || repeat?.kind === 'weekly')) {
@@ -96,7 +96,7 @@ export function planScheduledReminders(
     const reminders: Reminder[] = [];
     for (const o of upcomingEvents(flow, now, tz, 7 * MS_PER_DAY)) {
       const weekday = weekdayOfDayIndex(localDayIndex(o.at, tz));
-      const definitionIdentity = opts.definitionKey ?? flow.id;
+      const definitionIdentity = opts.definitionKey;
       const id = repeat.kind === 'daily'
         ? dailyReminderId(definitionIdentity, o.nodeId)
         : weeklyReminderId(definitionIdentity, o.nodeId, weekday);
@@ -110,7 +110,7 @@ export function planScheduledReminders(
         at: o.at,
         title: flow.title,
         body: o.label,
-        data: flowNotificationRoute(flow.id, o.nodeId, opts?.definitionKey),
+        data: flowNotificationRoute(flow.id, opts.definitionKey, o.nodeId),
         repeat:
           repeat.kind === 'daily'
             ? { kind: 'daily', hour, minute }
@@ -121,11 +121,11 @@ export function planScheduledReminders(
   }
 
   return upcomingEvents(flow, now, tz, horizonMs).map((o) => ({
-    id: scheduledOccurrenceReminderId(opts?.definitionKey ?? flow.id, o.nodeId, o.at),
+    id: scheduledOccurrenceReminderId(opts.definitionKey, o.nodeId, o.at),
     at: o.at,
     title: flow.title,
     body: o.label,
-    data: flowNotificationRoute(flow.id, o.nodeId, opts?.definitionKey),
+    data: flowNotificationRoute(flow.id, opts.definitionKey, o.nodeId),
   }));
 }
 
@@ -135,7 +135,7 @@ export function planScheduledReminders(
  * 重复触发器条目每槽位仅 1 条且下一次触发都在近期，天然排在前、几乎不会被截掉。
  */
 export function planScheduledBatch(
-  entries: ReadonlyArray<{ flow: Flow; definitionKey?: string; tz: TimeZoneLike; repeatingTriggers?: boolean }>,
+  entries: ReadonlyArray<{ flow: Flow; definitionKey: string; tz: TimeZoneLike; repeatingTriggers?: boolean }>,
   now: Instant,
   horizonMs: number,
   cap: number,

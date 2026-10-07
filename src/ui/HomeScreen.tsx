@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
 import { type Flow, type Topology } from '../domain/types';
 import { type Library } from '../session/library';
-import { catalogDefinitionIdentity, examplesVisibleAlongsideOwned, type FlowCatalogSource, type OwnedCatalogSnapshot } from '../session/flowCatalog';
+import { catalogDefinitionKey, examplesVisibleAlongsideOwned, type FlowCatalogSource, type OwnedCatalogSnapshot } from '../session/flowCatalog';
 import { type Sharer, type ShareOutcome } from '../sharing/sharer';
 import { nextEvents, type ScheduledOccurrence } from '../runtime/engine';
 import { timeOfDay, MS_PER_DAY } from '../runtime/clock';
@@ -49,12 +49,12 @@ export function HomeScreen(props: {
   catalog: OwnedCatalogSnapshot;
   sharer: Sharer;
   onRetry: () => void;
-  onRun: (flow: Flow, definitionKey: string, legacyFlowId?: string) => void;
+  onRun: (flow: Flow, definitionKey: string) => void;
   onNew: (topology: Topology) => void;
   onEdit: (flow: Flow) => void;
   onExport: (flow: Flow) => void;
   onInsight: (flow: Flow, source: FlowCatalogSource) => void;
-  onDelete: (flow: Flow, definitionKey: string, legacyFlowId?: string) => Promise<void>;
+  onDelete: (flow: Flow, definitionKey: string) => Promise<void>;
   onImport: () => void;
   onGenerate: () => void;
 }) {
@@ -64,9 +64,6 @@ export function HomeScreen(props: {
   const [backupNote, setBackupNote] = useState<string | null>(null);
   const catalogReady = props.catalog.status === 'ready';
   const mine: Flow[] = props.catalog.status === 'ready' ? props.catalog.flows : [];
-  const legacyAmbiguousFlowIds =
-    props.catalog.status === 'ready' ? props.catalog.legacyAmbiguousFlowIds : [];
-
   // 整库备份（C6 兜底）：全部 flow + 历史修订 + 打卡日志，经系统分享面板存文件/发给自己。
   const backup = (): void => {
     const outcomeText: Record<ShareOutcome, string> = {
@@ -81,13 +78,7 @@ export function HomeScreen(props: {
       .catch(() => setBackupNote(null)); // 用户取消等——不打扰
   };
   const del = (flow: Flow): void => {
-    const identity = catalogDefinitionIdentity(
-      flow.id,
-      'owned',
-      props.examples,
-      legacyAmbiguousFlowIds,
-    );
-    props.onDelete(flow, identity.key, identity.legacyFlowId).catch(() => {});
+    props.onDelete(flow, catalogDefinitionKey(flow.id, 'owned')).catch(() => {});
   };
 
   const now = Date.now();
@@ -98,13 +89,7 @@ export function HomeScreen(props: {
   );
 
   const run = (flow: Flow, own: boolean): void => {
-    const identity = catalogDefinitionIdentity(
-      flow.id,
-      own ? 'owned' : 'example',
-      props.examples,
-      legacyAmbiguousFlowIds,
-    );
-    props.onRun(flow, identity.key, identity.legacyFlowId);
+    props.onRun(flow, catalogDefinitionKey(flow.id, own ? 'owned' : 'example'));
   };
 
   // 接下来：所有可见日程型 flow 的最近一次提醒（我的优先，无则看未被同 id 用户 Flow 遮蔽的示例）

@@ -14,39 +14,59 @@ import {
 import { MS_PER_DAY } from '../runtime/clock';
 import { coffeeFlow } from '../examples/coffee';
 import { medicationFlow } from '../examples/medication';
+import { catalogDefinitionKey } from '../session/flowCatalog';
 
 const T0 = 1_000_000;
+const definitionKey = (flow: Flow, source: 'owned' | 'example' = 'example'): string =>
+  catalogDefinitionKey(flow.id, source);
+const sequential = (
+  flow: Flow,
+  events: RunEvent[],
+  now: number,
+  runId: string,
+  locale: 'zh' | 'zh-Hant' | 'en',
+) => planSequentialReminder(flow, events, now, runId, locale, definitionKey(flow));
+const scheduled = (
+  flow: Flow,
+  now: number,
+  tz: number,
+  horizonMs: number,
+  opts: { repeatingTriggers?: boolean } = {},
+) => planScheduledReminders(flow, now, tz, horizonMs, {
+  definitionKey: definitionKey(flow),
+  ...opts,
+});
 
 test('计时步进行中 → 生成结束时刻的提醒', () => {
   const events: RunEvent[] = [
     { type: 'started', at: T0 },
     { type: 'stepCompleted', index: 0, at: T0 }, // 进入 steep(240s)
   ];
-  const r = planSequentialReminder(coffeeFlow, events, T0, 'run-1', 'zh');
+  const r = sequential(coffeeFlow, events, T0, 'run-1', 'zh');
   assert.ok(r);
   assert.equal(r.at, T0 + 240_000);
   assert.equal(r.id, sequentialReminderId('run-1'));
   assert.match(r.body, /浸泡/);
-  const en = planSequentialReminder(coffeeFlow, events, T0, 'run-1', 'en');
+  const en = sequential(coffeeFlow, events, T0, 'run-1', 'en');
   assert.ok(en);
   assert.match(en.body, /time's up/);
 });
 
 test('非计时步 / 未开始 / 已到点 → 无提醒', () => {
   // 未开始
-  assert.equal(planSequentialReminder(coffeeFlow, [], T0, 'r', 'zh'), null);
+  assert.equal(sequential(coffeeFlow, [], T0, 'r', 'zh'), null);
   // 停在 instant(water)
-  assert.equal(planSequentialReminder(coffeeFlow, [{ type: 'started', at: T0 }], T0, 'r', 'zh'), null);
+  assert.equal(sequential(coffeeFlow, [{ type: 'started', at: T0 }], T0, 'r', 'zh'), null);
   // 计时已到点
   const events: RunEvent[] = [
     { type: 'started', at: T0 },
     { type: 'stepCompleted', index: 0, at: T0 },
   ];
-  assert.equal(planSequentialReminder(coffeeFlow, events, T0 + 240_000, 'r', 'zh'), null);
+  assert.equal(sequential(coffeeFlow, events, T0 + 240_000, 'r', 'zh'), null);
 });
 
 test('日程型 → 为每个 scheduled 事件生成提醒（id 含触发时刻）', () => {
-  const rem = planScheduledReminders(medicationFlow, 36_000_000, 0, MS_PER_DAY);
+  const rem = scheduled(medicationFlow, 36_000_000, 0, MS_PER_DAY);
   assert.equal(rem.length, 3);
   assert.deepEqual(
     rem.map((r) => r.id),
@@ -59,7 +79,7 @@ test('日程型 → 为每个 scheduled 事件生成提醒（id 含触发时刻�
 });
 
 test('日程型 → 多日窗口展开每一天的提醒（App 数日不开也不断档）', () => {
-  const rem = planScheduledReminders(medicationFlow, 25_200_000, 0, 3 * MS_PER_DAY);
+  const rem = scheduled(medicationFlow, 25_200_000, 0, 3 * MS_PER_DAY);
   assert.equal(rem.length, 9); // 3 剂 × 3 天
   const ids = new Set(rem.map((r) => r.id));
   assert.equal(ids.size, 9); // 同一节点不同日的 id 互不覆盖
@@ -68,8 +88,8 @@ test('日程型 → 多日窗口展开每一天的提醒（App 数日不开也�
 test('planScheduledBatch 合并多条 flow，按时间排序并截断到 cap', () => {
   const other = { ...medicationFlow, id: 'other', nodes: medicationFlow.nodes };
   const entries = [
-    { flow: medicationFlow, tz: 0 },
-    { flow: other, tz: 0 },
+    { flow: medicationFlow, definitionKey: definitionKey(medicationFlow), tz: 0 },
+    { flow: other, definitionKey: definitionKey(other), tz: 0 },
   ];
   const all = planScheduledBatch(entries, 25_200_000, 3 * MS_PER_DAY, 100);
   assert.equal(all.length, 18);
@@ -84,7 +104,7 @@ test('planScheduledBatch 合并多条 flow，按时间排序并截断到 cap', (
 
 test('daily + 重复触发器 → 每节点一条带 repeat 的提醒，id 稳定、at 为下一次触发', () => {
   const now = 36_000_000; // 第 0 天 10:00（tz 0）
-  const rem = planScheduledReminders(medicationFlow, now, 0, MS_PER_DAY, { repeatingTriggers: true });
+  const rem = scheduled(medicationFlow, now, 0, MS_PER_DAY, { repeatingTriggers: true });
   assert.equal(rem.length, 3); // 每节点 1 条，而不是 3 × N 天
 
   const morning = rem.find((r) => r.id === dailyReminderId('example.medication', 'morning'));
@@ -105,7 +125,7 @@ test('weekly + 重复触发器 → 每「节点 × 星期」一条，weekday 同
     nodes: [{ kind: 'scheduled', id: 'dose', label: '剂', at: 9 * 60 }],
   };
   const now = 36_000_000; // 第 0 天（1970-01-01 = 周四）10:00——今天 09:00 已过
-  const rem = planScheduledReminders(weekly, now, 0, MS_PER_DAY, { repeatingTriggers: true });
+  const rem = scheduled(weekly, now, 0, MS_PER_DAY, { repeatingTriggers: true });
   assert.deepEqual(
     rem.map((r) => r.id).sort(),
     [weeklyReminderId('wk', 'dose', 1), weeklyReminderId('wk', 'dose', 4)].sort(),
@@ -119,12 +139,12 @@ test('weekly + 重复触发器 → 每「节点 × 星期」一条，weekday 同
 
 test('once / everyNDays 即便允许重复触发器也走预排窗口（无 repeat 字段）', () => {
   const once: Flow = { ...medicationFlow, repeat: undefined };
-  const onceRem = planScheduledReminders(once, 25_200_000, 0, 3 * MS_PER_DAY, { repeatingTriggers: true });
+  const onceRem = scheduled(once, 25_200_000, 0, 3 * MS_PER_DAY, { repeatingTriggers: true });
   assert.ok(onceRem.length > 0);
   assert.ok(onceRem.every((r) => r.repeat === undefined));
 
   const everyN: Flow = { ...medicationFlow, id: 'e2', repeat: { kind: 'everyNDays', n: 2, fromDay: 0 } };
-  const everyNRem = planScheduledReminders(everyN, 25_200_000, 0, 4 * MS_PER_DAY, { repeatingTriggers: true });
+  const everyNRem = scheduled(everyN, 25_200_000, 0, 4 * MS_PER_DAY, { repeatingTriggers: true });
   assert.equal(everyNRem.length, 6); // 3 剂 × 2 个符合节律的日子
   assert.ok(everyNRem.every((r) => r.repeat === undefined));
 });
@@ -141,20 +161,25 @@ test('开放 flow/node id 含冒号时，scheduled reminder identifier 仍唯一
     id: 'a',
     nodes: [{ kind: 'scheduled', id: 'b:c', label: 'B', at: 9 * 60 }],
   };
-  const ar = planScheduledReminders(a, 0, 0, MS_PER_DAY);
-  const br = planScheduledReminders(b, 0, 0, MS_PER_DAY);
+  const ar = scheduled(a, 0, 0, MS_PER_DAY);
+  const br = scheduled(b, 0, 0, MS_PER_DAY);
   assert.notEqual(ar[0]?.id, br[0]?.id);
 });
 
 
 test('同 flowId 的不同 catalog definition 使用不同通知 identifier 与 route identity', () => {
-  const exampleKey = JSON.stringify(['v2', 'example', medicationFlow.id]);
-  const ownedKey = JSON.stringify(['v2', 'owned', medicationFlow.id]);
-  const exampleRem = planScheduledReminders(medicationFlow, 36_000_000, 0, MS_PER_DAY, {
-    definitionKey: exampleKey,
-  });
+  const exampleKey = catalogDefinitionKey(medicationFlow.id, 'example');
+  const ownedFlow = { ...medicationFlow, title: 'owned' };
+  const ownedKey = catalogDefinitionKey(ownedFlow.id, 'owned');
+  const exampleRem = planScheduledReminders(
+    medicationFlow,
+    36_000_000,
+    0,
+    MS_PER_DAY,
+    { definitionKey: exampleKey },
+  );
   const ownedRem = planScheduledReminders(
-    { ...medicationFlow, title: 'owned' },
+    ownedFlow,
     36_000_000,
     0,
     MS_PER_DAY,

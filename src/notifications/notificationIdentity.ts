@@ -1,7 +1,7 @@
 // 平台通知 identifier 必须对开放 Flow/Node ID 保持注入性。
 // 不使用 ":" 等分隔符拼接；统一以 versioned tuple JSON 编码。
 
-const VERSION = 'notif-v2';
+const VERSION = 'notif-v1';
 
 function encode(parts: readonly (string | number)[]): string {
   return JSON.stringify([VERSION, ...parts]);

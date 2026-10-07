@@ -23,7 +23,6 @@ import {
 } from '../runtime/adherence';
 import { type Storage } from '../storage/storage';
 import { nextEvents } from '../runtime/engine';
-import { loadCheckInsForDefinition } from '../session/checkInPersistence';
 import { fmtTimeOfDay } from './format';
 import { useI18n } from './i18n';
 import { type Strings } from './strings';
@@ -71,7 +70,6 @@ function DoseBead(props: { status: DoseStatus; s: Styles; bs: BeadStyles }) {
 export function ScheduleScreen(props: {
   flow: Flow;
   definitionKey: string;
-  legacyFlowId?: string;
   storage: Storage;
   notifier: Notifier;
   /** 打开即视为为这条 flow 开启提醒；实际登记与多日重排由 App 层编排。 */
@@ -108,7 +106,7 @@ export function ScheduleScreen(props: {
     setCheckIns([]);
     setCheckInsStatus('loading');
 
-    loadCheckInsForDefinition(storage, props.definitionKey, props.legacyFlowId)
+    storage.loadCheckIns(props.definitionKey)
       .then((log) => {
         if (!alive) return;
         setCheckIns(log);
@@ -122,7 +120,7 @@ export function ScheduleScreen(props: {
     return () => {
       alive = false;
     };
-  }, [checkInsAttempt, flow, props.definitionKey, props.legacyFlowId, storage]);
+  }, [checkInsAttempt, flow, props.definitionKey, storage]);
 
   // 让 due → missed 等状态随时间推移刷新
   useEffect(() => {
@@ -144,7 +142,7 @@ export function ScheduleScreen(props: {
   const persist = (next: CheckIn[]): void => {
     setCheckIns(next);
     if (!checkInsReady) return;
-    storage.saveDefinitionCheckIns(props.definitionKey, next).catch(() => {});
+    storage.saveCheckIns(props.definitionKey, next).catch(() => {});
   };
   const take = (d: DoseState): void =>
     persist(recordCheckIn(checkIns, checkIn(d.nodeId, d.scheduledFor, true, Date.now())));

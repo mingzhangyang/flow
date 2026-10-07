@@ -7,19 +7,20 @@ import { createInMemoryKV } from '../storage/kv';
 import { createStorage } from '../storage/storage';
 import { parseBackup } from '../storage/backup';
 import { createLibrary, MAX_REVISIONS } from './library';
-import { createLegacyIdentityRegistry } from './legacyIdentityRegistry';
 import { createFlow, addNode, setMeta } from '../domain/editing';
 import { serializeFlow } from '../domain/serialize';
 import { type TimedNode } from '../domain/types';
+import { catalogDefinitionKey } from './flowCatalog';
 
 const step = (id: string, label: string): TimedNode => ({ kind: 'timed', id, label, durationSec: 60 });
 
 function make() {
-  const kv = createInMemoryKV();
-  const storage = createStorage(kv);
-  const legacyIdentities = createLegacyIdentityRegistry(kv);
-  return { storage, legacyIdentities, lib: createLibrary(storage, legacyIdentities) };
+  const storage = createStorage(createInMemoryKV());
+  return { storage, lib: createLibrary(storage) };
 }
+
+const medicationDefinitionKey = catalogDefinitionKey('example.medication', 'example');
+const mineDefinitionKey = catalogDefinitionKey('mine', 'owned');
 
 function sample() {
   return addNode(createFlow({ id: 'mine', title: '我的流程', topology: 'sequential' }), step('a', '第一步'));
@@ -108,7 +109,7 @@ test('整库备份 → 新设备恢复：flow（含版本）、历史、打卡�
   await lib.commit(sample()); // v1
   await lib.commit(setMeta(sample(), { title: '第二版' })); // v2，v1 入历史
   // 示例 flow 不入库也可能有打卡（创始场景）——备份必须带走
-  await storage.saveCheckIns('example.medication', [{ nodeId: 'n1', scheduledFor: 1000, taken: true, at: 1010 }]);
+  await storage.saveCheckIns(medicationDefinitionKey, [{ nodeId: 'n1', scheduledFor: 1000, taken: true, at: 1010 }]);
 
   const text = await lib.exportBackup(777);
   const backup = parseBackup(text);
@@ -123,7 +124,7 @@ test('整库备份 → 新设备恢复：flow（含版本）、历史、打卡�
   const history = await fresh.lib.revisions('mine');
   assert.equal(history.length, 1);
   assert.equal(history[0].title, '我的流程');
-  assert.deepEqual(await fresh.storage.loadCheckIns('example.medication'), [
+  assert.deepEqual(await fresh.storage.loadCheckIns(medicationDefinitionKey), [
     { nodeId: 'n1', scheduledFor: 1000, taken: true, at: 1010 },
   ]);
 });
@@ -137,9 +138,9 @@ test('恢复备份不覆盖本机数据：同 id 走 commit 入历史，打卡�
 
   const { storage: s2, lib: lib2 } = make();
   await lib2.commit(setMeta(sample(), { title: '本机的版本' })); // 本机已有同 id
-  await s2.saveCheckIns('mine', [{ nodeId: 'a', scheduledFor: 500, taken: true, at: 505 }]);
+  await s2.saveCheckIns(mineDefinitionKey, [{ nodeId: 'a', scheduledFor: 500, taken: true, at: 505 }]);
   // 备份里也有 mine 的打卡（同占位但状态不同）+ 一条本机没有的
-  backup.checkIns.mine = [
+  backup.checkIns[mineDefinitionKey] = [
     { nodeId: 'a', scheduledFor: 500, taken: false, at: 400 },
     { nodeId: 'a', scheduledFor: 900, taken: true, at: 905 },
   ];
@@ -150,7 +151,7 @@ test('恢复备份不覆盖本机数据：同 id 走 commit 入历史，打卡�
   assert.equal(current?.version, 2);
   const history = await lib2.revisions('mine');
   assert.equal(history[0].title, '本机的版本'); // 本机原版本入历史，没有消失
-  const log = await s2.loadCheckIns('mine');
+  const log = await s2.loadCheckIns(mineDefinitionKey);
   assert.equal(log.length, 2);
   assert.equal(log.find((c) => c.scheduledFor === 500)?.taken, true); // 本机打卡胜出
 });
@@ -169,17 +170,4 @@ test('备份保留 "__proto__" 这类开放 flowId 的历史修订', async () =>
   assert.ok(backup);
   assert.equal(Object.prototype.hasOwnProperty.call(backup.revisions, '__proto__'), true);
   assert.equal(backup.revisions.__proto__[0]?.title, '特殊 ID');
-});
-
-
-test('整库备份携带 legacy ambiguity tombstone，并在恢复业务数据前恢复 quarantine', async () => {
-  const source = make();
-  await source.legacyIdentities.mark('shared-id');
-  const backup = parseBackup(await source.lib.exportBackup(88));
-  assert.ok(backup);
-  assert.deepEqual(backup.legacyAmbiguousFlowIds, ['shared-id']);
-
-  const target = make();
-  await target.lib.importBackup(backup);
-  assert.deepEqual(await target.legacyIdentities.read(), ['shared-id']);
 });

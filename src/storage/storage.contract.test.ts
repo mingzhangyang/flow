@@ -124,11 +124,11 @@ test('Run 内嵌的旧 schema flow 快照在读取时被迁移', async () => {
 test('损坏的打卡日志 → 坏条目单独丢弃', async () => {
   const kv = createInMemoryKV();
   const s = createStorage(kv);
-  await kv.setItem('checkins:x', '{not json');
+  await kv.setItem('checkins:v1:x', '{not json');
   assert.deepEqual(await s.loadCheckIns('x'), []);
 
   const good = { nodeId: 'a', scheduledFor: 1, taken: true, at: 2 };
-  await kv.setItem('checkins:y', JSON.stringify([good, { nodeId: 42 }, null]));
+  await kv.setItem('checkins:v1:y', JSON.stringify([good, { nodeId: 42 }, null]));
   assert.deepEqual(await s.loadCheckIns('y'), [good]);
 });
 
@@ -149,31 +149,4 @@ test('listAllCheckIns 保留 "__proto__" 这类开放 flowId，而不触发对�
   const all = await s.listAllCheckIns();
   assert.equal(Object.prototype.hasOwnProperty.call(all, '__proto__'), true);
   assert.deepEqual(all.__proto__, log);
-});
-
-
-test('definition-scoped 打卡与 legacy flowId 打卡使用不同命名空间', async () => {
-  const s = fresh();
-  const legacy = [{ nodeId: 'legacy', scheduledFor: 1, taken: true, at: 2 }];
-  const scoped = [{ nodeId: 'scoped', scheduledFor: 3, taken: true, at: 4 }];
-  const definitionKey = JSON.stringify(['v2', 'owned', 'same']);
-
-  await s.saveCheckIns(definitionKey, legacy);
-  await s.saveDefinitionCheckIns(definitionKey, scoped);
-
-  assert.deepEqual(await s.loadCheckIns(definitionKey), legacy);
-  assert.deepEqual(await s.loadDefinitionCheckIns(definitionKey), scoped);
-  assert.deepEqual((await s.listAllDefinitionCheckIns())[definitionKey], scoped);
-});
-
-
-test('definition-scoped 打卡区分 missing 与 present-empty，并在列表中保留空 marker', async () => {
-  const s = fresh();
-  const key = JSON.stringify(['v2', 'owned', 'empty']);
-  assert.equal(await s.loadDefinitionCheckInsRecord(key), null);
-
-  await s.saveDefinitionCheckIns(key, []);
-  assert.deepEqual(await s.loadDefinitionCheckInsRecord(key), []);
-  assert.equal(Object.prototype.hasOwnProperty.call(await s.listAllDefinitionCheckIns(), key), true);
-  assert.deepEqual((await s.listAllDefinitionCheckIns())[key], []);
 });

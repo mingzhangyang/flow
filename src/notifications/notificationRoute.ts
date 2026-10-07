@@ -1,5 +1,5 @@
 // 通知 route 携带 catalog definition identity。
-// 旧通知没有 definitionKey 时，由 catalog 层只在来源无歧义时兼容。
+// flowId 用于定位候选，definitionKey 用于验证具体定义，避免 same-id source 串线。
 
 export interface NotificationRouteData {
   kind: 'flow';
@@ -10,13 +10,13 @@ export interface NotificationRouteData {
 
 export function flowNotificationRoute(
   flowId: string,
+  definitionKey: string,
   nodeId?: string,
-  definitionKey?: string,
 ): NotificationRouteData {
   return {
     kind: 'flow',
     flowId,
-    ...(definitionKey ? { definitionKey } : {}),
+    definitionKey,
     ...(nodeId ? { nodeId } : {}),
   };
 }
@@ -24,7 +24,6 @@ export function flowNotificationRoute(
 export function parseNotificationRoute(data: unknown): NotificationRouteData | null {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
   const raw = data as Record<string, unknown>;
-  // Domain IDs are open, exact, non-empty strings. Whitespace is data, not normalization.
   if (raw.kind !== 'flow' || typeof raw.flowId !== 'string' || raw.flowId === '') return null;
 
   const route: NotificationRouteData = { kind: 'flow', flowId: raw.flowId };

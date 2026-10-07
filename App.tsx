@@ -26,7 +26,6 @@ import {
   type OwnedCatalogSnapshot,
 } from './src/session/flowCatalog';
 import { createCatalogCoordinator } from './src/session/catalogCoordinator';
-import { createLegacyIdentityRegistry } from './src/session/legacyIdentityRegistry';
 import { runCommittedCatalogMutation } from './src/session/catalogMutation';
 import {
   deleteOwnedFlowDurably,
@@ -56,7 +55,7 @@ const newFlowId = (): string => `flow-${Date.now().toString(36)}-${Math.random()
 
 type Screen =
   | { name: 'home' }
-  | { name: 'run'; flow: Flow; definitionKey: string; legacyFlowId?: string }
+  | { name: 'run'; flow: Flow; definitionKey: string }
   | { name: 'edit'; flow: Flow }
   | { name: 'export'; flow: Flow }
   | { name: 'insight'; flow: Flow; source: FlowCatalogSource }
@@ -72,8 +71,7 @@ export default function App() {
   const examplesRef = useRef(examples);
   examplesRef.current = examples;
   const storage = useMemo(() => createStorage(asyncStorageKV), []);
-  const legacyIdentities = useMemo(() => createLegacyIdentityRegistry(asyncStorageKV), []);
-  const library = useMemo(() => createLibrary(storage, legacyIdentities), [storage, legacyIdentities]);
+  const library = useMemo(() => createLibrary(storage), [storage]);
   const notifier = useMemo(() => createExpoNotifier(), []);
   const notificationResponses = useMemo(() => createExpoNotificationResponseSource(), []);
 
@@ -91,33 +89,23 @@ export default function App() {
     await recoverPendingOwnedFlowDeletions({
       kv: asyncStorageKV,
       removeFlow: (id) => library.remove(id),
-      unenroll: (key, legacyId) => unenrollFlow(asyncStorageKV, key, legacyId),
-      markLegacyAmbiguous: (id) => legacyIdentities.mark(id),
+      unenroll: (key) => unenrollFlow(asyncStorageKV, key),
+      cancelNotifications: (ids) => notifier.cancel(ids),
       deleteRun: (id) => storage.deleteRun(id),
-      deleteDefinitionCheckIns: (key) => storage.deleteDefinitionCheckIns(key),
-      deleteLegacyCheckIns: (id) => storage.deleteCheckIns(id),
+      deleteCheckIns: (key) => storage.deleteCheckIns(key),
+      deleteRevisions: (id) => storage.deleteRevisions(id),
     });
 
     const flows = await library.list();
-
-    // Ambiguity is historical state, not merely a property of today's catalog. Before a
-    // shadowing catalog can ever become ready, persist the tombstone so later example-set
-    // changes, deletion, restart, or backup/restore cannot reopen bare-ID migration.
-    const exampleIds = new Set(examples.map((flow) => flow.id));
-    for (const flow of flows) {
-      if (exampleIds.has(flow.id)) await legacyIdentities.mark(flow.id);
-    }
-    const legacyAmbiguousFlowIds = await legacyIdentities.read();
-
     await rescheduleReminders({
       kv: asyncStorageKV,
       notifier,
-      flows: catalogEntriesWithOwnedPrecedence(examples, flows, legacyAmbiguousFlowIds),
+      flows: catalogEntriesWithOwnedPrecedence(examples, flows),
       now: Date.now(),
       deviceTz: systemTimeZone,
     });
-    return { flows, legacyAmbiguousFlowIds };
-  }, [examples, legacyIdentities, library, notifier, storage]);
+    return { flows };
+  }, [examples, library, notifier, storage]);
 
   const refreshCatalog = useCallback((
     mutation?: () => Promise<void>,
@@ -152,19 +140,18 @@ export default function App() {
   const deleteOwnedFlow = useCallback((
     flow: Flow,
     definitionKey: string,
-    legacyFlowId?: string,
   ): Promise<void> =>
     runCatalogMutation(() =>
-      deleteOwnedFlowDurably(flow, definitionKey, legacyFlowId, {
+      deleteOwnedFlowDurably(flow, definitionKey, {
         kv: asyncStorageKV,
         removeFlow: (id) => library.remove(id),
-        unenroll: (key, legacyId) => unenrollFlow(asyncStorageKV, key, legacyId),
-        markLegacyAmbiguous: (id) => legacyIdentities.mark(id),
+        unenroll: (key) => unenrollFlow(asyncStorageKV, key),
+        cancelNotifications: (ids) => notifier.cancel(ids),
         deleteRun: (id) => storage.deleteRun(id),
-        deleteDefinitionCheckIns: (key) => storage.deleteDefinitionCheckIns(key),
-        deleteLegacyCheckIns: (id) => storage.deleteCheckIns(id),
+        deleteCheckIns: (key) => storage.deleteCheckIns(key),
+        deleteRevisions: (id) => storage.deleteRevisions(id),
       })),
-  [legacyIdentities, library, runCatalogMutation, storage]);
+  [library, notifier, runCatalogMutation, storage]);
 
   const refreshCatalogInBackground = useCallback((
     mutation?: () => Promise<void>,
@@ -192,7 +179,6 @@ export default function App() {
         route.definitionKey,
         projection.flows,
         examplesRef.current,
-        projection.legacyAmbiguousFlowIds,
       );
       if (entry) {
         setScreen({
@@ -221,13 +207,8 @@ export default function App() {
           catalog={catalog}
           sharer={systemSharer}
           onRetry={refreshCatalogInBackground}
-          onRun={(flow, definitionKey, legacyFlowId) =>
-            setScreen({
-              name: 'run',
-              flow,
-              definitionKey,
-              ...(legacyFlowId ? { legacyFlowId } : {}),
-            })}
+          onRun={(flow, definitionKey) =>
+            setScreen({ name: 'run', flow, definitionKey })}
           onNew={(topology: Topology) => setScreen({ name: 'edit', flow: createFlow({ id: newFlowId(), title: '', topology }) })}
           onEdit={(flow) => setScreen({ name: 'edit', flow })}
           onExport={(flow) => setScreen({ name: 'export', flow })}
@@ -242,7 +223,6 @@ export default function App() {
             key={JSON.stringify([screen.definitionKey, screen.flow.version ?? 1])}
             flow={screen.flow}
             definitionKey={screen.definitionKey}
-            legacyFlowId={screen.legacyFlowId}
             storage={storage}
             notifier={notifier}
             onEnrollReminders={(definitionKey) => {
@@ -255,7 +235,6 @@ export default function App() {
             key={JSON.stringify([screen.definitionKey, screen.flow.version ?? 1])}
             flow={screen.flow}
             definitionKey={screen.definitionKey}
-            legacyFlowId={screen.legacyFlowId}
             storage={storage}
             notifier={notifier}
             onExit={home}

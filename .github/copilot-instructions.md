@@ -1,17 +1,19 @@
 # Copilot code review instructions
 
-Before reviewing, read `AGENTS.md`, `constitution/00-core.md`, `constitution/01-domain-model.md`, `constitution/03-engineering.md`, and `docs/architecture.md`. Review for architectural invariants first; do not stop at the first local symptom.
+Before reviewing, read `AGENTS.md`, `constitution/00-core.md`, `constitution/01-domain-model.md`, `constitution/03-engineering.md`, and `docs/architecture.md`. Review system-wide invariants before local symptoms.
 
-For this repository, always check these cross-cutting invariants:
+This repository is **pre-release** and has never been run with user/test data. PR #5 intentionally resets the app-data format to the first public v1. Do not require compatibility with development-only storage keys or backup envelopes that never shipped.
 
-- **Catalog definition identity:** runtime state that belongs to a specific Flow definition must be scoped by the versioned `(source, flowId)` catalog definition identity, not by bare `flowId`. This includes reminder enrollment, notification routes/identifiers, active Runs, scheduled check-ins, and run-screen component identity.
-- **Conservative legacy migration:** bare-ID legacy data may migrate only when its source is unambiguous. Ambiguous shadowing must fail closed rather than attach state to the wrong definition.
-- **Persistence fail-closed:** a read failure is not equivalent to “missing data.” Never allow a failed read to create/save empty state over potentially existing user data. Presence markers such as an explicitly stored empty check-in list are meaningful state and must survive backup/restore.
-- **Immutable Run snapshot:** after a Run has events, replay/actions/UI must use the saved `run.flow` snapshot. Editing the catalog Flow must not mutate an in-progress Run’s definition.
-- **Mutation vs projection:** a business mutation that has already committed must not be reported as failed merely because follow-up catalog reload or reminder rescheduling failed. Projection failure belongs to the catalog error/retry state.
-- **Serialized catalog side effects:** catalog refresh, enrollment, deletion, and mutation follow-up must remain serialized through the catalog coordinator so notification cancel/schedule operations cannot race.
-- **Durable deletion:** destructive deletion is commit-forward. Persist the minimal deletion intent before destructive writes; once that journal write succeeds, recovery must be idempotent and survive process/storage failures.
-- **Notifications:** newly scheduled notifications must carry definition identity. A stale delivered notification must never route to a different same-ID definition.
-- **Open-format compatibility:** changes to persisted/exported data must be additive or explicitly migrated. Older backups and legacy on-device data must remain readable without silently misassigning state.
+Always check:
 
-When one violation is found, inspect analogous call sites and adjacent persistence/backup/notification paths for the same root cause before reporting. Prefer one root-cause finding that identifies all affected paths over several symptom-level comments.
+- **Catalog definition identity:** all state belonging to a specific Flow definition uses the versioned `(source, flowId)` definitionKey. Bare `flowId` is only the domain ID, never a runtime-state key.
+- **No pre-release legacy layer:** there must be no bare-ID migration, alias, tombstone/quarantine registry, dual check-in namespace, or old backup compatibility in v1.
+- **Persistence fail-closed:** read failure is not “missing data.” Never save empty state over a potentially unread Run/check-in log.
+- **Immutable Run snapshot:** after a Run has events, replay/actions/UI use saved `run.flow`.
+- **Mutation vs projection:** a committed business mutation is not reported as failed merely because catalog/reminder refresh fails.
+- **Serialized catalog effects:** refresh/enroll/delete/mutation follow-up stay serialized through the catalog coordinator.
+- **Durable deletion:** journal before destructive work; recovery is idempotent and deletion clears Flow, revisions, enrollment, Run, check-ins, and sequential timer notifications for that definition.
+- **Notifications:** every newly scheduled notification carries definitionKey; route resolution requires an exact current definition match.
+- **Backup v1:** backup contains only the first public format (flows, revisions, definition-keyed checkIns). Future compatibility should be added only after a format has actually shipped.
+
+When you find one violation, inspect analogous call sites for the same root cause before reporting.
