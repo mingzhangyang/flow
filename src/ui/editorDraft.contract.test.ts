@@ -104,7 +104,7 @@ test('node add, remove, move, label, rationale and kind edits are dirty', () => 
 test('timed duration and scheduled wall-clock edits are dirty', () => {
   const seq = sequential();
   const timed = seq.nodes[0];
-  assert.equal(timed.kind, 'timed');
+  if (timed.kind !== 'timed') throw new Error('fixture must start with a timed node');
   assert.equal(
     isEditorDraftDirty(seq, {
       ...seq,
@@ -115,7 +115,7 @@ test('timed duration and scheduled wall-clock edits are dirty', () => {
 
   const plan = scheduled();
   const morning = plan.nodes[0];
-  assert.equal(morning.kind, 'scheduled');
+  if (morning.kind !== 'scheduled') throw new Error('fixture must start with a scheduled node');
   assert.equal(
     isEditorDraftDirty(plan, {
       ...plan,
