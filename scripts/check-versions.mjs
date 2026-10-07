@@ -14,12 +14,29 @@ function fail(message) {
   process.exit(1);
 }
 
-function assertConfiguredAsset(label, path) {
+function configuredAssetUrl(label, path) {
   if (typeof path !== 'string' || path.trim() === '') fail(`${label} is missing`);
   const relative = path.replace(/^\.\//, '');
-  if (!existsSync(new URL(`../${relative}`, import.meta.url))) {
-    fail(`${label} points to missing file: ${path}`);
+  const url = new URL(`../${relative}`, import.meta.url);
+  if (!existsSync(url)) fail(`${label} points to missing file: ${path}`);
+  return url;
+}
+
+function assertConfiguredAsset(label, path) {
+  configuredAssetUrl(label, path);
+}
+
+function readConfiguredJson(label, path) {
+  const url = configuredAssetUrl(label, path);
+  try {
+    return JSON.parse(readFileSync(url, 'utf8'));
+  } catch (error) {
+    fail(`${label} must contain valid JSON (${error instanceof Error ? error.message : String(error)})`);
   }
+}
+
+function nonEmptyString(value) {
+  return typeof value === 'string' && value.trim() !== '';
 }
 
 if (pkg.version !== app.expo.version) {
@@ -69,12 +86,27 @@ assertConfiguredAsset('android.adaptiveIcon.backgroundImage', app.expo.android?.
 assertConfiguredAsset('android.adaptiveIcon.monochromeImage', app.expo.android?.adaptiveIcon?.monochromeImage);
 assertConfiguredAsset('web.favicon', app.expo.web?.favicon);
 
+if (app.expo.ios?.infoPlist?.CFBundleAllowMixedLocalizations !== true) {
+  fail('ios.infoPlist.CFBundleAllowMixedLocalizations must be true when localized app metadata is configured');
+}
+
 const locales = app.expo.locales;
 if (locales === null || typeof locales !== 'object' || Array.isArray(locales)) {
   fail('expo.locales must be an object');
 }
 for (const locale of ['zh', 'zh-Hant', 'en']) {
-  assertConfiguredAsset(`expo.locales.${locale}`, locales[locale]);
+  const label = `expo.locales.${locale}`;
+  const localized = readConfiguredJson(label, locales[locale]);
+
+  if (!isProfileObject(localized)) fail(`${label} must contain a JSON object`);
+  if ('CFBundleDisplayName' in localized || 'app_name' in localized) {
+    fail(`${label} must nest platform strings under ios/android, not at the locale root`);
+  }
+
+  const iosName = localized.ios?.CFBundleDisplayName;
+  const androidName = localized.android?.app_name;
+  if (!nonEmptyString(iosName)) fail(`${label}.ios.CFBundleDisplayName must be a non-empty string`);
+  if (!nonEmptyString(androidName)) fail(`${label}.android.app_name must be a non-empty string`);
 }
 
 for (const asset of ['../assets/splash-icon.png', '../site/privacy/index.html']) {
