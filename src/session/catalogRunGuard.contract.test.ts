@@ -111,3 +111,23 @@ test('completed sequential Run 不再阻止 topology replacement 或 same-ID sha
     }),
   );
 });
+
+
+test('catalog guard 对 mis-associated persisted Run fail closed，不把 identity mismatch 当作无 active Run', async () => {
+  const key = catalogDefinitionKey('same', 'owned');
+  const runId = activeRunId(key);
+  const mismatched: Run = {
+    id: runId,
+    flow: { ...sequential, id: 'other-flow' },
+    events: [{ type: 'started', at: 1 }],
+  };
+
+  await assert.rejects(() =>
+    assertFlowMutationKeepsActiveRunReachable({
+      nextFlow: scheduled,
+      currentOwned: sequential,
+      examples: [],
+      runs: lookup({ [runId]: mismatched }),
+    }),
+  );
+});

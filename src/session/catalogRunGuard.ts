@@ -6,7 +6,7 @@
 import { type Flow, type Run } from '../domain/types';
 import { project } from '../runtime/engine';
 import { catalogDefinitionKey } from './flowCatalog';
-import { activeRunId } from './runPersistence';
+import { loadRunForDefinition } from './runPersistence';
 
 export class ActiveRunConflictError extends Error {
   constructor() {
@@ -39,16 +39,17 @@ export async function assertFlowMutationKeepsActiveRunReachable(opts: {
 }): Promise<void> {
   if (opts.currentOwned) {
     const ownedKey = catalogDefinitionKey(opts.nextFlow.id, 'owned');
-    const active = await opts.runs.loadRun(activeRunId(ownedKey));
+    const active = await loadRunForDefinition(opts.runs, opts.currentOwned, ownedKey);
     if (isActiveSequentialRun(active) && active.flow.topology !== opts.nextFlow.topology) {
       throw new ActiveRunConflictError();
     }
     return;
   }
 
-  if (opts.examples.some((flow) => flow.id === opts.nextFlow.id)) {
+  const example = opts.examples.find((flow) => flow.id === opts.nextFlow.id);
+  if (example) {
     const exampleKey = catalogDefinitionKey(opts.nextFlow.id, 'example');
-    const active = await opts.runs.loadRun(activeRunId(exampleKey));
+    const active = await loadRunForDefinition(opts.runs, example, exampleKey);
     if (isActiveSequentialRun(active)) throw new ActiveRunConflictError();
   }
 }
