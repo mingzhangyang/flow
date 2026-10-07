@@ -72,7 +72,14 @@ export function createNotificationResponseSource(
         const route = routeOf(response);
         const consumed = await consumeLastResponse(api);
         if (!consumed) return false;
-        if (active && route) await listener(route);
+        if (active && route) {
+          try {
+            await listener(route);
+          } catch {
+            // The system response is already consumed. A navigation/business failure belongs
+            // to this one delivery only; never poison the serialization tail or redeliver it.
+          }
+        }
         return true;
       };
 

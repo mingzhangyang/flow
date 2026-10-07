@@ -205,3 +205,24 @@ test('连续 warm tap 会等待前一次异步导航完成，后一次不会反�
 
   assert.deepEqual(events, ['start:a', 'end:a', 'start:b', 'end:b']);
 });
+
+
+test('单次 async listener 失败不会 poison 串行队列，后续 tap 仍会交付', async () => {
+  const fake = fakeFacade();
+  const source = createNotificationResponseSource(fake.api);
+  const seen: string[] = [];
+  source.start(async (route) => {
+    seen.push(route.flowId);
+    if (route.flowId === 'a') throw new Error('navigation failed');
+  });
+  await flush();
+
+  fake.emit(response('warm-a', { kind: 'flow', flowId: 'a' }));
+  fake.emit(response('warm-b', { kind: 'flow', flowId: 'b' }));
+  await flush();
+  await flush();
+  await flush();
+
+  assert.deepEqual(seen, ['a', 'b']);
+  assert.equal(fake.counts().clears, 2);
+});

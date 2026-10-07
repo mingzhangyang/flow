@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
 import { type Flow, type Topology } from '../domain/types';
 import { type Library } from '../session/library';
-import { catalogDefinitionIdentity, examplesVisibleAlongsideOwned, type OwnedCatalogSnapshot } from '../session/flowCatalog';
+import { catalogDefinitionIdentity, examplesVisibleAlongsideOwned, type FlowCatalogSource, type OwnedCatalogSnapshot } from '../session/flowCatalog';
 import { type Sharer, type ShareOutcome } from '../sharing/sharer';
 import { nextEvents, type ScheduledOccurrence } from '../runtime/engine';
 import { timeOfDay, MS_PER_DAY } from '../runtime/clock';
@@ -53,7 +53,7 @@ export function HomeScreen(props: {
   onNew: (topology: Topology) => void;
   onEdit: (flow: Flow) => void;
   onExport: (flow: Flow) => void;
-  onInsight: (flow: Flow) => void;
+  onInsight: (flow: Flow, source: FlowCatalogSource) => void;
   onDelete: (flow: Flow, definitionKey: string, legacyFlowId?: string) => Promise<void>;
   onImport: () => void;
   onGenerate: () => void;
@@ -134,7 +134,7 @@ export function HomeScreen(props: {
         <Text style={styles.cardMeta}>{t.cardMeta(flow.nodes.length, flow.topology)}</Text>
       </Pressable>
       <View style={styles.rowActions}>
-        <Pressable onPress={() => props.onInsight(flow)}><Text style={styles.link}>{t.linkInsight}</Text></Pressable>
+        <Pressable onPress={() => props.onInsight(flow, own ? 'owned' : 'example')}><Text style={styles.link}>{t.linkInsight}</Text></Pressable>
         {own ? (
           <>
             <Pressable onPress={() => props.onEdit(flow)}><Text style={styles.link}>{t.linkEdit}</Text></Pressable>

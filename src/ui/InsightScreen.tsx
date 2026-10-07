@@ -6,13 +6,21 @@ import { useEffect, useState, useMemo } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet, useColorScheme } from 'react-native';
 import { type Flow } from '../domain/types';
 import { type Library } from '../session/library';
+import { type FlowCatalogSource } from '../session/flowCatalog';
 import { explain } from '../ai/explain';
 import { analyze, type Finding } from '../ai/analyze';
 import { diffFlows, describeChange, type Change } from '../ai/diff';
 import { useI18n } from './i18n';
 import { paletteFor, type Palette, spacing, radius } from './theme';
 
-export function InsightScreen(props: { flow: Flow; library: Library; restoreFlow: (flow: Flow) => Promise<Flow>; onExit: () => void; onChanged: () => void }) {
+export function InsightScreen(props: {
+  flow: Flow;
+  source: FlowCatalogSource;
+  library: Library;
+  restoreFlow: (flow: Flow) => Promise<Flow>;
+  onExit: () => void;
+  onChanged: () => void;
+}) {
   const { flow } = props;
   const c = paletteFor(useColorScheme());
   const styles = useMemo(() => createStyles(c), [c]);
@@ -21,6 +29,11 @@ export function InsightScreen(props: { flow: Flow; library: Library; restoreFlow
 
   useEffect(() => {
     let alive = true;
+    setPrevious(null);
+    // Revision history belongs to the owned catalog definition. A fallback example with the
+    // same open ID must never inherit or restore orphaned owned revisions.
+    if (props.source !== 'owned') return () => { alive = false; };
+
     props.library
       .revisions(flow.id)
       .then((revs) => alive && setPrevious(revs.length > 0 ? revs[revs.length - 1] : null))
@@ -28,14 +41,14 @@ export function InsightScreen(props: { flow: Flow; library: Library; restoreFlow
     return () => {
       alive = false;
     };
-  }, [flow]);
+  }, [flow, props.library, props.source]);
 
   const lines = explain(flow, locale);
   const findings = analyze(flow, locale);
   const changes: Change[] = previous ? diffFlows(previous, flow) : [];
 
   const restore = (): void => {
-    if (!previous) return;
+    if (props.source !== 'owned' || !previous) return;
     props.restoreFlow(previous).then(props.onChanged).catch(() => {});
   };
 

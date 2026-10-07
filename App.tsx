@@ -21,6 +21,7 @@ import {
   catalogEntriesWithOwnedPrecedence,
   LOADING_CATALOG,
   resolveCatalogEntryForRoute,
+  type FlowCatalogSource,
   type OwnedCatalogSnapshot,
 } from './src/session/flowCatalog';
 import { createCatalogCoordinator } from './src/session/catalogCoordinator';
@@ -56,7 +57,7 @@ type Screen =
   | { name: 'run'; flow: Flow; definitionKey: string; legacyFlowId?: string }
   | { name: 'edit'; flow: Flow }
   | { name: 'export'; flow: Flow }
-  | { name: 'insight'; flow: Flow }
+  | { name: 'insight'; flow: Flow; source: FlowCatalogSource }
   | { name: 'import' }
   | { name: 'generate' };
 
@@ -208,7 +209,7 @@ export default function App() {
           onNew={(topology: Topology) => setScreen({ name: 'edit', flow: createFlow({ id: newFlowId(), title: '', topology }) })}
           onEdit={(flow) => setScreen({ name: 'edit', flow })}
           onExport={(flow) => setScreen({ name: 'export', flow })}
-          onInsight={(flow) => setScreen({ name: 'insight', flow })}
+          onInsight={(flow, source) => setScreen({ name: 'insight', flow, source })}
           onDelete={deleteOwnedFlow}
           onImport={() => setScreen({ name: 'import' })}
           onGenerate={() => setScreen({ name: 'generate' })}
@@ -245,6 +246,7 @@ export default function App() {
       ) : screen.name === 'insight' ? (
         <InsightScreen
           flow={screen.flow}
+          source={screen.source}
           library={library}
           restoreFlow={restoreCatalogRevision}
           onExit={home}

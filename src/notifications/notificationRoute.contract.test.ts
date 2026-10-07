@@ -30,14 +30,15 @@ test('parseNotificationRoute 只用 trim 判断空值，但保留导入后的稳
   });
 });
 
-test('parseNotificationRoute 拒绝坏数据，空 nodeId 安全降级到 Flow', () => {
+test('parseNotificationRoute 与 Domain 一致：只拒绝空字符串，空白属于稳定 ID 数据', () => {
   assert.equal(parseNotificationRoute(null), null);
   assert.equal(parseNotificationRoute([]), null);
   assert.equal(parseNotificationRoute({ kind: 'other', flowId: 'flow-1' }), null);
-  assert.equal(parseNotificationRoute({ kind: 'flow', flowId: '   ' }), null);
-  assert.deepEqual(parseNotificationRoute({ kind: 'flow', flowId: 'flow-1', nodeId: ' ' }), {
+  assert.equal(parseNotificationRoute({ kind: 'flow', flowId: '' }), null);
+  assert.deepEqual(parseNotificationRoute({ kind: 'flow', flowId: '   ', nodeId: ' ' }), {
     kind: 'flow',
-    flowId: 'flow-1',
+    flowId: '   ',
+    nodeId: ' ',
   });
 });
 

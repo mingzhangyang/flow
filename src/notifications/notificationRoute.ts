@@ -24,13 +24,14 @@ export function flowNotificationRoute(
 export function parseNotificationRoute(data: unknown): NotificationRouteData | null {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
   const raw = data as Record<string, unknown>;
-  if (raw.kind !== 'flow' || typeof raw.flowId !== 'string' || raw.flowId.trim() === '') return null;
+  // Domain IDs are open, exact, non-empty strings. Whitespace is data, not normalization.
+  if (raw.kind !== 'flow' || typeof raw.flowId !== 'string' || raw.flowId === '') return null;
 
   const route: NotificationRouteData = { kind: 'flow', flowId: raw.flowId };
-  if (typeof raw.definitionKey === 'string' && raw.definitionKey.trim() !== '') {
+  if (typeof raw.definitionKey === 'string' && raw.definitionKey !== '') {
     route.definitionKey = raw.definitionKey;
   }
-  if (typeof raw.nodeId === 'string' && raw.nodeId.trim() !== '') {
+  if (typeof raw.nodeId === 'string' && raw.nodeId !== '') {
     route.nodeId = raw.nodeId;
   }
   return route;
