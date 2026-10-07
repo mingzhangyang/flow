@@ -12,11 +12,9 @@ export interface Palette {
   surface: string;
   surfaceRaised: string;
   surfaceSubtle: string;
-  surfaceTint: string;
 
   // Boundaries
   border: string;
-  borderStrong: string;
 
   // Text
   text: string;
@@ -32,12 +30,9 @@ export interface Palette {
   // Supporting accents
   secondary: string;
   secondarySoft: string;
-  highlight: string;
-  highlightSoft: string;
 
   // Semantic states
   success: string;
-  successSoft: string;
   warning: string;
   warningSoft: string;
   danger: string;
@@ -45,19 +40,9 @@ export interface Palette {
 
   // Controls
   inputSurface: string;
-  selectedSurface: string;
-  disabledSurface: string;
 
   // UI projection only: stable flow identity colors, never serialized.
   flowAccents: readonly FlowIdentityTone[];
-
-  // Compatibility aliases for older presentation code. New code should use the semantic roles above.
-  bg: string;
-  accent: string;
-  accentText: string;
-  done: string;
-  pending: string;
-  warn: string;
 }
 
 /** Light: airy warm-neutral canvas, fresh botanical primary, restrained supporting color. */
@@ -66,9 +51,7 @@ export const light: Palette = {
   surface: '#FFFFFF',
   surfaceRaised: '#FFFFFF',
   surfaceSubtle: '#F0F5F1',
-  surfaceTint: '#E8F6ED',
   border: '#DCE6DF',
-  borderStrong: '#B9C9BE',
 
   text: '#17231C',
   textMuted: '#58685E',
@@ -81,19 +64,14 @@ export const light: Palette = {
 
   secondary: '#3E78BC',
   secondarySoft: '#EAF2FC',
-  highlight: '#BE6B32',
-  highlightSoft: '#FFF0E5',
 
   success: '#2F7A50',
-  successSoft: '#E7F4EC',
   warning: '#9A650F',
   warningSoft: '#FFF3D8',
   danger: '#B64B45',
   dangerSoft: '#FCEBE9',
 
   inputSurface: '#F4F7F4',
-  selectedSurface: '#E4F4EA',
-  disabledSurface: '#EDF1EE',
 
   flowAccents: [
     { accent: '#27885A', soft: '#EAF7EF' },
@@ -103,13 +81,6 @@ export const light: Palette = {
     { accent: '#B47A20', soft: '#FBF3E1' },
     { accent: '#2F8B86', soft: '#E9F6F4' },
   ],
-
-  bg: '#F7FAF7',
-  accent: '#18794E',
-  accentText: '#FFFFFF',
-  done: '#2F7A50',
-  pending: '#819087',
-  warn: '#9A650F',
 };
 
 /** Dark: green-black rather than pure black, with readable layered surfaces and quiet chroma. */
@@ -118,9 +89,7 @@ export const darkScheme: Palette = {
   surface: '#17221D',
   surfaceRaised: '#1C2923',
   surfaceSubtle: '#18251F',
-  surfaceTint: '#173226',
   border: '#2A3B32',
-  borderStrong: '#3C5548',
 
   text: '#F0F5F1',
   textMuted: '#A5B3AA',
@@ -133,19 +102,14 @@ export const darkScheme: Palette = {
 
   secondary: '#82AFE8',
   secondarySoft: '#1B2E43',
-  highlight: '#EBA66C',
-  highlightSoft: '#3B291E',
 
   success: '#72CA94',
-  successSoft: '#193526',
   warning: '#E0B35E',
   warningSoft: '#3A2F1B',
   danger: '#EB8B82',
   dangerSoft: '#402523',
 
   inputSurface: '#18241E',
-  selectedSurface: '#1F3B2C',
-  disabledSurface: '#202A24',
 
   flowAccents: [
     { accent: '#79D6A4', soft: '#173126' },
@@ -155,13 +119,6 @@ export const darkScheme: Palette = {
     { accent: '#E0B769', soft: '#372F1E' },
     { accent: '#73CBC4', soft: '#183431' },
   ],
-
-  bg: '#101814',
-  accent: '#76D3A0',
-  accentText: '#10271B',
-  done: '#72CA94',
-  pending: '#74847A',
-  warn: '#E0B35E',
 };
 
 /** System appearance -> app palette. */
@@ -175,9 +132,6 @@ export function flowIdentityFor(palette: Palette, id: string): FlowIdentityTone 
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
   return palette.flowAccents[h % palette.flowAccents.length]!;
 }
-
-/** Compatibility alias retained until all static presentation consumers are migrated. */
-export const colors = light;
 
 /**
  * Runner immersive scene: a focused, deep botanical environment that deliberately does not
