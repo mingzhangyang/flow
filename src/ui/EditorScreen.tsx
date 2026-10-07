@@ -2,7 +2,17 @@
 // 保存时经 library 提交为新修订（版本递增、旧版本入历史）。
 
 import { useState, useMemo } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  View,
+  Text,
+  TextInput,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  useColorScheme,
+} from 'react-native';
 import { type Flow, type FlowNode, type NodeKind, type Recurrence } from '../domain/types';
 import { addNode, updateNode, removeNode, moveNode, setMeta } from '../domain/editing';
 import { validateFlow } from '../domain/validate';
@@ -111,14 +121,23 @@ export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Pro
   };
 
   return (
-    <View style={styles.screen}>
+    <KeyboardAvoidingView
+      style={styles.screen}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <View style={styles.header}>
         <Pressable onPress={props.onCancel} hitSlop={12}><Text style={styles.headerBtn}>{t.cancel}</Text></Pressable>
         <Text style={styles.title}>{t.editorTitle}</Text>
         <Pressable onPress={save} hitSlop={12}><Text style={[styles.headerBtn, styles.save]}>{t.save}</Text></Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+      >
         <TextInput
           style={styles.titleInput}
           value={flow.title}
@@ -292,7 +311,7 @@ export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Pro
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -313,6 +332,7 @@ const rowStyles = StyleSheet.create({
 
 const createStyles = (c: Palette) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: c.bg },
+  scroll: { flex: 1 },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,

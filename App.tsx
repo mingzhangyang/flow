@@ -3,7 +3,8 @@
 // Home / 通知路由只消费 coordinator 发布的权威 snapshot。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, SafeAreaView, StyleSheet, useColorScheme } from 'react-native';
+import { AppState, StyleSheet, useColorScheme } from 'react-native';
+import { SafeAreaProvider, SafeAreaView, initialWindowMetrics } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import {
   useFonts,
@@ -51,7 +52,7 @@ import { ImportScreen } from './src/ui/ImportScreen';
 import { InsightScreen } from './src/ui/InsightScreen';
 import { GenerateScreen } from './src/ui/GenerateScreen';
 import { useI18n } from './src/ui/i18n';
-import { paletteFor } from './src/ui/theme';
+import { dark, paletteFor } from './src/ui/theme';
 
 configureExpoNotificationPresentation();
 
@@ -250,9 +251,19 @@ export default function App() {
 
   if (!fontsLoaded) return null;
 
+  // Runner uses a dark immersive scene independent of the system appearance.
+  // The shell owns safe-area paint and system-bar contrast for every screen.
+  const immersiveRun = screen.name === 'run' && screen.flow.topology === 'sequential';
+  const appBackground = immersiveRun ? dark.bg : c.bg;
+  const statusBarStyle = immersiveRun || scheme === 'dark' ? 'light' : 'dark';
+
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: c.bg }]}>
-      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+    <SafeAreaProvider initialMetrics={initialWindowMetrics} style={styles.root}>
+      <SafeAreaView
+        style={[styles.root, { backgroundColor: appBackground }]}
+        edges={['top', 'right', 'bottom', 'left']}
+      >
+        <StatusBar style={statusBarStyle} />
       {screen.name === 'home' ? (
         <HomeScreen
           library={library}
@@ -322,7 +333,8 @@ export default function App() {
           onCancel={home}
         />
       )}
-    </SafeAreaView>
+      </SafeAreaView>
+    </SafeAreaProvider>
   );
 }
 
