@@ -212,11 +212,12 @@ export function EditorScreen(props: EditorScreenProps) {
       <View style={styles.header}>
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel={t.back}
           onPress={requestExit}
           hitSlop={8}
           style={styles.headerSide}
         >
-          <Text style={styles.headerBtn}>{t.back}</Text>
+          <Text style={styles.headerBackIcon}>‹</Text>
         </Pressable>
         <Text style={styles.title}>{t.editorTitle}</Text>
         <View style={styles.headerSide} />
@@ -447,7 +448,7 @@ const createStyles = (c: Palette) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
   },
   headerSide: { flex: 1, minHeight: 44, justifyContent: 'center', alignItems: 'flex-start' },
-  headerBtn: { fontSize: 15, lineHeight: 20, color: c.accent },
+  headerBackIcon: { fontSize: 32, lineHeight: 32, color: c.accent, marginTop: -2 },
   title: { fontSize: 16, lineHeight: 22, fontWeight: '600', color: c.text, textAlign: 'center' },
   content: { padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xl },
   titleInput: {
