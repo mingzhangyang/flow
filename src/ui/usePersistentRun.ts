@@ -1,7 +1,5 @@
-// 把运行状态、持久化与通知编织在一起的 Hook。
-// - 打开时从 Storage 载入该 flow 的进行中 run（C6：掉线可恢复）。
-// - 每次事件后保存，并重排“下一步计时”提醒（C5）。
-// 时钟仍停在此处（Date.now()），向下全是纯函数。
+// 顺序型运行状态、持久化与通知。
+// 有事件的 Run 始终以 run.flow 快照为事实源；当前 catalog Flow 只用于未开始或 reset 后的新 Run。
 
 import { useEffect, useState } from 'react';
 import { type Flow, type Run, type RunEvent } from '../domain/types';
@@ -12,6 +10,7 @@ import { type Storage } from '../storage/storage';
 import { type Notifier } from '../notifications/notifier';
 import { planSequentialReminder } from '../notifications/plan';
 import { sequentialReminderId } from '../notifications/notificationIdentity';
+import { activeRunId, legacyActiveRunId, runForCurrentDefinition } from '../session/runPersistence';
 import {
   startAction,
   completeCurrentAction,
@@ -21,9 +20,9 @@ import {
   backAction,
 } from '../session/actions';
 
-const runIdFor = (flow: Flow): string => `active-${flow.id}`;
-
 export interface PersistentRun {
+  ready: boolean;
+  flow: Flow;
   state: RunState;
   start: () => void;
   complete: () => void;
@@ -36,70 +35,96 @@ export interface PersistentRun {
 
 export function usePersistentRun(
   flow: Flow,
+  definitionKey: string,
+  legacyFlowId: string | undefined,
   storage: Storage,
   notifier: Notifier,
   locale: Locale,
 ): PersistentRun {
-  const [run, setRun] = useState<Run>(() => ({ id: runIdFor(flow), flow, events: [] }));
+  const runId = activeRunId(definitionKey);
+  const [run, setRun] = useState<Run>(() => ({ id: runId, flow, events: [] }));
   const [now, setNow] = useState<Instant>(() => Date.now());
   const [loaded, setLoaded] = useState(false);
 
-  // 恢复进行中的 run
   useEffect(() => {
     let alive = true;
-    storage
-      .loadRun(runIdFor(flow))
-      .then((saved) => {
-        if (!alive) return;
-        if (saved && saved.flow.id === flow.id) setRun(saved);
-        setLoaded(true);
-      })
-      .catch(() => alive && setLoaded(true));
+    setLoaded(false);
+
+    void (async () => {
+      let saved = await storage.loadRun(runId);
+      let legacyRunId: string | null = null;
+
+      if (!saved && legacyFlowId) {
+        legacyRunId = legacyActiveRunId(legacyFlowId);
+        saved = await storage.loadRun(legacyRunId);
+      }
+      if (!alive) return;
+
+      const next = runForCurrentDefinition(saved, flow, runId);
+      setRun(next);
+      setLoaded(true);
+
+      if (legacyRunId && saved) {
+        storage.saveRun(next).then(() => storage.deleteRun(legacyRunId as string)).catch(() => {});
+      }
+    })().catch(() => {
+      if (!alive) return;
+      setRun({ id: runId, flow, events: [] });
+      setLoaded(true);
+    });
+
     return () => {
       alive = false;
     };
-  }, [flow, storage]);
+  }, [flow, legacyFlowId, runId, storage]);
 
-  const state = project(flow, run.events, now);
+  const runtimeFlow = run.flow;
+  const state = project(runtimeFlow, run.events, now);
 
-  // 计时进行时按秒刷新
   useEffect(() => {
     if (state.status !== 'running') return;
     const id = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(id);
   }, [state.status]);
 
-  // 保存 + 重排提醒
   useEffect(() => {
     if (!loaded) return;
     storage.saveRun(run).catch(() => {});
-    const reminder = planSequentialReminder(flow, run.events, Date.now(), run.id, locale);
+    const reminder = planSequentialReminder(
+      runtimeFlow,
+      run.events,
+      Date.now(),
+      run.id,
+      locale,
+      definitionKey,
+    );
     notifier
-      // run.id 是旧版 identifier；同时取消新旧两种，升级后不会留下孤儿计时提醒。
       .cancel([run.id, sequentialReminderId(run.id)])
       .then(() => (reminder ? notifier.schedule([reminder]) : undefined))
       .catch(() => {});
-  }, [run, loaded]);
+  }, [definitionKey, loaded, locale, notifier, run, runtimeFlow, storage]);
 
   const apply = (event: RunEvent | null): void => {
-    if (!event) return;
-    setRun((r) => reduce(r, event));
+    if (!loaded || !event) return;
+    setRun((current) => reduce(current, event));
     setNow(Date.now());
   };
   const reset = (): void => {
-    setRun({ id: runIdFor(flow), flow, events: [] });
+    if (!loaded) return;
+    setRun({ id: runId, flow, events: [] });
     setNow(Date.now());
   };
 
   return {
+    ready: loaded,
+    flow: runtimeFlow,
     state,
     start: () => apply(startAction(Date.now())),
-    complete: () => apply(completeCurrentAction(flow, run.events, Date.now())),
-    skip: () => apply(skipCurrentAction(flow, run.events, Date.now())),
-    pause: () => apply(pauseAction(flow, run.events, Date.now())),
-    resume: () => apply(resumeAction(flow, run.events, Date.now())),
-    back: () => apply(backAction(flow, run.events, Date.now())),
+    complete: () => apply(completeCurrentAction(runtimeFlow, run.events, Date.now())),
+    skip: () => apply(skipCurrentAction(runtimeFlow, run.events, Date.now())),
+    pause: () => apply(pauseAction(runtimeFlow, run.events, Date.now())),
+    resume: () => apply(resumeAction(runtimeFlow, run.events, Date.now())),
+    back: () => apply(backAction(runtimeFlow, run.events, Date.now())),
     reset,
   };
 }
-

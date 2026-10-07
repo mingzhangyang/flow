@@ -1,22 +1,22 @@
-// Flow catalog 的唯一 ID 冲突规则：用户拥有的 Flow 优先于内置示例。
-// 提醒登记身份不能依赖任何“保留前缀”：Flow ID 是开放字符串，任意前缀都可能被导入值撞上。
-// 因此新 enrollment 使用 source + flowId 的结构化身份；旧 bare-ID 只作为迁移别名处理（C6）。
+// Catalog identity 是所有“属于某个 Flow 定义”的运行时状态的唯一身份边界。
+// Flow ID 是开放字符串，且 example / owned 可以同 id，因此裸 flowId 不能作为运行时状态主键。
+// 新状态统一按 (source, flowId) 的 versioned tuple 编码；裸 flowId 只作为无歧义旧数据迁移别名。
 
 import { type Flow } from '../domain/types';
 
 export type FlowCatalogSource = 'owned' | 'example';
 
-export interface ReminderEnrollmentIdentity {
+export interface CatalogDefinitionIdentity {
   key: string;
-  /** 旧版本裸 flowId 的兼容别名；shadowing owned 时故意不提供，避免歧义转移。 */
-  legacyId?: string;
+  /** 仅当裸 flowId 在当前来源上无歧义时可用于迁移旧数据。 */
+  legacyFlowId?: string;
 }
 
 export interface CatalogEntry {
   flow: Flow;
   source: FlowCatalogSource;
-  enrollmentKey: string;
-  legacyEnrollmentId?: string;
+  definitionKey: string;
+  legacyFlowId?: string;
 }
 
 export type OwnedCatalogSnapshot =
@@ -27,20 +27,28 @@ export type OwnedCatalogSnapshot =
 export const LOADING_CATALOG: OwnedCatalogSnapshot = { status: 'loading' };
 export const ERROR_CATALOG: OwnedCatalogSnapshot = { status: 'error' };
 
-const ENROLLMENT_KEY_VERSION = 'v2';
+const DEFINITION_KEY_VERSION = 'v2';
 
-/**
- * 对 (source, flowId) 做注入式编码。所有新登记都以结构化记录存储，
- * 所以即使用户 Flow ID 文本恰好长得像这个 key，也不会与新记录混淆。
- */
+export function catalogDefinitionIdentity(
+  flowId: string,
+  source: FlowCatalogSource,
+  examples: readonly Flow[],
+): CatalogDefinitionIdentity {
+  const key = JSON.stringify([DEFINITION_KEY_VERSION, source, flowId]);
+  const shadowsExample = source === 'owned' && examples.some((flow) => flow.id === flowId);
+  return shadowsExample ? { key } : { key, legacyFlowId: flowId };
+}
+
+// Compatibility exports for tests/older callers while the semantic name is upgraded.
 export function reminderEnrollmentIdentity(
   flowId: string,
   source: FlowCatalogSource,
   examples: readonly Flow[],
-): ReminderEnrollmentIdentity {
-  const key = JSON.stringify([ENROLLMENT_KEY_VERSION, source, flowId]);
-  const shadowsExample = source === 'owned' && examples.some((flow) => flow.id === flowId);
-  return shadowsExample ? { key } : { key, legacyId: flowId };
+): { key: string; legacyId?: string } {
+  const identity = catalogDefinitionIdentity(flowId, source, examples);
+  return identity.legacyFlowId
+    ? { key: identity.key, legacyId: identity.legacyFlowId }
+    : { key: identity.key };
 }
 
 export function reminderEnrollmentKey(
@@ -48,10 +56,9 @@ export function reminderEnrollmentKey(
   source: FlowCatalogSource,
   examples: readonly Flow[],
 ): string {
-  return reminderEnrollmentIdentity(flowId, source, examples).key;
+  return catalogDefinitionIdentity(flowId, source, examples).key;
 }
 
-/** 返回未被同 id 用户 Flow 遮蔽的示例。 */
 export function examplesVisibleAlongsideOwned(
   examples: readonly Flow[],
   owned: readonly Flow[],
@@ -61,16 +68,15 @@ export function examplesVisibleAlongsideOwned(
 }
 
 function entryFor(flow: Flow, source: FlowCatalogSource, examples: readonly Flow[]): CatalogEntry {
-  const identity = reminderEnrollmentIdentity(flow.id, source, examples);
+  const identity = catalogDefinitionIdentity(flow.id, source, examples);
   return {
     flow,
     source,
-    enrollmentKey: identity.key,
-    ...(identity.legacyId ? { legacyEnrollmentId: identity.legacyId } : {}),
+    definitionKey: identity.key,
+    ...(identity.legacyFlowId ? { legacyFlowId: identity.legacyFlowId } : {}),
   };
 }
 
-/** 构造无重复 id 的可见 catalog，并带上各自独立的提醒登记身份。 */
 export function catalogEntriesWithOwnedPrecedence(
   examples: readonly Flow[],
   owned: readonly Flow[],
@@ -81,7 +87,6 @@ export function catalogEntriesWithOwnedPrecedence(
   ];
 }
 
-/** 兼容只需要 Flow[] 的调用方。 */
 export function catalogWithOwnedPrecedence(
   examples: readonly Flow[],
   owned: readonly Flow[],
@@ -89,7 +94,6 @@ export function catalogWithOwnedPrecedence(
   return catalogEntriesWithOwnedPrecedence(examples, owned).map((entry) => entry.flow);
 }
 
-/** 按统一规则解析 id：用户 Flow > 内置示例，并返回其 catalog 身份。 */
 export function resolveCatalogEntry(
   flowId: string,
   owned: readonly Flow[],
@@ -102,7 +106,19 @@ export function resolveCatalogEntry(
   return example ? entryFor(example, 'example', examples) : null;
 }
 
-/** 兼容只需要 Flow 的调用方。 */
+/** 新通知必须匹配 definitionKey；旧通知只在裸 flowId 来源无歧义时兼容。 */
+export function resolveCatalogEntryForRoute(
+  flowId: string,
+  definitionKey: string | undefined,
+  owned: readonly Flow[],
+  examples: readonly Flow[],
+): CatalogEntry | null {
+  const entry = resolveCatalogEntry(flowId, owned, examples);
+  if (!entry) return null;
+  if (definitionKey !== undefined) return entry.definitionKey === definitionKey ? entry : null;
+  return entry.legacyFlowId === flowId ? entry : null;
+}
+
 export function resolveCatalogFlow(
   flowId: string,
   owned: readonly Flow[],

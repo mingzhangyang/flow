@@ -59,7 +59,7 @@
   flow 走）。恢复绝不覆盖本机：读回逐条过闸门（坏条目跳过），同 id 的 flow 走 commit
   入历史，打卡按占位合并、本机记录优先。
 - **Flow ID 冲突规则**：用户库是权威层，内置示例是只读 fallback。导入/备份允许保留外部稳定 id；若与示例同 id，用户 Flow 在首页、提醒重排和通知点击路由中一致地遮蔽示例。删除该用户 Flow 后示例重新可见。
-- **提醒登记身份**：新 enrollment 一律以结构化 v2 记录保存，identity 为 `(source, flowId)` 的注入式编码；不使用任何“保留字符串前缀”，因此开放 Flow ID 无法与生成 key 碰撞。旧 bare-ID 仅在来源无歧义时迁移；shadowing owned 不接受 bare-ID 别名，避免把示例旧登记转给用户 Flow。
+- **Catalog definition identity**：所有“属于某个 Flow 定义”的运行时状态统一以 `(source, flowId)` 的 versioned tuple 为 identity；reminder enrollment、notification route、active Run、scheduled check-ins、React run-screen instance 都不得再用裸 `flowId` 作为主键。旧裸 ID 仅在来源无歧义时迁移；shadowing owned 不接受 legacy alias，宁可 fail closed，也不把示例状态转给用户 Flow。Run 一旦产生事件，继续使用 `run.flow` 的不可变定义快照，而不是后来编辑出的新版本。
 - **Catalog snapshot 与删除事务**：App 是用户库 snapshot 的唯一拥有者；`loading / ready / error` 与“已加载且为空”明确区分。所有 catalog 写入（编辑保存、导入/备份恢复、历史恢复、enroll、delete）以及 refresh 都通过 `catalogCoordinator` 串行执行，提醒 cancel/schedule 不会并发互踩；只有最新请求可以发布 snapshot。业务 mutation 与派生同步结果分离：数据写入已成功但后续 reminder/catalog sync 失败时，不向编辑/导入 UI 伪报“保存失败”，而由 Home 的 error/retry 收口；mutation 本身失败才返回原错误。通知 listener 持续订阅，在 snapshot 未 ready 时等待 coordinator。删除不依赖脆弱的即时 rollback：先持久化最小 deletion intent（仅 flowId + enrollment identity），再按 remove→unenroll→清 intent commit-forward；任一步失败 intent 都保留，下一次 refresh 在发布 snapshot 前重试。
 
 ### 4. Notification Engine（`src/notifications/`）

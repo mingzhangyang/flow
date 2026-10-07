@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
 import { type Flow, type Topology } from '../domain/types';
 import { type Library } from '../session/library';
-import { examplesVisibleAlongsideOwned, reminderEnrollmentIdentity, type OwnedCatalogSnapshot } from '../session/flowCatalog';
+import { catalogDefinitionIdentity, examplesVisibleAlongsideOwned, type OwnedCatalogSnapshot } from '../session/flowCatalog';
 import { type Sharer, type ShareOutcome } from '../sharing/sharer';
 import { nextEvents, type ScheduledOccurrence } from '../runtime/engine';
 import { timeOfDay, MS_PER_DAY } from '../runtime/clock';
@@ -49,12 +49,12 @@ export function HomeScreen(props: {
   catalog: OwnedCatalogSnapshot;
   sharer: Sharer;
   onRetry: () => void;
-  onRun: (flow: Flow, enrollmentKey: string) => void;
+  onRun: (flow: Flow, definitionKey: string, legacyFlowId?: string) => void;
   onNew: (topology: Topology) => void;
   onEdit: (flow: Flow) => void;
   onExport: (flow: Flow) => void;
   onInsight: (flow: Flow) => void;
-  onDelete: (flow: Flow, enrollmentKey: string, legacyEnrollmentId?: string) => Promise<void>;
+  onDelete: (flow: Flow, definitionKey: string, legacyFlowId?: string) => Promise<void>;
   onImport: () => void;
   onGenerate: () => void;
 }) {
@@ -79,8 +79,8 @@ export function HomeScreen(props: {
       .catch(() => setBackupNote(null)); // 用户取消等——不打扰
   };
   const del = (flow: Flow): void => {
-    const identity = reminderEnrollmentIdentity(flow.id, 'owned', props.examples);
-    props.onDelete(flow, identity.key, identity.legacyId).catch(() => {});
+    const identity = catalogDefinitionIdentity(flow.id, 'owned', props.examples);
+    props.onDelete(flow, identity.key, identity.legacyFlowId).catch(() => {});
   };
 
   const now = Date.now();
@@ -90,8 +90,10 @@ export function HomeScreen(props: {
     [catalogReady, props.examples, mine],
   );
 
-  const enrollmentKeyOf = (flow: Flow, own: boolean): string =>
-    reminderEnrollmentIdentity(flow.id, own ? 'owned' : 'example', props.examples).key;
+  const run = (flow: Flow, own: boolean): void => {
+    const identity = catalogDefinitionIdentity(flow.id, own ? 'owned' : 'example', props.examples);
+    props.onRun(flow, identity.key, identity.legacyFlowId);
+  };
 
   // 接下来：所有可见日程型 flow 的最近一次提醒（我的优先，无则看未被同 id 用户 Flow 遮蔽的示例）
   const upNext = useMemo(() => {
@@ -116,7 +118,7 @@ export function HomeScreen(props: {
   const card = (flow: Flow, own: boolean) => (
     <View key={flow.id} style={styles.card}>
       <View style={[styles.stripe, { backgroundColor: stripeOf(flow.id) }]} />
-      <Pressable onPress={() => props.onRun(flow, enrollmentKeyOf(flow, own))}>
+      <Pressable onPress={() => run(flow, own)}>
         <View style={styles.cardTop}>
           <Text style={styles.cardTitle}>{flow.title}</Text>
           <View style={styles.badge}>
@@ -164,7 +166,7 @@ export function HomeScreen(props: {
         ) : null}
 
         {upNext ? (
-          <Pressable style={styles.next} onPress={() => props.onRun(upNext.flow, enrollmentKeyOf(upNext.flow, upNext.own))}>
+          <Pressable style={styles.next} onPress={() => run(upNext.flow, upNext.own)}>
             <Text style={styles.nextTime}>{fmtTimeOfDay(timeOfDay(upNext.occ.at, systemTimeZone))}</Text>
             <View style={styles.nextBody}>
               <Text style={styles.nextKicker}>{t.upNext}</Text>

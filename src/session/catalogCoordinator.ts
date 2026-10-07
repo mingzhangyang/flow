@@ -1,11 +1,6 @@
-// Catalog refresh / mutation 的单一串行协调器。
-//
-// 所有会影响 catalog snapshot 或 reminder reschedule 的任务都进同一队列：
-// - 副作用绝不并发执行；
-// - 新请求会立即让旧 snapshot 失效；
-// - 只有最新请求拥有 publish 权，旧任务完成也不能覆盖新状态；
-// - 失败发布 error，但不会毒死队列；下一次 retry 仍可继续。
-// 通知路由可 waitForReady()，因此加载/恢复窗口里的 tap 不会因反复退订而丢失。
+// Catalog projection / mutation side effects 的单一串行协调器。
+// request() 用于需要观察失败的调用；background() 用于 startup / foreground / retry 等
+// “失败已由 snapshot='error' 表达”的调用，避免产生第二条 unhandled rejection 通道。
 
 import { type Flow } from '../domain/types';
 import {
@@ -16,6 +11,7 @@ import {
 
 export interface CatalogCoordinator {
   request(task: () => Promise<Flow[]>): Promise<void>;
+  background(task: () => Promise<Flow[]>): void;
   waitForReady(): Promise<Flow[]>;
   current(): OwnedCatalogSnapshot;
 }
@@ -38,33 +34,37 @@ export function createCatalogCoordinator(
     }
   };
 
+  const request = (task: () => Promise<Flow[]>): Promise<void> => {
+    const requestId = ++latestRequest;
+    publishSnapshot(LOADING_CATALOG);
+
+    const run = tail.then(async () => {
+      try {
+        const flows = await task();
+        if (requestId === latestRequest) publishSnapshot({ status: 'ready', flows });
+      } catch (error) {
+        if (requestId === latestRequest) publishSnapshot(ERROR_CATALOG);
+        throw error;
+      }
+    });
+
+    tail = run.catch(() => {});
+    return run;
+  };
+
   return {
-    request(task) {
-      const requestId = ++latestRequest;
-      publishSnapshot(LOADING_CATALOG);
-
-      const run = tail.then(async () => {
-        try {
-          const flows = await task();
-          if (requestId === latestRequest) publishSnapshot({ status: 'ready', flows });
-        } catch (error) {
-          if (requestId === latestRequest) publishSnapshot(ERROR_CATALOG);
-          throw error;
-        }
+    request,
+    background(task) {
+      void request(task).catch(() => {
+        // snapshot 已表达后台刷新失败；不再制造 unhandled rejection。
       });
-
-      // 错误只属于这次 request；后续任务必须仍能从队列继续。
-      tail = run.catch(() => {});
-      return run;
     },
-
     waitForReady() {
       if (snapshot.status === 'ready') return Promise.resolve(snapshot.flows);
       return new Promise<Flow[]>((resolve) => {
         readyWaiters.push(resolve);
       });
     },
-
     current() {
       return snapshot;
     },

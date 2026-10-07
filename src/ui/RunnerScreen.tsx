@@ -17,13 +17,22 @@ const RING = 268;
 
 export function RunnerScreen(props: {
   flow: Flow;
+  definitionKey: string;
+  legacyFlowId?: string;
   storage: Storage;
   notifier: Notifier;
   onExit: () => void;
 }) {
-  const { flow } = props;
   const { locale, t } = useI18n();
-  const run = usePersistentRun(flow, props.storage, props.notifier, locale);
+  const run = usePersistentRun(
+    props.flow,
+    props.definitionKey,
+    props.legacyFlowId,
+    props.storage,
+    props.notifier,
+    locale,
+  );
+  const flow = run.flow;
   const state = run.state;
   const node = state.currentIndex < flow.nodes.length ? flow.nodes[state.currentIndex] : null;
   const running = state.status === 'running' || state.status === 'paused';
@@ -35,6 +44,8 @@ export function RunnerScreen(props: {
     timed && node.durationSec > 0 ? (node.durationSec - state.remainingSec) / node.durationSec : 0;
   const closing = timed && state.remainingSec > 0 && state.remainingSec <= 10; // 收尾时刻转暖
   const beadColor = paused ? dark.faint : closing ? dark.warm : dark.accent;
+
+  if (!run.ready) return <View style={styles.screen} />;
 
   return (
     <View style={styles.screen}>

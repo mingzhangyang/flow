@@ -50,7 +50,14 @@ export function createExpoNotifier(): Notifier {
             title: r.title,
             body: r.body,
             ...(r.data
-              ? { data: { kind: r.data.kind, flowId: r.data.flowId, ...(r.data.nodeId ? { nodeId: r.data.nodeId } : {}) } }
+              ? {
+                  data: {
+                    kind: r.data.kind,
+                    flowId: r.data.flowId,
+                    ...(r.data.definitionKey ? { definitionKey: r.data.definitionKey } : {}),
+                    ...(r.data.nodeId ? { nodeId: r.data.nodeId } : {}),
+                  },
+                }
               : {}),
           },
           trigger: triggerFor(r),

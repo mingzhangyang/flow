@@ -20,7 +20,7 @@ import { createLibrary } from './src/session/library';
 import {
   catalogEntriesWithOwnedPrecedence,
   LOADING_CATALOG,
-  resolveCatalogEntry,
+  resolveCatalogEntryForRoute,
   type OwnedCatalogSnapshot,
 } from './src/session/flowCatalog';
 import { createCatalogCoordinator } from './src/session/catalogCoordinator';
@@ -53,7 +53,7 @@ const newFlowId = (): string => `flow-${Date.now().toString(36)}-${Math.random()
 
 type Screen =
   | { name: 'home' }
-  | { name: 'run'; flow: Flow; enrollmentKey: string }
+  | { name: 'run'; flow: Flow; definitionKey: string; legacyFlowId?: string }
   | { name: 'edit'; flow: Flow }
   | { name: 'export'; flow: Flow }
   | { name: 'insight'; flow: Flow }
@@ -131,26 +131,32 @@ export default function App() {
     [library, runCatalogMutation],
   );
 
-  const deleteOwnedFlow = useCallback(async (
+  const deleteOwnedFlow = useCallback((
     flow: Flow,
-    enrollmentKey: string,
-    legacyEnrollmentId?: string,
-  ): Promise<void> => {
-    await refreshCatalog(() =>
-      deleteOwnedFlowDurably(flow, enrollmentKey, legacyEnrollmentId, {
+    definitionKey: string,
+    legacyFlowId?: string,
+  ): Promise<void> =>
+    runCatalogMutation(() =>
+      deleteOwnedFlowDurably(flow, definitionKey, legacyFlowId, {
         kv: asyncStorageKV,
         removeFlow: (id) => library.remove(id),
         unenroll: (key, legacyId) => unenrollFlow(asyncStorageKV, key, legacyId),
-      }));
-  }, [library, refreshCatalog]);
+      })),
+  [library, runCatalogMutation]);
+
+  const refreshCatalogInBackground = useCallback((
+    mutation?: () => Promise<void>,
+  ): void => {
+    catalogCoordinator.background(() => runCatalogTask(mutation));
+  }, [catalogCoordinator, runCatalogTask]);
 
   useEffect(() => {
-    void refreshCatalog();
+    refreshCatalogInBackground();
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void refreshCatalog();
+      if (state === 'active') refreshCatalogInBackground();
     });
     return () => sub.remove();
-  }, [refreshCatalog]);
+  }, [refreshCatalogInBackground]);
 
   // response source 只启动一次；catalog 未 ready 时等待 coordinator，而不是退订 listener。
   // 因此加载/删除恢复窗口中的多个 tap 仍由 response source 的串行队列完整保留。
@@ -159,8 +165,20 @@ export default function App() {
     const unsubscribe = notificationResponses.start(async (route: NotificationRouteData) => {
       const flows = await catalogCoordinator.waitForReady();
       if (!active) return;
-      const entry = resolveCatalogEntry(route.flowId, flows, examplesRef.current);
-      if (entry) setScreen({ name: 'run', flow: entry.flow, enrollmentKey: entry.enrollmentKey });
+      const entry = resolveCatalogEntryForRoute(
+        route.flowId,
+        route.definitionKey,
+        flows,
+        examplesRef.current,
+      );
+      if (entry) {
+        setScreen({
+          name: 'run',
+          flow: entry.flow,
+          definitionKey: entry.definitionKey,
+          ...(entry.legacyFlowId ? { legacyFlowId: entry.legacyFlowId } : {}),
+        });
+      }
     });
     return () => {
       active = false;
@@ -179,8 +197,14 @@ export default function App() {
           examples={examples}
           catalog={catalog}
           sharer={systemSharer}
-          onRetry={() => { void refreshCatalog(); }}
-          onRun={(flow, enrollmentKey) => setScreen({ name: 'run', flow, enrollmentKey })}
+          onRetry={refreshCatalogInBackground}
+          onRun={(flow, definitionKey, legacyFlowId) =>
+            setScreen({
+              name: 'run',
+              flow,
+              definitionKey,
+              ...(legacyFlowId ? { legacyFlowId } : {}),
+            })}
           onNew={(topology: Topology) => setScreen({ name: 'edit', flow: createFlow({ id: newFlowId(), title: '', topology }) })}
           onEdit={(flow) => setScreen({ name: 'edit', flow })}
           onExport={(flow) => setScreen({ name: 'export', flow })}
@@ -192,17 +216,27 @@ export default function App() {
       ) : screen.name === 'run' ? (
         screen.flow.topology === 'scheduled' ? (
           <ScheduleScreen
+            key={JSON.stringify([screen.definitionKey, screen.flow.version ?? 1])}
             flow={screen.flow}
-            enrollmentKey={screen.enrollmentKey}
+            definitionKey={screen.definitionKey}
+            legacyFlowId={screen.legacyFlowId}
             storage={storage}
             notifier={notifier}
-            onEnrollReminders={(enrollmentKey) => {
-              void refreshCatalog(() => enrollFlow(asyncStorageKV, enrollmentKey));
+            onEnrollReminders={(definitionKey) => {
+              refreshCatalogInBackground(() => enrollFlow(asyncStorageKV, definitionKey));
             }}
             onExit={home}
           />
         ) : (
-          <RunnerScreen flow={screen.flow} storage={storage} notifier={notifier} onExit={home} />
+          <RunnerScreen
+            key={JSON.stringify([screen.definitionKey, screen.flow.version ?? 1])}
+            flow={screen.flow}
+            definitionKey={screen.definitionKey}
+            legacyFlowId={screen.legacyFlowId}
+            storage={storage}
+            notifier={notifier}
+            onExit={home}
+          />
         )
       ) : screen.name === 'edit' ? (
         <EditorScreen draft={screen.flow} saveFlow={commitCatalogFlow} onSaved={() => home()} onCancel={home} />

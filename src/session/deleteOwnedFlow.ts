@@ -1,9 +1,6 @@
-// 用户 Flow 删除的持久化事务日志。
-//
-// AsyncStorage/KV 没有跨 key 事务，因此不能靠“失败后立即 rollback”声称原子性。
-// 正确语义是 commit-forward：任何破坏性写入前先落最小 durable intent；随后
-// remove → unenroll → 清 intent。任一步失败都保留 intent，下一次 catalog refresh 重试。
-// Intent 只保存稳定标识，不保存整份 Flow，避免未来 schema 迁移反过来阻塞事务恢复。
+// 用户 Flow 删除的持久化 commit-forward journal。
+// 破坏性写入前先落最小 intent；随后 remove → unenroll → 清 intent。
+// 任一步失败都保留 intent，下一次 catalog refresh 重试。
 
 import { type Flow } from '../domain/types';
 import { type KVStore } from '../storage/kv';
@@ -13,39 +10,44 @@ const DELETE_INTENT_PREFIX = 'txn:delete-owned-flow:';
 interface DeleteOwnedFlowIntent {
   v: 1;
   flowId: string;
-  enrollmentKey: string;
-  legacyEnrollmentId?: string;
+  definitionKey: string;
+  legacyFlowId?: string;
 }
 
 export interface DeleteOwnedFlowDeps {
   kv: KVStore;
   removeFlow(id: string): Promise<void>;
-  unenroll(enrollmentKey: string, legacyEnrollmentId?: string): Promise<void>;
+  unenroll(definitionKey: string, legacyFlowId?: string): Promise<void>;
 }
 
 function intentKey(flowId: string): string {
-  // JSON tuple handles every JS string (including lone surrogates) without URI encoding failures.
-  return `${DELETE_INTENT_PREFIX}${JSON.stringify(['v1', flowId])}`;
+  return `${DELETE_INTENT_PREFIX}${encodeURIComponent(flowId)}`;
 }
 
 function parseIntent(text: string): DeleteOwnedFlowIntent {
-  const raw = JSON.parse(text) as {
-    v?: unknown;
-    flowId?: unknown;
-    enrollmentKey?: unknown;
-    legacyEnrollmentId?: unknown;
-  };
-  if (raw.v !== 1 || typeof raw.flowId !== 'string' || typeof raw.enrollmentKey !== 'string') {
+  const raw = JSON.parse(text) as Record<string, unknown>;
+  // Accept the earlier PR-local field names so in-flight journal data remains recoverable.
+  const definitionKey =
+    typeof raw.definitionKey === 'string'
+      ? raw.definitionKey
+      : typeof raw.enrollmentKey === 'string'
+        ? raw.enrollmentKey
+        : null;
+  const legacyFlowId =
+    typeof raw.legacyFlowId === 'string'
+      ? raw.legacyFlowId
+      : typeof raw.legacyEnrollmentId === 'string'
+        ? raw.legacyEnrollmentId
+        : undefined;
+
+  if (raw.v !== 1 || typeof raw.flowId !== 'string' || definitionKey === null) {
     throw new Error('invalid delete intent');
-  }
-  if (raw.legacyEnrollmentId !== undefined && typeof raw.legacyEnrollmentId !== 'string') {
-    throw new Error('invalid delete intent legacy id');
   }
   return {
     v: 1,
     flowId: raw.flowId,
-    enrollmentKey: raw.enrollmentKey,
-    ...(raw.legacyEnrollmentId !== undefined ? { legacyEnrollmentId: raw.legacyEnrollmentId } : {}),
+    definitionKey,
+    ...(legacyFlowId !== undefined ? { legacyFlowId } : {}),
   };
 }
 
@@ -55,22 +57,22 @@ async function completeIntent(
   deps: DeleteOwnedFlowDeps,
 ): Promise<void> {
   await deps.removeFlow(intent.flowId);
-  await deps.unenroll(intent.enrollmentKey, intent.legacyEnrollmentId);
+  await deps.unenroll(intent.definitionKey, intent.legacyFlowId);
   await deps.kv.removeItem(key);
 }
 
 export async function deleteOwnedFlowDurably(
   flow: Flow,
-  enrollmentKey: string,
-  legacyEnrollmentId: string | undefined,
+  definitionKey: string,
+  legacyFlowId: string | undefined,
   deps: DeleteOwnedFlowDeps,
 ): Promise<void> {
   const key = intentKey(flow.id);
   const intent: DeleteOwnedFlowIntent = {
     v: 1,
     flowId: flow.id,
-    enrollmentKey,
-    ...(legacyEnrollmentId !== undefined ? { legacyEnrollmentId } : {}),
+    definitionKey,
+    ...(legacyFlowId !== undefined ? { legacyFlowId } : {}),
   };
 
   await deps.kv.setItem(key, JSON.stringify(intent));
