@@ -30,10 +30,7 @@ export function createCatalogCoordinator(
     if (next.status === 'ready') {
       const waiters = readyWaiters;
       readyWaiters = [];
-      const projection: CatalogProjection = {
-        flows: next.flows,
-        legacyAmbiguousFlowIds: next.legacyAmbiguousFlowIds,
-      };
+      const projection: CatalogProjection = { flows: next.flows };
       for (const resolve of waiters) resolve(projection);
     }
   };
@@ -65,10 +62,7 @@ export function createCatalogCoordinator(
     },
     waitForReady() {
       if (snapshot.status === 'ready') {
-        return Promise.resolve({
-          flows: snapshot.flows,
-          legacyAmbiguousFlowIds: snapshot.legacyAmbiguousFlowIds,
-        });
+        return Promise.resolve({ flows: snapshot.flows });
       }
       return new Promise<CatalogProjection>((resolve) => {
         readyWaiters.push(resolve);
