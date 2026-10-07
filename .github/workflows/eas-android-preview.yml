@@ -2,11 +2,6 @@ name: EAS Android Preview APK
 
 on:
   workflow_dispatch:
-    inputs:
-      expo_account:
-        description: "Expo account owner (only needed while app.json has no extra.eas.projectId)"
-        required: false
-        type: string
 
 permissions:
   contents: read
@@ -59,31 +54,18 @@ jobs:
           npx expo install --check
           npx expo-doctor@latest
 
-      - name: Ensure EAS project is linked
+      - name: Verify EAS project binding
         id: eas_project
         shell: bash
-        env:
-          EXPO_ACCOUNT: ${{ inputs.expo_account }}
         run: |
           set -euo pipefail
 
+          EXPECTED_PROJECT_ID="5f35674e-97d5-43ec-8e23-6ba95e27d0fd"
           PROJECT_ID="$(node -e "const a=require('./app.json'); process.stdout.write(a.expo?.extra?.eas?.projectId ?? '')")"
 
-          if [ -z "${PROJECT_ID}" ]; then
-            if [ -z "${EXPO_ACCOUNT}" ]; then
-              echo "::error::app.json has no expo.extra.eas.projectId. Re-run this workflow with expo_account, or run 'eas init' locally and commit the generated projectId."
-              exit 1
-            fi
-
-            eas init --account "${EXPO_ACCOUNT}" --non-interactive --json > eas-init.json
-            PROJECT_ID="$(node -e "const a=require('./app.json'); process.stdout.write(a.expo?.extra?.eas?.projectId ?? '')")"
-
-            if [ -z "${PROJECT_ID}" ]; then
-              echo "::error::EAS initialization completed without writing expo.extra.eas.projectId."
-              exit 1
-            fi
-
-            echo "::notice::EAS project was linked in this runner only. Commit expo.extra.eas.projectId to app.json after this bootstrap run."
+          if [ "${PROJECT_ID}" != "${EXPECTED_PROJECT_ID}" ]; then
+            echo "::error::Unexpected EAS project ID: ${PROJECT_ID:-missing}. Expected ${EXPECTED_PROJECT_ID}."
+            exit 1
           fi
 
           echo "project_id=${PROJECT_ID}" >> "${GITHUB_OUTPUT}"

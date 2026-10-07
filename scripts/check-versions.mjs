@@ -8,6 +8,7 @@ const eas = JSON.parse(readFileSync(new URL('../eas.json', import.meta.url), 'ut
 
 const CANONICAL_APPLICATION_ID = 'com.mingzhangyang.zhunshi';
 const CANONICAL_SCHEME = 'zhunshi';
+const CANONICAL_EAS_PROJECT_ID = '5f35674e-97d5-43ec-8e23-6ba95e27d0fd';
 
 function fail(message) {
   console.error(`release config invalid: ${message}`);
@@ -54,6 +55,11 @@ if (androidId !== CANONICAL_APPLICATION_ID) {
 
 if (app.expo.scheme !== CANONICAL_SCHEME) {
   fail(`expo.scheme must remain ${CANONICAL_SCHEME} (got ${String(app.expo.scheme ?? 'missing')})`);
+}
+
+const easProjectId = app.expo.extra?.eas?.projectId;
+if (easProjectId !== CANONICAL_EAS_PROJECT_ID) {
+  fail(`expo.extra.eas.projectId must remain ${CANONICAL_EAS_PROJECT_ID} (got ${easProjectId ?? 'missing'})`);
 }
 
 const iosBuildNumber = app.expo.ios?.buildNumber;

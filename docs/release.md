@@ -7,7 +7,8 @@
 ## 一次性接入（需要账号，只做一次）
 
 1. **Expo 账号**：`npm i -g eas-cli && eas login`
-2. **绑定项目**：`eas init`——会把 `extra.eas.projectId` 写进 `app.json`，提交它。
+2. **绑定项目**：本仓库已绑定 EAS project `5f35674e-97d5-43ec-8e23-6ba95e27d0fd`，并将该非敏感 ID 固定在
+   `app.json → expo.extra.eas.projectId`。CI 会校验它不得漂移。
 3. **Android 签名凭证**：首次正式使用 EAS Build 前运行
    `eas credentials:configure-build -p android -e preview`，选择由 EAS 生成并托管新的
    Android keystore。完成后同一 EAS 项目/凭证应持续复用，不能每次构建重新生成。
@@ -19,8 +20,8 @@
    EAS 可代管证书与 provisioning profile（推荐，选 EAS managed credentials）。
 
 > Expo 官方要求 CI 的非交互 EAS Build 在项目绑定和签名凭证已配置后使用。
-> `.github/workflows/eas-android-preview.yml` 可以在缺少 `projectId` 时用手动输入的
-> `expo_account` 临时完成项目绑定，但 Android keystore 仍应先交互式配置一次。
+> 本仓库的 projectId 已固定；GitHub Actions 不再创建或重新绑定 EAS project。
+> Android keystore 仍应先交互式配置一次，之后 CI 用 `--freeze-credentials` 只读复用。
 
 ## 日常构建
 
