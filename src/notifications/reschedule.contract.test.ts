@@ -166,3 +166,17 @@ test('previous-ID registry 拒绝 sequential / unrelated identifier，绝不误�
     assert.equal(await kv.getItem('notif:scheduled-ids:v1'), persisted);
   }
 });
+
+
+test('enroll / unenroll 在 read-modify-write 前拒绝非 canonical definitionKey', async () => {
+  const kv = createInMemoryKV();
+
+  await assert.rejects(() => enrollFlow(kv, medicationFlow.id));
+  assert.equal(await kv.getItem('notif:enrolled:v1'), null);
+
+  await enrollFlow(kv, medKey);
+  const persisted = await kv.getItem('notif:enrolled:v1');
+  await assert.rejects(() => enrollFlow(kv, ` ${medKey}`));
+  await assert.rejects(() => unenrollFlow(kv, medicationFlow.id));
+  assert.equal(await kv.getItem('notif:enrolled:v1'), persisted);
+});

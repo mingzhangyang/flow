@@ -1,6 +1,7 @@
 // 顺序型 Run 的正式 v1 持久化身份。
 // Run 一旦有事件就继续使用 run.flow 定义快照；尚未开始的 Run 可采用当前定义。
 
+import { assertDefinitionKey } from '../domain/definitionIdentity';
 import { type Flow, type Run } from '../domain/types';
 
 export interface RunPersistencePort {
@@ -8,6 +9,7 @@ export interface RunPersistencePort {
 }
 
 export function activeRunId(definitionKey: string): string {
+  assertDefinitionKey(definitionKey);
   return JSON.stringify(['run-v1', definitionKey]);
 }
 

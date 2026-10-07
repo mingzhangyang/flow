@@ -3,6 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { definitionKey } from '../domain/definitionIdentity';
 import {
   createNotificationResponseSource,
   type NotificationResponseLike,
@@ -11,6 +12,15 @@ import {
 
 function response(identifier: string, data: unknown): NotificationResponseLike {
   return { notification: { request: { identifier, content: { data } } } };
+}
+
+function routeData(flowId: string, nodeId?: string) {
+  return {
+    kind: 'flow' as const,
+    flowId,
+    definitionKey: definitionKey({ source: 'example', flowId }),
+    ...(nodeId ? { nodeId } : {}),
+  };
 }
 
 function fakeFacade(
@@ -74,13 +84,13 @@ const flush = async (): Promise<void> => {
 };
 
 test('冷启动读取并消费 last response，只交付一次合法路由', async () => {
-  const fake = fakeFacade(response('cold-1', { kind: 'flow', flowId: 'med' }));
+  const fake = fakeFacade(response('cold-1', routeData('med')));
   const source = createNotificationResponseSource(fake.api);
   const routes: unknown[] = [];
   source.start((route) => { routes.push(route); });
 
   await flush();
-  assert.deepEqual(routes, [{ kind: 'flow', flowId: 'med' }]);
+  assert.deepEqual(routes, [routeData('med')]);
   assert.deepEqual(fake.counts(), { clears: 1, removals: 0 });
 });
 
@@ -91,9 +101,9 @@ test('warm tap 先清除 last response 再转发；非法响应也会被消费',
   const unsubscribe = source.start((route) => { routes.push(route); });
   await flush();
 
-  fake.emit(response('warm-1', { kind: 'flow', flowId: 'coffee', nodeId: 'brew' }));
+  fake.emit(response('warm-1', routeData('coffee', 'brew')));
   await flush();
-  assert.deepEqual(routes, [{ kind: 'flow', flowId: 'coffee', nodeId: 'brew' }]);
+  assert.deepEqual(routes, [routeData('coffee', 'brew')]);
   assert.equal(fake.counts().clears, 1);
 
   fake.emit(response('warm-2', { kind: 'other', flowId: 'bad' }));
@@ -106,18 +116,18 @@ test('warm tap 先清除 last response 再转发；非法响应也会被消费',
 });
 
 test('clear 瞬态失败会重试一次，成功后才交付 cold route', async () => {
-  const fake = fakeFacade(response('cold-retry', { kind: 'flow', flowId: 'med' }), { failClears: 1 });
+  const fake = fakeFacade(response('cold-retry', routeData('med')), { failClears: 1 });
   const source = createNotificationResponseSource(fake.api);
   const routes: unknown[] = [];
   source.start((route) => { routes.push(route); });
 
   await flush();
-  assert.deepEqual(routes, [{ kind: 'flow', flowId: 'med' }]);
+  assert.deepEqual(routes, [routeData('med')]);
   assert.equal(fake.counts().clears, 2);
 });
 
 test('clear 连续失败时不交付 route，避免 stale response 下次重放', async () => {
-  const fake = fakeFacade(response('cold-fail', { kind: 'flow', flowId: 'cold' }), { failClears: 2 });
+  const fake = fakeFacade(response('cold-fail', routeData('cold')), { failClears: 2 });
   const source = createNotificationResponseSource(fake.api);
   const routes: unknown[] = [];
   source.start((route) => { routes.push(route); });
@@ -128,7 +138,7 @@ test('clear 连续失败时不交付 route，避免 stale response 下次重放'
 });
 
 test('initial 与 listener 暴露同一 cold response 时按 request id 去重', async () => {
-  const cold = response('same-id', { kind: 'flow', flowId: 'cold' });
+  const cold = response('same-id', routeData('cold'));
   const fake = fakeFacade(cold, { deferInitial: true });
   const source = createNotificationResponseSource(fake.api);
   const routes: unknown[] = [];
@@ -139,36 +149,36 @@ test('initial 与 listener 暴露同一 cold response 时按 request id 去重',
   await flush();
   await flush();
 
-  assert.deepEqual(routes, [{ kind: 'flow', flowId: 'cold' }]);
+  assert.deepEqual(routes, [routeData('cold')]);
   assert.equal(fake.counts().clears, 1);
 });
 
 test('启动窗口内 distinct listener response 在 initial 之后按到达顺序交付', async () => {
-  const fake = fakeFacade(response('initial-id', { kind: 'flow', flowId: 'initial' }), { deferInitial: true });
+  const fake = fakeFacade(response('initial-id', routeData('initial')), { deferInitial: true });
   const source = createNotificationResponseSource(fake.api);
   const routes: unknown[] = [];
   source.start((route) => { routes.push(route); });
 
-  fake.emit(response('warm-a', { kind: 'flow', flowId: 'a' }));
-  fake.emit(response('warm-b', { kind: 'flow', flowId: 'b' }));
+  fake.emit(response('warm-a', routeData('a')));
+  fake.emit(response('warm-b', routeData('b')));
   fake.releaseInitial();
   await flush();
   await flush();
 
   assert.deepEqual(routes, [
-    { kind: 'flow', flowId: 'initial' },
-    { kind: 'flow', flowId: 'a' },
-    { kind: 'flow', flowId: 'b' },
+    routeData('initial'),
+    routeData('a'),
+    routeData('b'),
   ]);
 });
 
 test('取消订阅会丢弃尚未完成的启动缓冲', async () => {
-  const fake = fakeFacade(response('initial-id', { kind: 'flow', flowId: 'initial' }), { deferInitial: true });
+  const fake = fakeFacade(response('initial-id', routeData('initial')), { deferInitial: true });
   const source = createNotificationResponseSource(fake.api);
   const routes: unknown[] = [];
   const unsubscribe = source.start((route) => { routes.push(route); });
 
-  fake.emit(response('warm-id', { kind: 'flow', flowId: 'warm' }));
+  fake.emit(response('warm-id', routeData('warm')));
   unsubscribe();
   fake.releaseInitial();
   await flush();
@@ -194,8 +204,8 @@ test('连续 warm tap 会等待前一次异步导航完成，后一次不会反�
   });
   await flush();
 
-  fake.emit(response('warm-a', { kind: 'flow', flowId: 'a' }));
-  fake.emit(response('warm-b', { kind: 'flow', flowId: 'b' }));
+  fake.emit(response('warm-a', routeData('a')));
+  fake.emit(response('warm-b', routeData('b')));
   await flush();
 
   assert.deepEqual(events, ['start:a']);
@@ -217,12 +227,24 @@ test('单次 async listener 失败不会 poison 串行队列，后续 tap 仍会
   });
   await flush();
 
-  fake.emit(response('warm-a', { kind: 'flow', flowId: 'a' }));
-  fake.emit(response('warm-b', { kind: 'flow', flowId: 'b' }));
+  fake.emit(response('warm-a', routeData('a')));
+  fake.emit(response('warm-b', routeData('b')));
   await flush();
   await flush();
   await flush();
 
   assert.deepEqual(seen, ['a', 'b']);
   assert.equal(fake.counts().clears, 2);
+});
+
+
+test('缺失或非 canonical definitionKey 的 pre-v1 route 会被消费但不交付', async () => {
+  const fake = fakeFacade(response('legacy', { kind: 'flow', flowId: 'legacy' }));
+  const source = createNotificationResponseSource(fake.api);
+  const routes: unknown[] = [];
+  source.start((route) => { routes.push(route); });
+
+  await flush();
+  assert.deepEqual(routes, []);
+  assert.equal(fake.counts().clears, 1);
 });

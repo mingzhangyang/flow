@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { type Flow } from '../domain/types';
 import { createInMemoryKV, type KVStore } from '../storage/kv';
-import { sequentialReminderId } from '../notifications/notificationIdentity';
+import { sequentialReminderIdsForRun } from '../notifications/notificationIdentity';
 import { catalogDefinitionKey } from './flowCatalog';
 import { activeRunId } from './runPersistence';
 import { deleteOwnedFlowDurably, recoverPendingOwnedFlowDeletions } from './deleteOwnedFlow';
@@ -61,7 +61,7 @@ test('成功删除清理 canonical owned definition-scoped 状态、计时通知
   assert.deepEqual(calls, [
     'flow:owned',
     `unenroll:${ownedKey}`,
-    `cancel:${runId}|${sequentialReminderId(runId)}`,
+    `cancel:${sequentialReminderIdsForRun(runId).join('|')}`,
     `run:${runId}`,
     `checkins:${ownedKey}`,
     'revisions:owned',

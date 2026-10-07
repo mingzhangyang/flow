@@ -44,10 +44,10 @@ test('catalog 解析统一 owned > example', () => {
   assert.equal(resolveCatalogFlow('missing', [owned], [example]), null);
 });
 
-test('通知必须匹配当前可见 definitionKey；缺 key 或 stale key 都 fail closed', () => {
+test('通知必须精确匹配当前可见 definitionKey；stale / malformed key 都 fail closed', () => {
   const ownedKey = catalogDefinitionKey(owned.id, 'owned');
   const exampleKey = catalogDefinitionKey(example.id, 'example');
-  assert.equal(resolveCatalogEntryForRoute(owned.id, undefined, [owned], [example]), null);
+  assert.equal(resolveCatalogEntryForRoute(owned.id, 'bare-id', [owned], [example]), null);
   assert.equal(resolveCatalogEntryForRoute(owned.id, exampleKey, [owned], [example]), null);
   assert.equal(resolveCatalogEntryForRoute(owned.id, ownedKey, [owned], [example])?.source, 'owned');
   assert.equal(catalogEntriesWithOwnedPrecedence([example], [owned])[0]?.definitionKey, ownedKey);

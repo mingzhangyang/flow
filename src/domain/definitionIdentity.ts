@@ -40,3 +40,10 @@ export function parseDefinitionKey(value: string): DefinitionIdentity | null {
   };
   return definitionKey(identity) === value ? identity : null;
 }
+
+
+export function assertDefinitionKey(value: string): void {
+  if (parseDefinitionKey(value) === null) {
+    throw new Error('invalid definitionKey');
+  }
+}

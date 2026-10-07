@@ -4,7 +4,7 @@
 
 import { type Flow } from '../domain/types';
 import { type KVStore } from '../storage/kv';
-import { sequentialReminderId } from '../notifications/notificationIdentity';
+import { sequentialReminderIdsForRun } from '../notifications/notificationIdentity';
 import { catalogDefinitionKey } from './flowCatalog';
 import { activeRunId } from './runPersistence';
 
@@ -78,7 +78,7 @@ async function completeIntent(
 
   await deps.removeFlow(flowId);
   await deps.unenroll(definitionKey);
-  await deps.cancelNotifications([runId, sequentialReminderId(runId)]);
+  await deps.cancelNotifications(sequentialReminderIdsForRun(runId));
   await deps.deleteRun(runId);
   await deps.deleteCheckIns(definitionKey);
   await deps.deleteRevisions(flowId);

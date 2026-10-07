@@ -2,7 +2,7 @@
 // 没有 bare flowId enrollment，也没有开发中间格式迁移。
 
 import { type Flow } from '../domain/types';
-import { parseDefinitionKey } from '../domain/definitionIdentity';
+import { assertDefinitionKey, parseDefinitionKey } from '../domain/definitionIdentity';
 import { type Instant, type TimeZone, MS_PER_DAY } from '../runtime/clock';
 import { timeZoneForFlow } from '../runtime/ianaTimeZone';
 import { type KVStore } from '../storage/kv';
@@ -49,12 +49,14 @@ export function enrolledFlowKeys(kv: KVStore): Promise<string[]> {
 }
 
 export async function enrollFlow(kv: KVStore, definitionKey: string): Promise<void> {
+  assertDefinitionKey(definitionKey);
   const keys = await enrolledFlowKeys(kv);
   if (keys.includes(definitionKey)) return;
   await kv.setItem(ENROLLED_KEY, JSON.stringify([...keys, definitionKey]));
 }
 
 export async function unenrollFlow(kv: KVStore, definitionKey: string): Promise<void> {
+  assertDefinitionKey(definitionKey);
   const keys = await enrolledFlowKeys(kv);
   if (!keys.includes(definitionKey)) return;
   await kv.setItem(ENROLLED_KEY, JSON.stringify(keys.filter((key) => key !== definitionKey)));

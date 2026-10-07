@@ -9,7 +9,7 @@ import { reduce, project, type RunState } from '../runtime/engine';
 import { type Storage } from '../storage/storage';
 import { type Notifier } from '../notifications/notifier';
 import { planSequentialReminder } from '../notifications/plan';
-import { sequentialReminderId } from '../notifications/notificationIdentity';
+import { sequentialReminderIdsForRun } from '../notifications/notificationIdentity';
 import { activeRunId, loadRunForDefinition } from '../session/runPersistence';
 import {
   startAction,
@@ -90,7 +90,7 @@ export function usePersistentRun(
       definitionKey,
     );
     notifier
-      .cancel([run.id, sequentialReminderId(run.id)])
+      .cancel(sequentialReminderIdsForRun(run.id))
       .then(() => (reminder ? notifier.schedule([reminder]) : undefined))
       .catch(() => {});
   }, [definitionKey, locale, notifier, run, runtimeFlow, status, storage]);

@@ -13,30 +13,48 @@ const T0 = 1_000_000;
 const coffeeKey = catalogDefinitionKey(coffeeFlow.id, 'example');
 const medKey = catalogDefinitionKey(medicationFlow.id, 'example');
 
-test('flowNotificationRoute 总是携带 definitionKey', () => {
-  assert.deepEqual(flowNotificationRoute('flow-1', 'definition-1', 'node-2'), {
+test('flowNotificationRoute 只接受与 flowId 一致的 canonical definitionKey', () => {
+  const key = catalogDefinitionKey('flow-1', 'owned');
+  assert.deepEqual(flowNotificationRoute('flow-1', key, 'node-2'), {
     kind: 'flow',
     flowId: 'flow-1',
-    definitionKey: 'definition-1',
+    definitionKey: key,
     nodeId: 'node-2',
   });
+  assert.throws(() => flowNotificationRoute('flow-1', 'definition-1'));
+  assert.throws(() => flowNotificationRoute('flow-1', catalogDefinitionKey('other', 'owned')));
 });
 
-test('parseNotificationRoute 保留开放字符串原值；缺 key 可解析但 catalog 会 fail closed', () => {
-  assert.deepEqual(parseNotificationRoute({ kind: 'flow', flowId: '   ', definitionKey: ' d ', nodeId: ' ' }), {
+test('parseNotificationRoute 对缺失、非 canonical 或错配 identity 全部 fail closed', () => {
+  const spacedFlowId = '   ';
+  const spacedKey = catalogDefinitionKey(spacedFlowId, 'example');
+  assert.deepEqual(parseNotificationRoute({
     kind: 'flow',
-    flowId: '   ',
-    definitionKey: ' d ',
+    flowId: spacedFlowId,
+    definitionKey: spacedKey,
+    nodeId: ' ',
+  }), {
+    kind: 'flow',
+    flowId: spacedFlowId,
+    definitionKey: spacedKey,
     nodeId: ' ',
   });
-  assert.deepEqual(parseNotificationRoute({ kind: 'flow', flowId: 'x' }), {
+
+  assert.equal(parseNotificationRoute({ kind: 'flow', flowId: 'x' }), null);
+  assert.equal(parseNotificationRoute({ kind: 'flow', flowId: 'x', definitionKey: 'x' }), null);
+  assert.equal(parseNotificationRoute({
     kind: 'flow',
     flowId: 'x',
-  });
-  assert.equal(parseNotificationRoute({ kind: 'flow', flowId: '' }), null);
+    definitionKey: catalogDefinitionKey('other', 'example'),
+  }), null);
+  assert.equal(parseNotificationRoute({
+    kind: 'flow',
+    flowId: '',
+    definitionKey: catalogDefinitionKey('x', 'example'),
+  }), null);
 });
 
-test('顺序型与日程型提醒都携带 definitionKey', () => {
+test('顺序型与日程型提醒都携带 canonical definitionKey', () => {
   const events: RunEvent[] = [
     { type: 'started', at: T0 },
     { type: 'stepCompleted', index: 0, at: T0 },

@@ -63,7 +63,7 @@
 ### 4. Notification Engine（`src/notifications/`）
 把 Runtime 给出的触发时刻翻译成平台的本地定时通知/闹钟（expo-notifications）。
 - 接口：`schedule(events) / cancel(ids) / rescheduleFor(run)`。
-- **不变式**：不含业务逻辑，只做"事件 → 平台通知"的翻译；掉电/重启后可由 Run 记录重建。平台 notification identifier 统一用 versioned tuple 编码，不用分隔符拼接开放 Flow/Node ID；升级时顺序型提醒同时取消旧 `run.id` identifier，日程型旧 id 由上一批清单自然清理。
+- **不变式**：不含业务逻辑，只做"事件 → 平台通知"的翻译；掉电/重启后可由 Run 记录重建。平台 notification identifier 统一用 versioned tuple 编码，不用分隔符拼接开放 Flow/Node ID；正式 v1 不保留 raw `run.id` 或其他开发期兼容 identifier。顺序型 reminder 的生成与 cleanup ID 集合都由同一 notification identity codec 提供。
 - **重复触发器优先（`plan.ts` 的 `ReminderRepeat`）**：跟随设备时区的 daily/weekly 节律
   不做预排，而是每「节点 × 星期槽位」排一条**系统级重复触发器**（iOS 为 repeats 的
   UNCalendarNotificationTrigger，随系统持久、重启仍在；Android 由 expo-notifications 续排）——
@@ -75,7 +75,7 @@
 - **登记与重排（`reschedule.ts`）**：用户打开某条日程型 flow 的运行视图即为它**登记**提醒
   （enroll，不为没打开过的 flow 自动推送）；App 启动 / 回到前台 / 库变更时把已登记 flow
   的提醒整批重排（上一批 id 记在 KV，先取消再排入；previous-ID registry 只接受 canonical scheduled/daily/weekly notification tuple，绝不允许 sequential timer id 混入取消域；重复触发器 id 稳定，重排即同 id 替换）。
-  删除用户 Flow 的状态一致性由 durable deletion intent 保证；catalog refresh 会先恢复未完成删除，再以同一 ready snapshot 做提醒重排。提醒 enrollment / previous-ID registry 的持久化读取同样 fail closed：仅缺失 key 视为空，坏 JSON、坏容器或非法 identity 都拒绝并保留原值。
+  删除用户 Flow 的状态一致性由 durable deletion intent 保证；catalog refresh 会先恢复未完成删除，再以同一 ready snapshot 做提醒重排。提醒 enrollment / previous-ID registry 的读写都以 identity codec 为闸门：仅缺失 key 视为空，坏 JSON、坏容器、非法 definitionKey 或非法 notification ID 都拒绝并保留原值。
   单批截断到 48 条（iOS 待决通知上限 64，留余量）；计划本身是纯函数（`plan.ts`），编排不含时钟隐读（E3）。
 
 ### 5. AI Assistant（`src/ai/`）

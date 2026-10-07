@@ -76,11 +76,10 @@ export function resolveCatalogEntry(
 /** 通知必须同时匹配 flowId + definitionKey；缺 identity 或 stale identity 都 fail closed。 */
 export function resolveCatalogEntryForRoute(
   flowId: string,
-  definitionKey: string | undefined,
+  definitionKey: string,
   owned: readonly Flow[],
   examples: readonly Flow[],
 ): CatalogEntry | null {
-  if (!definitionKey) return null;
   const entry = resolveCatalogEntry(flowId, owned, examples);
   return entry?.definitionKey === definitionKey ? entry : null;
 }

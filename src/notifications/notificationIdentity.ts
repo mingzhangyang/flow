@@ -1,5 +1,7 @@
-// 平台通知 identifier 必须对开放 Flow/Node ID 保持注入性。
-// 不使用 ":" 等分隔符拼接；统一以 versioned tuple JSON 编码。
+// 平台通知 identifier 的正式 v1 codec。
+// definition-scoped reminder 必须携带 canonical definitionKey；顺序型 cleanup 也只通过本模块取得 ID。
+
+import { assertDefinitionKey, parseDefinitionKey } from '../domain/definitionIdentity';
 
 const VERSION = 'notif-v1';
 
@@ -11,32 +13,43 @@ export function sequentialReminderId(runId: string): string {
   return encode(['sequential', runId]);
 }
 
+/** 一个 sequential Run 在正式 v1 中唯一允许的 platform notification identifier 集合。 */
+export function sequentialReminderIdsForRun(runId: string): string[] {
+  return [sequentialReminderId(runId)];
+}
+
 export function scheduledOccurrenceReminderId(
-  flowId: string,
+  definitionKey: string,
   nodeId: string,
   at: number,
 ): string {
-  return encode(['scheduled', flowId, nodeId, at]);
+  assertDefinitionKey(definitionKey);
+  if (!Number.isFinite(at)) throw new Error('invalid scheduled reminder instant');
+  return encode(['scheduled', definitionKey, nodeId, at]);
 }
 
-export function dailyReminderId(flowId: string, nodeId: string): string {
-  return encode(['daily', flowId, nodeId]);
+export function dailyReminderId(definitionKey: string, nodeId: string): string {
+  assertDefinitionKey(definitionKey);
+  return encode(['daily', definitionKey, nodeId]);
 }
 
 export function weeklyReminderId(
-  flowId: string,
+  definitionKey: string,
   nodeId: string,
   weekday: number,
 ): string {
-  return encode(['weekly', flowId, nodeId, weekday]);
+  assertDefinitionKey(definitionKey);
+  if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) {
+    throw new Error('invalid weekly reminder weekday');
+  }
+  return encode(['weekly', definitionKey, nodeId, weekday]);
 }
-
 
 export type NotificationIdentity =
   | { kind: 'sequential'; runId: string }
-  | { kind: 'scheduled'; flowId: string; nodeId: string; at: number }
-  | { kind: 'daily'; flowId: string; nodeId: string }
-  | { kind: 'weekly'; flowId: string; nodeId: string; weekday: number };
+  | { kind: 'scheduled'; definitionKey: string; nodeId: string; at: number }
+  | { kind: 'daily'; definitionKey: string; nodeId: string }
+  | { kind: 'weekly'; definitionKey: string; nodeId: string; weekday: number };
 
 export function parseNotificationIdentity(value: string): NotificationIdentity | null {
   let raw: unknown;
@@ -51,33 +64,59 @@ export function parseNotificationIdentity(value: string): NotificationIdentity |
     const identity: NotificationIdentity = { kind: 'sequential', runId: raw[2] };
     return sequentialReminderId(identity.runId) === value ? identity : null;
   }
+
   if (
     raw[1] === 'scheduled' &&
     raw.length === 5 &&
     typeof raw[2] === 'string' &&
+    parseDefinitionKey(raw[2]) !== null &&
     typeof raw[3] === 'string' &&
     typeof raw[4] === 'number' &&
     Number.isFinite(raw[4])
   ) {
-    const identity: NotificationIdentity = { kind: 'scheduled', flowId: raw[2], nodeId: raw[3], at: raw[4] };
-    return scheduledOccurrenceReminderId(identity.flowId, identity.nodeId, identity.at) === value ? identity : null;
+    const identity: NotificationIdentity = {
+      kind: 'scheduled',
+      definitionKey: raw[2],
+      nodeId: raw[3],
+      at: raw[4],
+    };
+    return scheduledOccurrenceReminderId(identity.definitionKey, identity.nodeId, identity.at) === value
+      ? identity
+      : null;
   }
-  if (raw[1] === 'daily' && raw.length === 4 && typeof raw[2] === 'string' && typeof raw[3] === 'string') {
-    const identity: NotificationIdentity = { kind: 'daily', flowId: raw[2], nodeId: raw[3] };
-    return dailyReminderId(identity.flowId, identity.nodeId) === value ? identity : null;
+
+  if (
+    raw[1] === 'daily' &&
+    raw.length === 4 &&
+    typeof raw[2] === 'string' &&
+    parseDefinitionKey(raw[2]) !== null &&
+    typeof raw[3] === 'string'
+  ) {
+    const identity: NotificationIdentity = { kind: 'daily', definitionKey: raw[2], nodeId: raw[3] };
+    return dailyReminderId(identity.definitionKey, identity.nodeId) === value ? identity : null;
   }
+
   if (
     raw[1] === 'weekly' &&
     raw.length === 5 &&
     typeof raw[2] === 'string' &&
+    parseDefinitionKey(raw[2]) !== null &&
     typeof raw[3] === 'string' &&
     Number.isInteger(raw[4]) &&
     raw[4] >= 0 &&
     raw[4] <= 6
   ) {
-    const identity: NotificationIdentity = { kind: 'weekly', flowId: raw[2], nodeId: raw[3], weekday: raw[4] };
-    return weeklyReminderId(identity.flowId, identity.nodeId, identity.weekday) === value ? identity : null;
+    const identity: NotificationIdentity = {
+      kind: 'weekly',
+      definitionKey: raw[2],
+      nodeId: raw[3],
+      weekday: raw[4],
+    };
+    return weeklyReminderId(identity.definitionKey, identity.nodeId, identity.weekday) === value
+      ? identity
+      : null;
   }
+
   return null;
 }
 
