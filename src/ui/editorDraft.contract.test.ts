@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { Flow } from '../domain/types';
+import type { Flow, Recurrence } from '../domain/types';
 import { isEditorDraftDirty } from './editorDraft';
 
 const sequential = (): Flow => ({
@@ -67,6 +67,28 @@ test('weekly day order is canonicalized as set semantics', () => {
   };
 
   assert.equal(isEditorDraftDirty(initial, reordered), false);
+});
+
+test('recurrence object property order is canonicalized', () => {
+  const weeklyImported = JSON.parse('{"days":[1,5],"kind":"weekly"}') as Recurrence;
+  const weeklyCanonical: Recurrence = { kind: 'weekly', days: [1, 5] };
+  assert.equal(
+    isEditorDraftDirty(
+      { ...scheduled(), repeat: weeklyImported },
+      { ...scheduled(), repeat: weeklyCanonical },
+    ),
+    false,
+  );
+
+  const everyNImported = JSON.parse('{"fromDay":20,"n":2,"kind":"everyNDays"}') as Recurrence;
+  const everyNCanonical: Recurrence = { kind: 'everyNDays', n: 2, fromDay: 20 };
+  assert.equal(
+    isEditorDraftDirty(
+      { ...scheduled(), repeat: everyNImported },
+      { ...scheduled(), repeat: everyNCanonical },
+    ),
+    false,
+  );
 });
 
 test('flow metadata edits are dirty and reverting is clean', () => {
