@@ -77,7 +77,7 @@ test('冷启动读取并消费 last response，只交付一次合法路由', asy
   const fake = fakeFacade(response('cold-1', { kind: 'flow', flowId: 'med' }));
   const source = createNotificationResponseSource(fake.api);
   const routes: unknown[] = [];
-  source.start((route) => routes.push(route));
+  source.start((route) => { routes.push(route); });
 
   await flush();
   assert.deepEqual(routes, [{ kind: 'flow', flowId: 'med' }]);
@@ -88,7 +88,7 @@ test('warm tap 先清除 last response 再转发；非法响应也会被消费',
   const fake = fakeFacade();
   const source = createNotificationResponseSource(fake.api);
   const routes: unknown[] = [];
-  const unsubscribe = source.start((route) => routes.push(route));
+  const unsubscribe = source.start((route) => { routes.push(route); });
   await flush();
 
   fake.emit(response('warm-1', { kind: 'flow', flowId: 'coffee', nodeId: 'brew' }));
@@ -109,7 +109,7 @@ test('clear 瞬态失败会重试一次，成功后才交付 cold route', async 
   const fake = fakeFacade(response('cold-retry', { kind: 'flow', flowId: 'med' }), { failClears: 1 });
   const source = createNotificationResponseSource(fake.api);
   const routes: unknown[] = [];
-  source.start((route) => routes.push(route));
+  source.start((route) => { routes.push(route); });
 
   await flush();
   assert.deepEqual(routes, [{ kind: 'flow', flowId: 'med' }]);
@@ -120,7 +120,7 @@ test('clear 连续失败时不交付 route，避免 stale response 下次重放'
   const fake = fakeFacade(response('cold-fail', { kind: 'flow', flowId: 'cold' }), { failClears: 2 });
   const source = createNotificationResponseSource(fake.api);
   const routes: unknown[] = [];
-  source.start((route) => routes.push(route));
+  source.start((route) => { routes.push(route); });
 
   await flush();
   assert.deepEqual(routes, []);
@@ -132,7 +132,7 @@ test('initial 与 listener 暴露同一 cold response 时按 request id 去重',
   const fake = fakeFacade(cold, { deferInitial: true });
   const source = createNotificationResponseSource(fake.api);
   const routes: unknown[] = [];
-  source.start((route) => routes.push(route));
+  source.start((route) => { routes.push(route); });
 
   fake.emit(cold);
   fake.releaseInitial();
@@ -147,7 +147,7 @@ test('启动窗口内 distinct listener response 在 initial 之后按到达顺�
   const fake = fakeFacade(response('initial-id', { kind: 'flow', flowId: 'initial' }), { deferInitial: true });
   const source = createNotificationResponseSource(fake.api);
   const routes: unknown[] = [];
-  source.start((route) => routes.push(route));
+  source.start((route) => { routes.push(route); });
 
   fake.emit(response('warm-a', { kind: 'flow', flowId: 'a' }));
   fake.emit(response('warm-b', { kind: 'flow', flowId: 'b' }));
@@ -166,7 +166,7 @@ test('取消订阅会丢弃尚未完成的启动缓冲', async () => {
   const fake = fakeFacade(response('initial-id', { kind: 'flow', flowId: 'initial' }), { deferInitial: true });
   const source = createNotificationResponseSource(fake.api);
   const routes: unknown[] = [];
-  const unsubscribe = source.start((route) => routes.push(route));
+  const unsubscribe = source.start((route) => { routes.push(route); });
 
   fake.emit(response('warm-id', { kind: 'flow', flowId: 'warm' }));
   unsubscribe();
@@ -182,7 +182,7 @@ test('连续 warm tap 会等待前一次异步导航完成，后一次不会反�
   const fake = fakeFacade();
   const source = createNotificationResponseSource(fake.api);
   const events: string[] = [];
-  let releaseFirst: (() => void) | null = null;
+  let releaseFirst: () => void = () => {};
   const firstGate = new Promise<void>((resolve) => {
     releaseFirst = resolve;
   });
@@ -199,7 +199,7 @@ test('连续 warm tap 会等待前一次异步导航完成，后一次不会反�
   await flush();
 
   assert.deepEqual(events, ['start:a']);
-  releaseFirst?.();
+  releaseFirst();
   await flush();
   await flush();
 
