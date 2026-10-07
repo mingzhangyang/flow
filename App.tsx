@@ -159,12 +159,12 @@ export default function App() {
         kv: asyncStorageKV,
         removeFlow: (id) => library.remove(id),
         unenroll: (key, legacyId) => unenrollFlow(asyncStorageKV, key, legacyId),
-        markLegacyAmbiguous: (id) => markLegacyAmbiguousFlowId(asyncStorageKV, id),
+        markLegacyAmbiguous: (id) => legacyIdentities.mark(id),
         deleteRun: (id) => storage.deleteRun(id),
         deleteDefinitionCheckIns: (key) => storage.deleteDefinitionCheckIns(key),
         deleteLegacyCheckIns: (id) => storage.deleteCheckIns(id),
       })),
-  [library, runCatalogMutation, storage]);
+  [legacyIdentities, library, runCatalogMutation, storage]);
 
   const refreshCatalogInBackground = useCallback((
     mutation?: () => Promise<void>,
