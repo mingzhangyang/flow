@@ -30,12 +30,12 @@ function isRunEvent(value: unknown): value is RunEvent {
   return typeof e.type === 'string' && EVENT_TYPES.has(e.type as RunEventType) && typeof e.at === 'number';
 }
 
-function parseRun(text: string, expectedId?: string): Run {
+function parseRun(text: string, expectedId: string): Run {
   const raw = JSON.parse(text) as { id?: unknown; flow?: unknown; events?: unknown };
   if (typeof raw.id !== 'string' || !Array.isArray(raw.events)) {
     throw new Error('invalid persisted Run');
   }
-  if (expectedId !== undefined && raw.id !== expectedId) {
+  if (raw.id !== expectedId) {
     throw new Error('persisted Run id does not match storage key');
   }
   if (!raw.events.every(isRunEvent)) throw new Error('invalid persisted Run events');
@@ -47,7 +47,9 @@ function parseRun(text: string, expectedId?: string): Run {
 
 export interface Storage {
   saveFlow(flow: Flow): Promise<void>;
+  /** Only absence returns null; malformed or mis-associated records reject. */
   loadFlow(id: string): Promise<Flow | null>;
+  /** Complete authoritative catalog: uses the same read gate as loadFlow, never skips corruption. */
   listFlows(): Promise<Flow[]>;
   deleteFlow(id: string): Promise<void>;
   exportFlow(id: string): Promise<string | null>;
@@ -72,7 +74,10 @@ export interface Storage {
 export function createStorage(kv: KVStore): Storage {
   async function loadFlow(id: string): Promise<Flow | null> {
     const text = await kv.getItem(FLOW + id);
-    return text === null ? null : deserializeFlow(text);
+    if (text === null) return null;
+    const flow = deserializeFlow(text);
+    if (flow.id !== id) throw new Error('persisted Flow id does not match storage key');
+    return flow;
   }
 
   async function saveFlow(flow: Flow): Promise<void> {
@@ -97,8 +102,10 @@ export function createStorage(kv: KVStore): Storage {
       const keys = (await kv.keys()).filter((k) => k.startsWith(FLOW));
       const flows: Flow[] = [];
       for (const key of keys) {
-        const text = await kv.getItem(key);
-        if (text !== null) flows.push(deserializeFlow(text));
+        // Enumeration supplies the identity, never a second deserialization path. A bad
+        // record must fail the whole catalog, otherwise an example could silently replace it.
+        const flow = await loadFlow(key.slice(FLOW.length));
+        if (flow !== null) flows.push(flow);
       }
       flows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
       return flows;

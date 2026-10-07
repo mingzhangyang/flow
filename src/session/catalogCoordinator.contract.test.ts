@@ -4,13 +4,17 @@ import assert from 'node:assert/strict';
 import { type Flow } from '../domain/types';
 import { createCatalogCoordinator } from './catalogCoordinator';
 import { type OwnedCatalogSnapshot } from './flowCatalog';
+import { createInMemoryKV } from '../storage/kv';
+import { createStorage } from '../storage/storage';
+import { createLibrary } from './library';
+import { serializeFlow } from '../domain/serialize';
 
 const flow = (id: string): Flow => ({
   schemaVersion: 2,
   id,
   title: id,
   topology: 'sequential',
-  nodes: [],
+  nodes: [{ kind: 'instant', id: 'step', label: 'Step' }],
 });
 
 test('并发 refresh 严格串行，旧请求没有 publish 权', async () => {
@@ -87,4 +91,21 @@ test('background request 失败只发布 error，不暴露待观察 Promise', as
   });
   await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal(coordinator.current().status, 'error');
+});
+
+test('mis-keyed persisted Flow cannot publish a ready catalog; corrected storage can retry', async () => {
+  const kv = createInMemoryKV();
+  const library = createLibrary(createStorage(kv));
+  const snapshots: OwnedCatalogSnapshot[] = [];
+  const coordinator = createCatalogCoordinator((snapshot) => snapshots.push(snapshot));
+  const refresh = async () => ({ flows: await library.list() });
+  await kv.setItem('flow:owned', serializeFlow(flow('example.coffee')));
+
+  await assert.rejects(() => coordinator.request(refresh), /persisted Flow id/);
+  assert.equal(coordinator.current().status, 'error');
+  assert.equal(snapshots.some((snapshot) => snapshot.status === 'ready'), false);
+
+  await kv.setItem('flow:owned', serializeFlow(flow('owned')));
+  await coordinator.request(refresh);
+  assert.deepEqual(coordinator.current(), { status: 'ready', flows: [flow('owned')] });
 });

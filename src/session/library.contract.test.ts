@@ -6,11 +6,12 @@ import assert from 'node:assert/strict';
 import { createInMemoryKV } from '../storage/kv';
 import { createStorage, type Storage } from '../storage/storage';
 import { parseBackup } from '../storage/backup';
-import { createLibrary, MAX_REVISIONS } from './library';
+import { createLibrary, MAX_REVISIONS, type Library } from './library';
 import { createFlow, addNode, setMeta } from '../domain/editing';
 import { serializeFlow } from '../domain/serialize';
 import { type TimedNode } from '../domain/types';
 import { catalogDefinitionKey } from './flowCatalog';
+import { type Backup } from '../storage/backup';
 
 const step = (id: string, label: string): TimedNode => ({ kind: 'timed', id, label, durationSec: 60 });
 
@@ -21,6 +22,39 @@ function make() {
 
 const medicationDefinitionKey = catalogDefinitionKey('example.medication', 'example');
 const mineDefinitionKey = catalogDefinitionKey('mine', 'owned');
+
+const identitySensitiveOperations: Array<[string, (lib: Library) => Promise<unknown>]> = [
+  ['get', (lib) => lib.get('mine')],
+  ['list', (lib) => lib.list()],
+  ['commit', (lib) => lib.commit(sample())],
+  ['restore', (lib) => lib.restore(sample())],
+  ['importFlow', (lib) => lib.importFlow(serializeFlow(sample()), 123)],
+  ['exportFlow', (lib) => lib.exportFlow('mine')],
+  ['exportBackup', (lib) => lib.exportBackup(123)],
+  ['importBackup', (lib) => lib.importBackup({
+    kind: 'zhunshi-backup', backupVersion: 1, exportedAt: 123,
+    flows: [sample()], revisions: {}, checkIns: {},
+  } satisfies Backup)],
+];
+
+for (const [operation, execute] of identitySensitiveOperations) {
+  test(`${operation} rejects a mis-associated current Flow before any writes`, async () => {
+    const kv = createInMemoryKV();
+    const wrong = serializeFlow({ ...sample(), id: 'other' });
+    await kv.setItem('flow:mine', wrong);
+    await kv.setItem('flow:other', serializeFlow({ ...sample(), id: 'other', title: 'Unrelated' }));
+    const before = await Promise.all((await kv.keys()).map(async (key) => [key, await kv.getItem(key)]));
+    const writes: string[] = [];
+    const storage = createStorage({
+      ...kv,
+      async setItem(key, value) { writes.push(key); await kv.setItem(key, value); },
+      async removeItem(key) { writes.push(key); await kv.removeItem(key); },
+    });
+    await assert.rejects(() => execute(createLibrary(storage)), /persisted Flow id/);
+    assert.deepEqual(writes, []);
+    assert.deepEqual(await Promise.all((await kv.keys()).map(async (key) => [key, await kv.getItem(key)])), before);
+  });
+}
 
 function sample() {
   return addNode(createFlow({ id: 'mine', title: '我的流程', topology: 'sequential' }), step('a', '第一步'));

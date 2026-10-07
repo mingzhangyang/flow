@@ -48,6 +48,18 @@
 - **不变式**：导出/导入用开放格式，round-trip 无损（C6/E5）。
 - **开放 ID 作为数据**：Flow/Node ID 不参与分隔符命名空间，也不直接用普通对象赋值承载映射；notification identity 使用 versioned tuple，备份中的 ID-keyed record 通过 own data property 写入，因此 `__proto__` 等字符串不获得对象原型语义。
 - **读入闸门 / presence ≠ validity**：持久数据回到纯核心前先过校验——只有 key 真正不存在（`null`）才能解释成“没有数据”；已存在但 JSON、容器或 identity 不合法的精确读取必须 fail closed，绝不能退化成空状态再覆盖原数据。flow 快照（含 Run 内嵌、历史修订）走迁移 + 校验（`coerceFlow`），Run 还必须满足 KV key = embedded `run.id`，definition-scoped 加载再验证 `definitionKey ↔ flow.id ↔ run.id`，事件日志用 `reduce` 从头重放验证（重放即校验，E4）。只有在外层容器/identity 已验证后，契约明确允许独立损坏的内部条目才可逐条跳过。definition-scoped check-in 的精确 save/load/delete 与整库枚举都先验证 canonical `definitionKey`；枚举遇到坏 identity 直接 fail closed，绝不导出一个随后会被 restore 静默丢弃的日志。
+- **键控记录的唯一读入口**：`loadFlow(id)` 同时验证开放格式和 `flow:<id> ↔ flow.id`；`listFlows` 从完整 key 后缀取得 ID 并复用该入口，禁止自行反序列化或吞掉错误。`get / commit / restore / importFlow / exportFlow / exportBackup / importBackup` 经由这两条已校验入口读取本机 current Flow，不能把错配数据当作“未创建”或替用户改 ID。ID 是不透明字符串，不 split、trim 或 normalize。Run 的 parser 同样强制传入 expected ID，没有无身份校验的重载。
+
+  | 持久化记录 | 身份依据与校验 | 损坏策略 |
+  | --- | --- | --- |
+  | current Flow | key 后缀必须等于反序列化后的 `flow.id`；单读与枚举共用 `loadFlow` | 精确读取、整个目录、导出都拒绝；不写回 |
+  | Run | key 后缀 = `run.id`；definition-scoped loader 再匹配 definition/Flow | 精确读取拒绝；`listRuns` 显式 best-effort 跳过坏记录，不用于权威目录 |
+  | revisions | 外层 key 指定 owner，每个快照 `flow.id` 必须相等 | 坏容器拒绝；独立坏快照可过滤 |
+  | check-ins | canonical definitionKey 是唯一身份 | 精确读取与枚举均拒绝坏 key/容器；独立坏条目可过滤 |
+  | deletion intent | canonical journal key 是唯一身份；value 仅版本标记 | 破坏性操作前拒绝坏 key/value |
+  | reminder registry | canonical definition/notification tuple | 坏 key/容器/identity 拒绝并保留原值 |
+
+  契约测试跨 Storage、Library 与 catalog coordinator 覆盖错配：不得写 current/history，不得导出错归属备份，不得发布 ready snapshot。新读入口必须复用所属记录的读闸门；新增记录必须明确身份来源和损坏策略，不能只测试合法 JSON 的 round-trip。
 - **机密走窄端口**：`SecretStore`（getItem/setItem/removeItem，无枚举）。适配器
   `secureKv.native`（iOS Keychain / Android Keystore，expo-secure-store）、Web 回落
   AsyncStorage；AI 模型密钥经此存储，不与普通数据混在一个后端（C6）。
@@ -124,3 +136,4 @@ Flow 的**编辑器**，不是主人（见 `02-ai-principles.md`）。
 Asia/Shanghai、语言固定 zh-CN。固化的验收路径：顺序型运行（开始/暂停/跳过/回退 +
 整页刷新后恢复计时）、服药打卡（逐剂独立 + 刷新保留 + 免责可见）、编辑→导出→导入
 闭环、once「过时不候」提示、AI 解读入口、整库备份→全新环境恢复。CI 与本地同一命令。
+
