@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   View,
@@ -232,6 +233,7 @@ export function EditorScreen(props: EditorScreenProps) {
     // the disabled button state.
     savingRef.current = true;
     setSaving(true);
+    Keyboard.dismiss();
     setError(null);
     try {
       const saved = await props.saveFlow(candidate);
@@ -261,6 +263,7 @@ export function EditorScreen(props: EditorScreenProps) {
       </View>
 
       <ScrollView
+        pointerEvents={saving ? 'none' : 'auto'}
         style={styles.scroll}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
@@ -268,6 +271,7 @@ export function EditorScreen(props: EditorScreenProps) {
         automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
       >
         <EditorTextInput
+          editable={!saving}
           style={styles.titleInput}
           value={flow.title}
           onChangeText={(text) => setFlow((f) => setMeta(f, { title: text }))}
@@ -275,6 +279,7 @@ export function EditorScreen(props: EditorScreenProps) {
           placeholderTextColor={c.pending}
         />
         <EditorTextInput
+          editable={!saving}
           style={styles.descInput}
           value={flow.description ?? ''}
           onChangeText={(text) => setFlow((f) => setMeta(f, { description: text }))}
@@ -284,6 +289,7 @@ export function EditorScreen(props: EditorScreenProps) {
         {isScheduled ? (
           <>
             <EditorTextInput
+          editable={!saving}
               style={styles.descInput}
               value={flow.timeZone ?? ''}
               onChangeText={(text) => { setFlow((f) => setMeta(f, { timeZone: text })); setError(null); }}
@@ -340,6 +346,7 @@ export function EditorScreen(props: EditorScreenProps) {
               {flow.repeat?.kind === 'everyNDays' ? (
                 <Row label={t.editorEveryNDays}>
                   <EditorTextInput
+          editable={!saving}
                     style={styles.smallInput}
                     keyboardType="number-pad"
                     value={inputBuffers[editorEveryNDaysInputKey] ?? String(flow.repeat.n)}
@@ -357,6 +364,7 @@ export function EditorScreen(props: EditorScreenProps) {
             <View style={styles.nodeTop}>
               <Text style={styles.nodeIndex}>{i + 1}</Text>
               <EditorTextInput
+          editable={!saving}
                 style={styles.nodeLabel}
                 value={node.label}
                 onChangeText={(text) => patch(node.id, { label: text })}
@@ -368,6 +376,7 @@ export function EditorScreen(props: EditorScreenProps) {
             {isScheduled && node.kind === 'scheduled' ? (
               <Row label={t.editorTime}>
                 <EditorTextInput
+          editable={!saving}
                   style={styles.smallInput}
                   value={inputBuffers[editorScheduledTimeInputKey(node.id)] ?? fmtTimeOfDay(node.at)}
                   onChangeText={(text) => setInputBuffer(editorScheduledTimeInputKey(node.id), text)}
@@ -394,6 +403,7 @@ export function EditorScreen(props: EditorScreenProps) {
             {node.kind === 'timed' ? (
               <Row label={t.editorDuration}>
                 <EditorTextInput
+          editable={!saving}
                   style={styles.smallInput}
                   keyboardType="number-pad"
                   value={inputBuffers[editorDurationInputKey(node.id)] ?? String(node.durationSec)}
@@ -403,6 +413,7 @@ export function EditorScreen(props: EditorScreenProps) {
             ) : null}
 
             <EditorTextInput
+          editable={!saving}
               style={styles.rationaleInput}
               value={node.rationale ?? ''}
               onChangeText={(text) => patch(node.id, { rationale: text || undefined })}
