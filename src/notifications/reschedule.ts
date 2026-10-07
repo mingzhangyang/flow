@@ -7,11 +7,12 @@ import { type Instant, type TimeZone, MS_PER_DAY } from '../runtime/clock';
 import { timeZoneForFlow } from '../runtime/ianaTimeZone';
 import { type KVStore } from '../storage/kv';
 import { type Notifier } from './notifier';
-import { isScheduledReminderId } from './notificationIdentity';
+import { isScheduledReminderId, parseNotificationIdentity } from './notificationIdentity';
 import { planScheduledBatch } from './plan';
 
 const ENROLLED_KEY = 'notif:enrolled:v1';
 const LAST_IDS_KEY = 'notif:scheduled-ids:v1';
+// Recovery set: all scheduled IDs that may exist on the platform, not just a successful batch.
 
 export const RESCHEDULE_HORIZON_MS = 7 * MS_PER_DAY;
 export const RESCHEDULE_CAP = 48;
@@ -62,6 +63,25 @@ export async function unenrollFlow(kv: KVStore, definitionKey: string): Promise<
   await kv.setItem(ENROLLED_KEY, JSON.stringify(keys.filter((key) => key !== definitionKey)));
 }
 
+/** Caller serializes registry mutations through the catalog coordinator. */
+export async function cancelScheduledRemindersForDefinition(opts: {
+  kv: KVStore;
+  notifier: Pick<Notifier, 'cancel'>;
+  definitionKey: string;
+}): Promise<void> {
+  assertDefinitionKey(opts.definitionKey);
+  const ids = await readStringArray(opts.kv, LAST_IDS_KEY, isScheduledReminderId);
+  const owned = ids.filter((id) => {
+    const identity = parseNotificationIdentity(id);
+    return identity !== null && identity.kind !== 'sequential' && identity.definitionKey === opts.definitionKey;
+  });
+  if (owned.length === 0) return;
+  await opts.notifier.cancel(owned);
+  const removed = new Set(owned);
+  // A failed cancel or persistence step leaves the original recovery set intact for retry.
+  await opts.kv.setItem(LAST_IDS_KEY, JSON.stringify(ids.filter((id) => !removed.has(id))));
+}
+
 export async function rescheduleReminders(opts: {
   kv: KVStore;
   notifier: Notifier;
@@ -81,7 +101,11 @@ export async function rescheduleReminders(opts: {
 
   const reminders = planScheduledBatch(entries, opts.now, RESCHEDULE_HORIZON_MS, RESCHEDULE_CAP);
   const prevIds = await readStringArray(opts.kv, LAST_IDS_KEY, isScheduledReminderId);
+  const nextIds = reminders.map((r) => r.id);
+  // Write ahead of *both* platform operations. Partial cancellation/scheduling, process exit,
+  // or failure of the final write must leave every possible platform ID recoverable.
+  await opts.kv.setItem(LAST_IDS_KEY, JSON.stringify([...new Set([...prevIds, ...nextIds])]));
   await opts.notifier.cancel(prevIds);
   await opts.notifier.schedule(reminders);
-  await opts.kv.setItem(LAST_IDS_KEY, JSON.stringify(reminders.map((r) => r.id)));
+  await opts.kv.setItem(LAST_IDS_KEY, JSON.stringify(nextIds));
 }

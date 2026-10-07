@@ -39,7 +39,7 @@ import { createExpoNotifier } from './src/notifications/expoNotifier';
 import { createExpoNotificationResponseSource } from './src/notifications/notificationResponses';
 import { configureExpoNotificationPresentation } from './src/notifications/notificationPresentation';
 import { type NotificationRouteData } from './src/notifications/notificationRoute';
-import { enrollFlow, rescheduleReminders, unenrollFlow } from './src/notifications/reschedule';
+import { cancelScheduledRemindersForDefinition, enrollFlow, rescheduleReminders, unenrollFlow } from './src/notifications/reschedule';
 import { systemTimeZone } from './src/runtime/systemTimeZone';
 import { systemSharer } from './src/sharing/systemSharer';
 import { HomeScreen } from './src/ui/HomeScreen';
@@ -110,6 +110,7 @@ export default function App() {
       runtime,
       removeFlow: (id) => library.remove(id),
       unenroll: (key) => unenrollFlow(asyncStorageKV, key),
+      cancelScheduledNotifications: (key) => cancelScheduledRemindersForDefinition({ kv: asyncStorageKV, notifier, definitionKey: key }),
       cancelNotifications: (ids) => notifier.cancel(ids),
       deleteRun: (id) => storage.deleteRun(id),
       deleteCheckIns: (key) => storage.deleteCheckIns(key),
@@ -202,6 +203,7 @@ export default function App() {
         runtime,
         removeFlow: (id) => library.remove(id),
         unenroll: (key) => unenrollFlow(asyncStorageKV, key),
+        cancelScheduledNotifications: (key) => cancelScheduledRemindersForDefinition({ kv: asyncStorageKV, notifier, definitionKey: key }),
         cancelNotifications: (ids) => notifier.cancel(ids),
         deleteRun: (id) => storage.deleteRun(id),
         deleteCheckIns: (key) => storage.deleteCheckIns(key),

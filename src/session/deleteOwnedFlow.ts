@@ -20,6 +20,7 @@ export interface DeleteOwnedFlowDeps {
   runtime: Pick<DefinitionRuntime, 'retire'>;
   removeFlow(id: string): Promise<void>;
   unenroll(definitionKey: string): Promise<void>;
+  cancelScheduledNotifications(definitionKey: string): Promise<void>;
   cancelNotifications(ids: string[]): Promise<void>;
   deleteRun(id: string): Promise<void>;
   deleteCheckIns(definitionKey: string): Promise<void>;
@@ -81,6 +82,7 @@ async function completeIntent(
   await deps.runtime.retire(definitionKey, async () => {
     await deps.removeFlow(flowId);
     await deps.unenroll(definitionKey);
+    await deps.cancelScheduledNotifications(definitionKey);
     await deps.cancelNotifications(sequentialReminderIdsForRun(runId));
     await deps.deleteRun(runId);
     await deps.deleteCheckIns(definitionKey);

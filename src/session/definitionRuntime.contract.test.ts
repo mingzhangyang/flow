@@ -63,6 +63,7 @@ for (const stage of ['saveRun', 'saveCheckIns', 'cancel', 'schedule'] as const) 
       kv, runtime,
       removeFlow: (id) => storage.deleteFlow(id),
       unenroll: async () => {},
+      cancelScheduledNotifications: async () => {},
       cancelNotifications: (ids) => notifier.cancel(ids),
       deleteRun: (id) => storage.deleteRun(id),
       deleteCheckIns: (id) => storage.deleteCheckIns(id),
@@ -135,6 +136,7 @@ test('failed runtime operation cannot poison deletion; failed cleanup stays fenc
     kv, runtime,
     removeFlow: (id: string) => storage.deleteFlow(id),
     unenroll: async () => {},
+    cancelScheduledNotifications: async () => {},
     cancelNotifications: noopNotifier.cancel,
     deleteRun: (id: string) => storage.deleteRun(id),
     async deleteCheckIns(id: string) {
