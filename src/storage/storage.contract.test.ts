@@ -140,3 +140,13 @@ test('损坏的历史修订 → 坏快照跳过，其余保留', async () => {
   assert.equal(revisions.length, 1);
   assert.equal(revisions[0].id, coffeeFlow.id);
 });
+
+
+test('listAllCheckIns 保留 "__proto__" 这类开放 flowId，而不触发对象原型语义', async () => {
+  const s = fresh();
+  const log = [{ nodeId: 'dose', scheduledFor: 1, taken: true, at: 2 }];
+  await s.saveCheckIns('__proto__', log);
+  const all = await s.listAllCheckIns();
+  assert.equal(Object.prototype.hasOwnProperty.call(all, '__proto__'), true);
+  assert.deepEqual(all.__proto__, log);
+});

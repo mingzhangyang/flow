@@ -62,3 +62,26 @@ test('打卡合并：同一占位本机优先，其余并入', () => {
   assert.equal(merged.find((c) => c.nodeId === 'a')?.taken, true);
   assert.equal(merged.find((c) => c.nodeId === 'b')?.at, 2001);
 });
+
+
+test('开放 flowId = "__proto__" 的 revisions / checkIns 仍作为普通数据键 round-trip', () => {
+  const specialFlow = { ...medicationFlow, id: '__proto__', title: '特殊 ID' };
+  const revisions = Object.fromEntries([
+    ['__proto__', [{ ...specialFlow, title: '旧版' }]],
+  ]) as Record<string, typeof medicationFlow[]>;
+  const checkIns = Object.fromEntries([
+    ['__proto__', [checkIn('dose', 1000, true, 1001)]],
+  ]);
+
+  const parsed = parseBackup(buildBackup({
+    flows: [specialFlow],
+    revisions,
+    checkIns,
+    exportedAt: 7,
+  }));
+  assert.ok(parsed);
+  assert.equal(Object.prototype.hasOwnProperty.call(parsed.revisions, '__proto__'), true);
+  assert.equal(parsed.revisions.__proto__[0]?.title, '旧版');
+  assert.equal(Object.prototype.hasOwnProperty.call(parsed.checkIns, '__proto__'), true);
+  assert.equal(parsed.checkIns.__proto__[0]?.nodeId, 'dose');
+});

@@ -9,7 +9,6 @@ import { validateFlow } from '../domain/validate';
 import { isValidTimeZoneName, timeZoneForFlow } from '../runtime/ianaTimeZone';
 import { localDayIndex, weekdayOfDayIndex } from '../runtime/clock';
 import { systemTimeZone } from '../runtime/systemTimeZone';
-import { type Library } from '../session/library';
 import { fmtTimeOfDay } from './format';
 import { useI18n } from './i18n';
 import { type Strings } from './strings';
@@ -62,7 +61,7 @@ function toggleWeekday(repeat: Recurrence, d: number): Recurrence {
   return { kind: 'weekly', days: next };
 }
 
-export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f: Flow) => void; onCancel: () => void }) {
+export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Promise<Flow>; onSaved: (f: Flow) => void; onCancel: () => void }) {
   const c = paletteFor(useColorScheme());
   const styles = useMemo(() => createStyles(c), [c]);
   const { t } = useI18n();
@@ -108,7 +107,7 @@ export function EditorScreen(props: { draft: Flow; library: Library; onSaved: (f
       setError(t.editorInvalidTimeZone(flow.timeZone));
       return;
     }
-    props.library.commit(flow).then(props.onSaved).catch((e) => setError(String(e)));
+    props.saveFlow(flow).then(props.onSaved).catch((e) => setError(String(e)));
   };
 
   return (

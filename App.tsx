@@ -103,10 +103,40 @@ export default function App() {
   ): Promise<void> => catalogCoordinator.request(() => runCatalogTask(mutation)),
   [catalogCoordinator, runCatalogTask]);
 
-  const homeRefreshed = (): void => {
-    home();
-    void refreshCatalog();
-  };
+  const runCatalogMutation = useCallback(async <T,>(
+    mutation: () => Promise<T>,
+  ): Promise<T> => {
+    let result!: T;
+    let mutationError: unknown;
+    await refreshCatalog(async () => {
+      try {
+        result = await mutation();
+      } catch (error) {
+        mutationError = error;
+      }
+    });
+    if (mutationError !== undefined) throw mutationError;
+    return result;
+  }, [refreshCatalog]);
+
+  const commitCatalogFlow = useCallback(
+    (flow: Flow): Promise<Flow> => runCatalogMutation(() => library.commit(flow)),
+    [library, runCatalogMutation],
+  );
+  const importCatalogFlow = useCallback(
+    (text: string, now: number): Promise<Flow> =>
+      runCatalogMutation(() => library.importFlow(text, now)),
+    [library, runCatalogMutation],
+  );
+  const importCatalogBackup = useCallback(
+    (backup: Parameters<typeof library.importBackup>[0]): Promise<number> =>
+      runCatalogMutation(() => library.importBackup(backup)),
+    [library, runCatalogMutation],
+  );
+  const restoreCatalogRevision = useCallback(
+    (flow: Flow): Promise<Flow> => runCatalogMutation(() => library.restore(flow)),
+    [library, runCatalogMutation],
+  );
 
   const deleteOwnedFlow = useCallback(async (
     flow: Flow,
@@ -182,11 +212,17 @@ export default function App() {
           <RunnerScreen flow={screen.flow} storage={storage} notifier={notifier} onExit={home} />
         )
       ) : screen.name === 'edit' ? (
-        <EditorScreen draft={screen.flow} library={library} onSaved={homeRefreshed} onCancel={home} />
+        <EditorScreen draft={screen.flow} saveFlow={commitCatalogFlow} onSaved={() => home()} onCancel={home} />
       ) : screen.name === 'export' ? (
         <ExportScreen flow={screen.flow} sharer={systemSharer} onDone={home} />
       ) : screen.name === 'insight' ? (
-        <InsightScreen flow={screen.flow} library={library} onExit={home} onChanged={homeRefreshed} />
+        <InsightScreen
+          flow={screen.flow}
+          library={library}
+          restoreFlow={restoreCatalogRevision}
+          onExit={home}
+          onChanged={home}
+        />
       ) : screen.name === 'generate' ? (
         <GenerateScreen
           secrets={secureKV}
@@ -196,7 +232,12 @@ export default function App() {
           onCancel={home}
         />
       ) : (
-        <ImportScreen library={library} onImported={homeRefreshed} onCancel={home} />
+        <ImportScreen
+          importFlow={importCatalogFlow}
+          importBackup={importCatalogBackup}
+          onImported={home}
+          onCancel={home}
+        />
       )}
     </SafeAreaView>
   );

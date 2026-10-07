@@ -3,13 +3,18 @@
 
 import { useState, useMemo } from 'react';
 import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
-import { type Library } from '../session/library';
-import { parseBackup } from '../storage/backup';
+import { type Flow } from '../domain/types';
+import { parseBackup, type Backup } from '../storage/backup';
 import { extractFlowJson } from '../sharing/share';
 import { useI18n } from './i18n';
 import { paletteFor, type Palette, spacing, radius } from './theme';
 
-export function ImportScreen(props: { library: Library; onImported: () => void; onCancel: () => void }) {
+export function ImportScreen(props: {
+  importFlow: (text: string, now: number) => Promise<Flow>;
+  importBackup: (backup: Backup) => Promise<number>;
+  onImported: () => void;
+  onCancel: () => void;
+}) {
   const c = paletteFor(useColorScheme());
   const styles = useMemo(() => createStyles(c), [c]);
   const { t } = useI18n();
@@ -20,7 +25,7 @@ export function ImportScreen(props: { library: Library; onImported: () => void; 
 
   const doImport = (): void => {
     if (backup) {
-      props.library
+      props
         .importBackup(backup)
         .then(props.onImported)
         .catch((e) => setError(String(e)));
@@ -32,7 +37,7 @@ export function ImportScreen(props: { library: Library; onImported: () => void; 
       setError(t.importNotFound);
       return;
     }
-    props.library
+    props
       .importFlow(json, Date.now())
       .then(props.onImported)
       .catch((e) => setError(String(e)));

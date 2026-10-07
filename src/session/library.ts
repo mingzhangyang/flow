@@ -7,6 +7,7 @@ import { type Instant } from '../runtime/clock';
 import { deserializeFlow } from '../domain/serialize';
 import { type Storage } from '../storage/storage';
 import { type Backup, buildBackup, mergeCheckIns } from '../storage/backup';
+import { setStringRecordValue } from '../storage/stringRecord';
 
 export interface Library {
   list(): Promise<Flow[]>;
@@ -69,7 +70,7 @@ export function createLibrary(storage: Storage): Library {
       const revisions: Record<string, Flow[]> = {};
       for (const flow of flows) {
         const history = await storage.loadRevisions(flow.id);
-        if (history.length > 0) revisions[flow.id] = history;
+        if (history.length > 0) setStringRecordValue(revisions, flow.id, history);
       }
       return buildBackup({ flows, revisions, checkIns: await storage.listAllCheckIns(), exportedAt: now });
     },
@@ -81,7 +82,9 @@ export function createLibrary(storage: Storage): Library {
           // 新设备恢复：原样保存（保留 version），历史修订仅在本机没有时写入。
           await storage.saveFlow(flow);
           const localHistory = await storage.loadRevisions(flow.id);
-          const fromBackup = backup.revisions[flow.id];
+          const fromBackup = Object.prototype.hasOwnProperty.call(backup.revisions, flow.id)
+            ? backup.revisions[flow.id]
+            : undefined;
           if (localHistory.length === 0 && fromBackup) {
             await storage.saveRevisions(flow.id, fromBackup.slice(-MAX_REVISIONS));
           }

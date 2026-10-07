@@ -6,6 +6,7 @@ import { serializeFlow, deserializeFlow, coerceFlow } from '../domain/serialize'
 import { reduce } from '../runtime/engine';
 import { type CheckIn, isCheckIn } from '../runtime/adherence';
 import { type KVStore } from './kv';
+import { setStringRecordValue } from './stringRecord';
 
 const FLOW = 'flow:';
 const RUN = 'run:';
@@ -149,7 +150,7 @@ export function createStorage(kv: KVStore): Storage {
       for (const k of keys) {
         const id = k.slice(CHECKINS.length);
         const log = await loadCheckIns(id);
-        if (log.length > 0) all[id] = log;
+        if (log.length > 0) setStringRecordValue(all, id, log);
       }
       return all;
     },

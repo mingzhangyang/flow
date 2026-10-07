@@ -141,3 +141,15 @@ test('journal 只保存稳定删除标识，不依赖 Flow schema 快照', async
 
   failRemove = false;
 });
+
+
+test('journal key 可接受 encodeURIComponent 会拒绝的孤立 surrogate flowId', async () => {
+  const kv = createInMemoryKV();
+  const odd = { ...flow, id: '\ud800' };
+  await deleteOwnedFlowDurably(odd, 'key', undefined, {
+    kv,
+    async removeFlow() {},
+    async unenroll() {},
+  });
+  assert.deepEqual(await journalKeys(kv), []);
+});

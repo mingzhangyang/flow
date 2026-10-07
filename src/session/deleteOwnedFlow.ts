@@ -24,7 +24,8 @@ export interface DeleteOwnedFlowDeps {
 }
 
 function intentKey(flowId: string): string {
-  return `${DELETE_INTENT_PREFIX}${encodeURIComponent(flowId)}`;
+  // JSON tuple handles every JS string (including lone surrogates) without URI encoding failures.
+  return `${DELETE_INTENT_PREFIX}${JSON.stringify(['v1', flowId])}`;
 }
 
 function parseIntent(text: string): DeleteOwnedFlowIntent {

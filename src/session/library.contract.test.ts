@@ -151,3 +151,19 @@ test('恢复备份不覆盖本机数据：同 id 走 commit 入历史，打卡�
   assert.equal(log.length, 2);
   assert.equal(log.find((c) => c.scheduledFor === 500)?.taken, true); // 本机打卡胜出
 });
+
+
+test('备份保留 "__proto__" 这类开放 flowId 的历史修订', async () => {
+  const { lib } = make();
+  const special = addNode(
+    createFlow({ id: '__proto__', title: '特殊 ID', topology: 'sequential' }),
+    step('a', '一步'),
+  );
+  await lib.commit(special);
+  await lib.commit(setMeta(special, { title: '第二版' }));
+
+  const backup = parseBackup(await lib.exportBackup(123));
+  assert.ok(backup);
+  assert.equal(Object.prototype.hasOwnProperty.call(backup.revisions, '__proto__'), true);
+  assert.equal(backup.revisions.__proto__[0]?.title, '特殊 ID');
+});

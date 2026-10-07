@@ -12,7 +12,7 @@ import { diffFlows, describeChange, type Change } from '../ai/diff';
 import { useI18n } from './i18n';
 import { paletteFor, type Palette, spacing, radius } from './theme';
 
-export function InsightScreen(props: { flow: Flow; library: Library; onExit: () => void; onChanged: () => void }) {
+export function InsightScreen(props: { flow: Flow; library: Library; restoreFlow: (flow: Flow) => Promise<Flow>; onExit: () => void; onChanged: () => void }) {
   const { flow } = props;
   const c = paletteFor(useColorScheme());
   const styles = useMemo(() => createStyles(c), [c]);
@@ -36,7 +36,7 @@ export function InsightScreen(props: { flow: Flow; library: Library; onExit: () 
 
   const restore = (): void => {
     if (!previous) return;
-    props.library.restore(previous).then(props.onChanged).catch(() => {});
+    props.restoreFlow(previous).then(props.onChanged).catch(() => {});
   };
 
   return (

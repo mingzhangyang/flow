@@ -7,6 +7,7 @@ import { type Flow } from '../domain/types';
 import { coerceFlow } from '../domain/serialize';
 import { type CheckIn, isCheckIn } from '../runtime/adherence';
 import { type Instant } from '../runtime/clock';
+import { setStringRecordValue } from './stringRecord';
 
 export const BACKUP_KIND = 'zhunshi-backup';
 /** 备份信封自身的版本；flow 各自携带 schemaVersion，两者独立演进（E5 加法演进）。 */
@@ -84,7 +85,7 @@ export function parseBackup(text: string): Backup | null {
           // skip invalid snapshot
         }
       }
-      if (kept.length > 0) revisions[id] = kept;
+      if (kept.length > 0) setStringRecordValue(revisions, id, kept);
     }
   }
 
@@ -93,7 +94,7 @@ export function parseBackup(text: string): Backup | null {
     for (const [id, list] of Object.entries(raw.checkIns as Record<string, unknown>)) {
       if (!Array.isArray(list)) continue;
       const kept = list.filter(isCheckIn);
-      if (kept.length > 0) checkIns[id] = kept;
+      if (kept.length > 0) setStringRecordValue(checkIns, id, kept);
     }
   }
 
