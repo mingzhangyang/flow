@@ -8,11 +8,19 @@
 
 1. **Expo 账号**：`npm i -g eas-cli && eas login`
 2. **绑定项目**：`eas init`——会把 `extra.eas.projectId` 写进 `app.json`，提交它。
-3. **Apple**：Apple Developer Program（个人 $99/年）。首次 `eas build -p ios` 时
+3. **Android 签名凭证**：首次正式使用 EAS Build 前运行
+   `eas credentials:configure-build -p android -e preview`，选择由 EAS 生成并托管新的
+   Android keystore。完成后同一 EAS 项目/凭证应持续复用，不能每次构建重新生成。
+4. **备份 Android keystore**：凭证创建完成后用 `eas credentials -p android` 导出备份到
+   密码管理器/离线安全存储。keystore 丢失会影响后续覆盖升级和商店发布。
+5. **GitHub Actions token**：GitHub 仓库 → Settings → Secrets and variables → Actions →
+   New repository secret，新建 `EXPO_TOKEN`。Token 只放 Secret，不写入仓库文件、PR 或日志。
+6. **Apple**：Apple Developer Program（个人 $99/年）。首次 `eas build -p ios` 时
    EAS 可代管证书与 provisioning profile（推荐，选 EAS managed credentials）。
-4. **Android**：Play Console（一次性 $25）。首次 `eas build -p android` 时让 EAS
-   生成 keystore，然后**立刻** `eas credentials -p android` 导出备份到密码管理器——
-   keystore 丢失 = 永远无法更新已上架应用。
+
+> Expo 官方要求 CI 的非交互 EAS Build 在项目绑定和签名凭证已配置后使用。
+> `.github/workflows/eas-android-preview.yml` 可以在缺少 `projectId` 时用手动输入的
+> `expo_account` 临时完成项目绑定，但 Android keystore 仍应先交互式配置一次。
 
 ## 日常构建
 
@@ -20,8 +28,14 @@
 |---|---|
 | 真机联调（开发客户端） | `eas build --profile development -p ios/android` |
 | 内测分发（Android 直装 APK / iOS ad-hoc） | `eas build --profile preview -p android` |
+| GitHub 手动生成签名 Preview APK | Actions → **EAS Android Preview APK** → Run workflow |
 | 商店正式包 | `eas build --profile production -p all` |
 | 提交商店 | `eas submit -p ios` / `eas submit -p android` |
+
+GitHub 的 Preview APK 工作流只允许手动触发，避免每次 push 消耗 EAS 构建额度。它会先执行
+`npm run check`、e2e、Expo 依赖检查和 `expo-doctor`；全部通过后才触发 EAS。构建完成后，
+工作流会把 EAS 生成的已签名 APK 下载回来，并上传为 GitHub Actions artifact
+`flow-android-preview-apk`。
 
 ## 每次发版的版本号流程
 

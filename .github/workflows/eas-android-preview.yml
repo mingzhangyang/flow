@@ -1,0 +1,166 @@
+name: EAS Android Preview APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      expo_account:
+        description: "Expo account owner (only needed while app.json has no extra.eas.projectId)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eas-android-preview
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build signed preview APK on EAS
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CI: "1"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Require EXPO_TOKEN
+        shell: bash
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${EXPO_TOKEN}" ]; then
+            echo "::error::Missing repository secret EXPO_TOKEN."
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run release preflight
+        run: |
+          npm run check
+          npm run test:e2e
+          npx expo install --check
+          npx expo-doctor@latest
+
+      - name: Ensure EAS project is linked
+        id: eas_project
+        shell: bash
+        env:
+          EXPO_ACCOUNT: ${{ inputs.expo_account }}
+        run: |
+          set -euo pipefail
+
+          PROJECT_ID="$(node -e "const a=require('./app.json'); process.stdout.write(a.expo?.extra?.eas?.projectId ?? '')")"
+
+          if [ -z "${PROJECT_ID}" ]; then
+            if [ -z "${EXPO_ACCOUNT}" ]; then
+              echo "::error::app.json has no expo.extra.eas.projectId. Re-run this workflow with expo_account, or run 'eas init' locally and commit the generated projectId."
+              exit 1
+            fi
+
+            eas init --account "${EXPO_ACCOUNT}" --non-interactive --json > eas-init.json
+            PROJECT_ID="$(node -e "const a=require('./app.json'); process.stdout.write(a.expo?.extra?.eas?.projectId ?? '')")"
+
+            if [ -z "${PROJECT_ID}" ]; then
+              echo "::error::EAS initialization completed without writing expo.extra.eas.projectId."
+              exit 1
+            fi
+
+            echo "::notice::EAS project was linked in this runner only. Commit expo.extra.eas.projectId to app.json after this bootstrap run."
+          fi
+
+          echo "project_id=${PROJECT_ID}" >> "${GITHUB_OUTPUT}"
+          echo "EAS project ID: ${PROJECT_ID}"
+
+      - name: Build Android preview APK on EAS
+        id: eas_build
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          eas build             --platform android             --profile preview             --non-interactive             --wait             --json > eas-build.json
+
+          BUILD_ID="$(node <<'NODE'
+          const fs = require('fs');
+          const raw = JSON.parse(fs.readFileSync('eas-build.json', 'utf8'));
+          const build = Array.isArray(raw) ? raw[0] : raw;
+          if (!build?.id) process.exit(1);
+          process.stdout.write(build.id);
+          NODE
+          )"
+
+          if [ -z "${BUILD_ID}" ]; then
+            echo "::error::EAS build completed without a build ID."
+            exit 1
+          fi
+
+          echo "build_id=${BUILD_ID}" >> "${GITHUB_OUTPUT}"
+          echo "EAS build ID: ${BUILD_ID}"
+
+      - name: Download signed APK
+        shell: bash
+        env:
+          BUILD_ID: ${{ steps.eas_build.outputs.build_id }}
+        run: |
+          set -euo pipefail
+
+          eas build:view "${BUILD_ID}" --json > eas-build-view.json
+
+          APK_URL="$(node <<'NODE'
+          const fs = require('fs');
+          const build = JSON.parse(fs.readFileSync('eas-build-view.json', 'utf8'));
+          const url = build?.artifacts?.buildUrl;
+          if (!url) process.exit(1);
+          process.stdout.write(url);
+          NODE
+          )"
+
+          if [ -z "${APK_URL}" ]; then
+            echo "::error::Finished EAS build has no APK artifact URL."
+            exit 1
+          fi
+
+          curl --fail --location --retry 3             --output flow-android-preview.apk             "${APK_URL}"
+
+          test -s flow-android-preview.apk
+
+      - name: Upload APK to GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: flow-android-preview-apk
+          path: flow-android-preview.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Build summary
+        shell: bash
+        env:
+          PROJECT_ID: ${{ steps.eas_project.outputs.project_id }}
+          BUILD_ID: ${{ steps.eas_build.outputs.build_id }}
+        run: |
+          {
+            echo "## EAS Android Preview APK"
+            echo ""
+            echo "- Project ID: \`${PROJECT_ID}\`"
+            echo "- Build ID: \`${BUILD_ID}\`"
+            echo "- GitHub artifact: \`flow-android-preview-apk\`"
+            echo ""
+            echo "The APK is signed by the Android keystore configured for this EAS project/profile."
+          } >> "${GITHUB_STEP_SUMMARY}"
