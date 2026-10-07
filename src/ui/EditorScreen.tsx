@@ -3,7 +3,6 @@
 
 import { useState, useMemo } from 'react';
 import {
-  KeyboardAvoidingView,
   Platform,
   View,
   Text,
@@ -121,10 +120,7 @@ export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Pro
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.screen}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <View style={styles.screen}>
       <View style={styles.header}>
         <Pressable onPress={props.onCancel} hitSlop={12}><Text style={styles.headerBtn}>{t.cancel}</Text></Pressable>
         <Text style={styles.title}>{t.editorTitle}</Text>
@@ -311,7 +307,7 @@ export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Pro
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
