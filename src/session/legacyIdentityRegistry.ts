@@ -24,3 +24,16 @@ export async function markLegacyAmbiguousFlowId(kv: KVStore, flowId: string): Pr
   if (ids.includes(flowId)) return;
   await kv.setItem(LEGACY_AMBIGUOUS_IDS_KEY, JSON.stringify([...ids, flowId].sort()));
 }
+
+
+export interface LegacyIdentityRegistry {
+  read(): Promise<string[]>;
+  mark(flowId: string): Promise<void>;
+}
+
+export function createLegacyIdentityRegistry(kv: KVStore): LegacyIdentityRegistry {
+  return {
+    read: () => readLegacyAmbiguousFlowIds(kv),
+    mark: (flowId) => markLegacyAmbiguousFlowId(kv, flowId),
+  };
+}

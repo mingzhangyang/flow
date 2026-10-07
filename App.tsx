@@ -26,10 +26,7 @@ import {
   type OwnedCatalogSnapshot,
 } from './src/session/flowCatalog';
 import { createCatalogCoordinator } from './src/session/catalogCoordinator';
-import {
-  markLegacyAmbiguousFlowId,
-  readLegacyAmbiguousFlowIds,
-} from './src/session/legacyIdentityRegistry';
+import { createLegacyIdentityRegistry } from './src/session/legacyIdentityRegistry';
 import { runCommittedCatalogMutation } from './src/session/catalogMutation';
 import {
   deleteOwnedFlowDurably,
@@ -75,7 +72,8 @@ export default function App() {
   const examplesRef = useRef(examples);
   examplesRef.current = examples;
   const storage = useMemo(() => createStorage(asyncStorageKV), []);
-  const library = useMemo(() => createLibrary(storage), [storage]);
+  const legacyIdentities = useMemo(() => createLegacyIdentityRegistry(asyncStorageKV), []);
+  const library = useMemo(() => createLibrary(storage, legacyIdentities), [storage, legacyIdentities]);
   const notifier = useMemo(() => createExpoNotifier(), []);
   const notificationResponses = useMemo(() => createExpoNotificationResponseSource(), []);
 
@@ -94,14 +92,23 @@ export default function App() {
       kv: asyncStorageKV,
       removeFlow: (id) => library.remove(id),
       unenroll: (key, legacyId) => unenrollFlow(asyncStorageKV, key, legacyId),
-      markLegacyAmbiguous: (id) => markLegacyAmbiguousFlowId(asyncStorageKV, id),
+      markLegacyAmbiguous: (id) => legacyIdentities.mark(id),
       deleteRun: (id) => storage.deleteRun(id),
       deleteDefinitionCheckIns: (key) => storage.deleteDefinitionCheckIns(key),
       deleteLegacyCheckIns: (id) => storage.deleteCheckIns(id),
     });
 
     const flows = await library.list();
-    const legacyAmbiguousFlowIds = await readLegacyAmbiguousFlowIds(asyncStorageKV);
+
+    // Ambiguity is historical state, not merely a property of today's catalog. Before a
+    // shadowing catalog can ever become ready, persist the tombstone so later example-set
+    // changes, deletion, restart, or backup/restore cannot reopen bare-ID migration.
+    const exampleIds = new Set(examples.map((flow) => flow.id));
+    for (const flow of flows) {
+      if (exampleIds.has(flow.id)) await legacyIdentities.mark(flow.id);
+    }
+    const legacyAmbiguousFlowIds = await legacyIdentities.read();
+
     await rescheduleReminders({
       kv: asyncStorageKV,
       notifier,
@@ -110,7 +117,7 @@ export default function App() {
       deviceTz: systemTimeZone,
     });
     return { flows, legacyAmbiguousFlowIds };
-  }, [examples, library, notifier, storage]);
+  }, [examples, legacyIdentities, library, notifier, storage]);
 
   const refreshCatalog = useCallback((
     mutation?: () => Promise<void>,

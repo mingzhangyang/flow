@@ -24,6 +24,11 @@ export interface Backup {
   checkIns: Record<string, CheckIn[]>;
   /** v2 additive：按 catalog definitionKey 的打卡日志。旧 Backup 对此字段可缺省。 */
   definitionCheckIns?: Record<string, CheckIn[]>;
+  /**
+   * 曾经发生过 owned/example source 歧义的裸 Flow ID。
+   * 这是迁移安全元数据：一旦进入 quarantine，跨设备恢复后也不能重新授予 legacy alias。
+   */
+  legacyAmbiguousFlowIds?: string[];
 }
 
 /** 组装备份文本（缩进 2、末尾换行，与 serializeFlow 同一可读约定）。 */
@@ -32,6 +37,7 @@ export function buildBackup(data: {
   revisions: Record<string, Flow[]>;
   checkIns: Record<string, CheckIn[]>;
   definitionCheckIns?: Record<string, CheckIn[]>;
+  legacyAmbiguousFlowIds?: string[];
   exportedAt: Instant;
 }): string {
   const backup: Backup = {
@@ -42,6 +48,7 @@ export function buildBackup(data: {
     revisions: data.revisions,
     checkIns: data.checkIns,
     definitionCheckIns: data.definitionCheckIns ?? {},
+    legacyAmbiguousFlowIds: [...new Set(data.legacyAmbiguousFlowIds ?? [])].sort(),
   };
   return JSON.stringify(backup, null, 2) + '\n';
 }
@@ -59,6 +66,7 @@ export function parseBackup(text: string): Backup | null {
     revisions?: unknown;
     checkIns?: unknown;
     definitionCheckIns?: unknown;
+    legacyAmbiguousFlowIds?: unknown;
   };
   try {
     raw = JSON.parse(text) as typeof raw;
@@ -113,6 +121,19 @@ export function parseBackup(text: string): Backup | null {
     }
   }
 
+  let legacyAmbiguousFlowIds: string[] = [];
+  if (raw.legacyAmbiguousFlowIds !== undefined) {
+    // Safety metadata is all-or-nothing: silently dropping a malformed tombstone could
+    // re-enable bare-ID migration on another device, so a malformed field invalidates backup.
+    if (
+      !Array.isArray(raw.legacyAmbiguousFlowIds) ||
+      !raw.legacyAmbiguousFlowIds.every((id) => typeof id === 'string' && id.length > 0)
+    ) {
+      return null;
+    }
+    legacyAmbiguousFlowIds = [...new Set(raw.legacyAmbiguousFlowIds)].sort();
+  }
+
   return {
     kind: BACKUP_KIND,
     backupVersion: typeof raw.backupVersion === 'number' ? raw.backupVersion : 1,
@@ -121,6 +142,7 @@ export function parseBackup(text: string): Backup | null {
     revisions,
     checkIns,
     definitionCheckIns,
+    legacyAmbiguousFlowIds,
   };
 }
 

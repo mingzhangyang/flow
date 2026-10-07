@@ -15,6 +15,7 @@ const sampleData = () => ({
   definitionCheckIns: {
     [JSON.stringify(['v2', 'example', medicationFlow.id])]: [checkIn('n2', 2000, true, 2010)],
   },
+  legacyAmbiguousFlowIds: ['shared-id'],
   exportedAt: 42,
 });
 
@@ -29,6 +30,7 @@ test('备份 round-trip 无损', () => {
   assert.deepEqual(parsed.revisions, data.revisions);
   assert.deepEqual(parsed.checkIns, data.checkIns);
   assert.deepEqual(parsed.definitionCheckIns, data.definitionCheckIns);
+  assert.deepEqual(parsed.legacyAmbiguousFlowIds, data.legacyAmbiguousFlowIds);
 });
 
 test('非备份文本 → null（据此与单条 flow 导入区分）', () => {
@@ -117,4 +119,19 @@ test('definitionCheckIns 的 present-empty marker 备份 round-trip 不丢失', 
   assert.ok(parsed);
   assert.equal(Object.prototype.hasOwnProperty.call(parsed.definitionCheckIns ?? {}, key), true);
   assert.deepEqual(parsed.definitionCheckIns?.[key], []);
+});
+
+
+test('legacy ambiguity safety metadata 格式损坏时整份备份 fail closed', () => {
+  const raw = JSON.parse(buildBackup(sampleData())) as Record<string, unknown>;
+  raw.legacyAmbiguousFlowIds = ['safe', 42];
+  assert.equal(parseBackup(JSON.stringify(raw)), null);
+});
+
+test('旧备份没有 legacy ambiguity 字段仍可解析为空 quarantine', () => {
+  const raw = JSON.parse(buildBackup(sampleData())) as Record<string, unknown>;
+  delete raw.legacyAmbiguousFlowIds;
+  const parsed = parseBackup(JSON.stringify(raw));
+  assert.ok(parsed);
+  assert.deepEqual(parsed.legacyAmbiguousFlowIds, []);
 });

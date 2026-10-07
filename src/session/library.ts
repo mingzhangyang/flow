@@ -8,6 +8,7 @@ import { deserializeFlow } from '../domain/serialize';
 import { type Storage } from '../storage/storage';
 import { type Backup, buildBackup, mergeCheckIns } from '../storage/backup';
 import { setStringRecordValue } from '../storage/stringRecord';
+import { type LegacyIdentityRegistry } from './legacyIdentityRegistry';
 
 export interface Library {
   list(): Promise<Flow[]>;
@@ -30,7 +31,17 @@ export interface Library {
 /** 每条 flow 保留的历史修订上限：超出时丢最旧的，避免存储无界增长。 */
 export const MAX_REVISIONS = 50;
 
-export function createLibrary(storage: Storage): Library {
+const NO_LEGACY_IDENTITY_REGISTRY: LegacyIdentityRegistry = {
+  async read() {
+    return [];
+  },
+  async mark() {},
+};
+
+export function createLibrary(
+  storage: Storage,
+  legacyIdentities: LegacyIdentityRegistry = NO_LEGACY_IDENTITY_REGISTRY,
+): Library {
   return {
     list: () => storage.listFlows(),
     get: (id) => storage.loadFlow(id),
@@ -77,11 +88,18 @@ export function createLibrary(storage: Storage): Library {
         revisions,
         checkIns: await storage.listAllCheckIns(),
         definitionCheckIns: await storage.listAllDefinitionCheckIns(),
+        legacyAmbiguousFlowIds: await legacyIdentities.read(),
         exportedAt: now,
       });
     },
 
     async importBackup(backup) {
+      // Restore quarantine first. If import later fails part-way, safety history is already
+      // durable and a partial restore cannot accidentally reopen a bare-ID alias.
+      for (const flowId of backup.legacyAmbiguousFlowIds ?? []) {
+        await legacyIdentities.mark(flowId);
+      }
+
       for (const flow of backup.flows) {
         const existing = await storage.loadFlow(flow.id);
         if (!existing) {

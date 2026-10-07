@@ -7,6 +7,7 @@ import { createInMemoryKV } from '../storage/kv';
 import { createStorage } from '../storage/storage';
 import { parseBackup } from '../storage/backup';
 import { createLibrary, MAX_REVISIONS } from './library';
+import { createLegacyIdentityRegistry } from './legacyIdentityRegistry';
 import { createFlow, addNode, setMeta } from '../domain/editing';
 import { serializeFlow } from '../domain/serialize';
 import { type TimedNode } from '../domain/types';
@@ -14,8 +15,10 @@ import { type TimedNode } from '../domain/types';
 const step = (id: string, label: string): TimedNode => ({ kind: 'timed', id, label, durationSec: 60 });
 
 function make() {
-  const storage = createStorage(createInMemoryKV());
-  return { storage, lib: createLibrary(storage) };
+  const kv = createInMemoryKV();
+  const storage = createStorage(kv);
+  const legacyIdentities = createLegacyIdentityRegistry(kv);
+  return { storage, legacyIdentities, lib: createLibrary(storage, legacyIdentities) };
 }
 
 function sample() {
@@ -166,4 +169,17 @@ test('备份保留 "__proto__" 这类开放 flowId 的历史修订', async () =>
   assert.ok(backup);
   assert.equal(Object.prototype.hasOwnProperty.call(backup.revisions, '__proto__'), true);
   assert.equal(backup.revisions.__proto__[0]?.title, '特殊 ID');
+});
+
+
+test('整库备份携带 legacy ambiguity tombstone，并在恢复业务数据前恢复 quarantine', async () => {
+  const source = make();
+  await source.legacyIdentities.mark('shared-id');
+  const backup = parseBackup(await source.lib.exportBackup(88));
+  assert.ok(backup);
+  assert.deepEqual(backup.legacyAmbiguousFlowIds, ['shared-id']);
+
+  const target = make();
+  await target.lib.importBackup(backup);
+  assert.deepEqual(await target.legacyIdentities.read(), ['shared-id']);
 });
