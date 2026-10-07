@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createInMemoryKV } from '../storage/kv';
-import { createStorage } from '../storage/storage';
+import { createStorage, type Storage } from '../storage/storage';
 import { parseBackup } from '../storage/backup';
 import { createLibrary, MAX_REVISIONS } from './library';
 import { createFlow, addNode, setMeta } from '../domain/editing';
@@ -170,4 +170,77 @@ test('备份保留 "__proto__" 这类开放 flowId 的历史修订', async () =>
   assert.ok(backup);
   assert.equal(Object.prototype.hasOwnProperty.call(backup.revisions, '__proto__'), true);
   assert.equal(backup.revisions.__proto__[0]?.title, '特殊 ID');
+});
+
+
+test('commit 在历史已写入但 current 保存失败后可重试，不重复历史', async () => {
+  const kv = createInMemoryKV();
+  const base = createStorage(kv);
+  const setup = createLibrary(base);
+  await setup.commit(sample());
+
+  let failNextSave = true;
+  const faulty: Storage = {
+    ...base,
+    async saveFlow(flow) {
+      if (failNextSave) {
+        failNextSave = false;
+        throw new Error('save current failed');
+      }
+      await base.saveFlow(flow);
+    },
+  };
+  const lib = createLibrary(faulty);
+  const edited = setMeta(sample(), { title: '第二版' });
+
+  await assert.rejects(() => lib.commit(edited));
+  assert.equal((await base.loadFlow('mine'))?.version, 1);
+  assert.equal((await base.loadRevisions('mine')).length, 1);
+
+  const saved = await lib.commit(edited);
+  assert.equal(saved.version, 2);
+  const history = await base.loadRevisions('mine');
+  assert.equal(history.length, 1);
+  assert.equal(history[0]?.title, '我的流程');
+});
+
+test('备份恢复在后续写入失败后可安全重试，不重复生成 Flow revision', async () => {
+  const source = make();
+  await source.lib.commit(setMeta(sample(), { title: '备份版本' }));
+  await source.storage.saveCheckIns(mineDefinitionKey, [
+    { nodeId: 'a', scheduledFor: 1000, taken: true, at: 1001 },
+  ]);
+  const backup = parseBackup(await source.lib.exportBackup(123));
+  assert.ok(backup);
+
+  const kv = createInMemoryKV();
+  const base = createStorage(kv);
+  const initial = createLibrary(base);
+  await initial.commit(setMeta(sample(), { title: '本机版本' }));
+
+  let failCheckIns = true;
+  const faulty: Storage = {
+    ...base,
+    async saveCheckIns(definitionKey, log) {
+      if (failCheckIns) {
+        failCheckIns = false;
+        throw new Error('check-in write failed');
+      }
+      await base.saveCheckIns(definitionKey, log);
+    },
+  };
+  const lib = createLibrary(faulty);
+
+  await assert.rejects(() => lib.importBackup(backup));
+  assert.equal((await base.loadFlow('mine'))?.version, 2);
+  assert.equal((await base.loadRevisions('mine')).length, 1);
+
+  await lib.importBackup(backup);
+  const current = await base.loadFlow('mine');
+  assert.equal(current?.title, '备份版本');
+  assert.equal(current?.version, 2);
+  const history = await base.loadRevisions('mine');
+  assert.equal(history.length, 1);
+  assert.equal(history[0]?.title, '本机版本');
+  assert.equal((await base.loadCheckIns(mineDefinitionKey)).length, 1);
 });

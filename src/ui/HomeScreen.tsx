@@ -156,7 +156,7 @@ export function HomeScreen(props: {
         {props.catalog.status === 'error' ? (
           <View style={styles.catalogError}>
             <Text style={styles.catalogErrorText}>{t.catalogUnavailable}</Text>
-            <Pressable style={styles.retryButton} onPress={props.onRetry}>
+            <Pressable style={styles.retryButton} onPress={() => props.onRetry()}>
               <Text style={styles.retryText}>{t.retry}</Text>
             </Pressable>
           </View>

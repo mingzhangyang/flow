@@ -2,6 +2,7 @@
 // 全部建立在 KVStore 之上；项目尚未发布，因此不存在 app-data legacy namespace。
 
 import { type Flow, type Run, type RunEvent, type RunEventType } from '../domain/types';
+import { parseDefinitionKey } from '../domain/definitionIdentity';
 import { serializeFlow, deserializeFlow, coerceFlow } from '../domain/serialize';
 import { reduce } from '../runtime/engine';
 import { type CheckIn, isCheckIn } from '../runtime/adherence';
@@ -66,6 +67,12 @@ export interface Storage {
 }
 
 export function createStorage(kv: KVStore): Storage {
+  function assertDefinitionKey(definitionKey: string): void {
+    if (parseDefinitionKey(definitionKey) === null) {
+      throw new Error('invalid definitionKey');
+    }
+  }
+
   async function loadFlow(id: string): Promise<Flow | null> {
     const text = await kv.getItem(FLOW + id);
     return text === null ? null : deserializeFlow(text);
@@ -76,6 +83,7 @@ export function createStorage(kv: KVStore): Storage {
   }
 
   async function loadCheckIns(definitionKey: string): Promise<CheckIn[]> {
+    assertDefinitionKey(definitionKey);
     const text = await kv.getItem(CHECKINS + definitionKey);
     if (text === null) return [];
     const raw = JSON.parse(text) as unknown;
@@ -137,10 +145,12 @@ export function createStorage(kv: KVStore): Storage {
     },
 
     async saveCheckIns(definitionKey, log) {
+      assertDefinitionKey(definitionKey);
       await kv.setItem(CHECKINS + definitionKey, JSON.stringify(log));
     },
     loadCheckIns,
     async deleteCheckIns(definitionKey) {
+      assertDefinitionKey(definitionKey);
       await kv.removeItem(CHECKINS + definitionKey);
     },
     async listAllCheckIns() {
@@ -148,6 +158,7 @@ export function createStorage(kv: KVStore): Storage {
       const all: Record<string, CheckIn[]> = {};
       for (const key of keys) {
         const definitionKey = key.slice(CHECKINS.length);
+        assertDefinitionKey(definitionKey);
         const log = await loadCheckIns(definitionKey);
         if (log.length > 0) setStringRecordValue(all, definitionKey, log);
       }

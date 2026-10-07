@@ -7,6 +7,7 @@ import { type Instant, type TimeZone, MS_PER_DAY } from '../runtime/clock';
 import { timeZoneForFlow } from '../runtime/ianaTimeZone';
 import { type KVStore } from '../storage/kv';
 import { type Notifier } from './notifier';
+import { isScheduledReminderId } from './notificationIdentity';
 import { planScheduledBatch } from './plan';
 
 const ENROLLED_KEY = 'notif:enrolled:v1';
@@ -77,7 +78,7 @@ export async function rescheduleReminders(opts: {
     }));
 
   const reminders = planScheduledBatch(entries, opts.now, RESCHEDULE_HORIZON_MS, RESCHEDULE_CAP);
-  const prevIds = await readStringArray(opts.kv, LAST_IDS_KEY);
+  const prevIds = await readStringArray(opts.kv, LAST_IDS_KEY, isScheduledReminderId);
   await opts.notifier.cancel(prevIds);
   await opts.notifier.schedule(reminders);
   await opts.kv.setItem(LAST_IDS_KEY, JSON.stringify(reminders.map((r) => r.id)));

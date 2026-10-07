@@ -8,6 +8,7 @@ import { coffeeFlow } from '../examples/coffee';
 import { catalogDefinitionKey } from '../session/flowCatalog';
 import { type Reminder } from './plan';
 import { type Notifier } from './notifier';
+import { sequentialReminderId } from './notificationIdentity';
 import { enrollFlow, enrolledFlowKeys, rescheduleReminders, unenrollFlow, RESCHEDULE_CAP } from './reschedule';
 
 function recordingNotifier() {
@@ -139,4 +140,29 @@ test('损坏 previous notification id registry 时重排 fail closed，不取消
   assert.deepEqual(cancelled, []);
   assert.deepEqual(scheduled, []);
   assert.equal(await kv.getItem('notif:scheduled-ids:v1'), malformed);
+});
+
+
+test('previous-ID registry 拒绝 sequential / unrelated identifier，绝不误取消计时器', async () => {
+  for (const unsafeId of [sequentialReminderId('active-run'), 'unrelated-id']) {
+    const kv = createInMemoryKV();
+    const { notifier, scheduled, cancelled } = recordingNotifier();
+    await enrollFlow(kv, medKey);
+    const persisted = JSON.stringify([unsafeId]);
+    await kv.setItem('notif:scheduled-ids:v1', persisted);
+
+    await assert.rejects(() =>
+      rescheduleReminders({
+        kv,
+        notifier,
+        flows: [{ flow: medicationFlow, definitionKey: medKey }],
+        now: NOW,
+        deviceTz: tz,
+      }),
+    );
+
+    assert.deepEqual(cancelled, []);
+    assert.deepEqual(scheduled, []);
+    assert.equal(await kv.getItem('notif:scheduled-ids:v1'), persisted);
+  }
 });

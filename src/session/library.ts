@@ -22,6 +22,34 @@ export interface Library {
 
 export const MAX_REVISIONS = 50;
 
+function sameJsonValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => sameJsonValue(value, right[index]));
+  }
+  if (
+    typeof left !== 'object' || left === null ||
+    typeof right !== 'object' || right === null
+  ) {
+    return false;
+  }
+  const a = left as Record<string, unknown>;
+  const b = right as Record<string, unknown>;
+  const aKeys = Object.keys(a).filter((key) => a[key] !== undefined).sort();
+  const bKeys = Object.keys(b).filter((key) => b[key] !== undefined).sort();
+  return aKeys.length === bKeys.length &&
+    aKeys.every((key, index) => key === bKeys[index] && sameJsonValue(a[key], b[key]));
+}
+
+function sameFlowContent(left: Flow, right: Flow): boolean {
+  const { version: _leftVersion, ...leftContent } = left;
+  const { version: _rightVersion, ...rightContent } = right;
+  return sameJsonValue(leftContent, rightContent);
+}
+
 export function createLibrary(storage: Storage): Library {
   return {
     list: () => storage.listFlows(),
@@ -31,7 +59,10 @@ export function createLibrary(storage: Storage): Library {
       const prev = await storage.loadFlow(flow.id);
       if (prev) {
         const history = await storage.loadRevisions(flow.id);
-        await storage.saveRevisions(flow.id, [...history, prev].slice(-MAX_REVISIONS));
+        const alreadyCaptured = history.length > 0 && sameJsonValue(history.at(-1), prev);
+        if (!alreadyCaptured) {
+          await storage.saveRevisions(flow.id, [...history, prev].slice(-MAX_REVISIONS));
+        }
       }
       const next: Flow = { ...flow, version: prev ? (prev.version ?? 1) + 1 : 1 };
       await storage.saveFlow(next);
@@ -74,15 +105,16 @@ export function createLibrary(storage: Storage): Library {
         const existing = await storage.loadFlow(flow.id);
         if (!existing) {
           await storage.saveFlow(flow);
-          const localHistory = await storage.loadRevisions(flow.id);
-          const fromBackup = Object.prototype.hasOwnProperty.call(backup.revisions, flow.id)
-            ? backup.revisions[flow.id]
-            : undefined;
-          if (localHistory.length === 0 && fromBackup) {
-            await storage.saveRevisions(flow.id, fromBackup.slice(-MAX_REVISIONS));
-          }
-        } else {
+        } else if (!sameFlowContent(existing, flow)) {
           await this.commit(flow);
+        }
+
+        const localHistory = await storage.loadRevisions(flow.id);
+        const fromBackup = Object.prototype.hasOwnProperty.call(backup.revisions, flow.id)
+          ? backup.revisions[flow.id]
+          : undefined;
+        if (localHistory.length === 0 && fromBackup) {
+          await storage.saveRevisions(flow.id, fromBackup.slice(-MAX_REVISIONS));
         }
       }
 

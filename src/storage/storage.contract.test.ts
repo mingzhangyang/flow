@@ -9,6 +9,7 @@ import { createInMemoryKV } from './kv';
 import { createStorage } from './storage';
 import { coffeeFlow } from '../examples/coffee';
 import { medicationFlow } from '../examples/medication';
+import { catalogDefinitionKey } from '../session/flowCatalog';
 
 function fresh() {
   return createStorage(createInMemoryKV());
@@ -68,11 +69,12 @@ test('保存 / 读取 Run（含事件日志）', async () => {
 
 test('保存 / 读取打卡日志', async () => {
   const s = fresh();
-  assert.deepEqual(await s.loadCheckIns('example.medication'), []);
+  const key = catalogDefinitionKey('example.medication', 'example');
+  assert.deepEqual(await s.loadCheckIns(key), []);
 
   const log = [{ nodeId: 'morning', scheduledFor: 28_800_000, taken: true, at: 28_800_500 }];
-  await s.saveCheckIns('example.medication', log);
-  assert.deepEqual(await s.loadCheckIns('example.medication'), log);
+  await s.saveCheckIns(key, log);
+  assert.deepEqual(await s.loadCheckIns(key), log);
 });
 
 // ---- 持久数据回到纯核心前的闸门：坏数据返回 null / 跳过，绝不流入运行时 ----
@@ -124,14 +126,17 @@ test('Run 内嵌的旧 schema flow 快照在读取时被迁移', async () => {
 test('打卡容器损坏 fail closed；坏条目可单独丢弃', async () => {
   const kv = createInMemoryKV();
   const s = createStorage(kv);
-  await kv.setItem('checkins:v1:x', '{not json');
-  await assert.rejects(() => s.loadCheckIns('x'));
-  await kv.setItem('checkins:v1:not-array', '{}');
-  await assert.rejects(() => s.loadCheckIns('not-array'));
+  const brokenKey = catalogDefinitionKey('x', 'owned');
+  const notArrayKey = catalogDefinitionKey('not-array', 'owned');
+  const goodKey = catalogDefinitionKey('y', 'owned');
+  await kv.setItem('checkins:v1:' + brokenKey, '{not json');
+  await assert.rejects(() => s.loadCheckIns(brokenKey));
+  await kv.setItem('checkins:v1:' + notArrayKey, '{}');
+  await assert.rejects(() => s.loadCheckIns(notArrayKey));
 
   const good = { nodeId: 'a', scheduledFor: 1, taken: true, at: 2 };
-  await kv.setItem('checkins:v1:y', JSON.stringify([good, { nodeId: 42 }, null]));
-  assert.deepEqual(await s.loadCheckIns('y'), [good]);
+  await kv.setItem('checkins:v1:' + goodKey, JSON.stringify([good, { nodeId: 42 }, null]));
+  assert.deepEqual(await s.loadCheckIns(goodKey), [good]);
 });
 
 test('历史修订容器损坏 fail closed；坏快照跳过、其余保留', async () => {
@@ -148,13 +153,14 @@ test('历史修订容器损坏 fail closed；坏快照跳过、其余保留', as
 });
 
 
-test('listAllCheckIns 保留 "__proto__" 这类开放 flowId，而不触发对象原型语义', async () => {
+test('listAllCheckIns 保留 "__proto__" 这类开放 flowId 的 canonical identity', async () => {
   const s = fresh();
+  const key = catalogDefinitionKey('__proto__', 'owned');
   const log = [{ nodeId: 'dose', scheduledFor: 1, taken: true, at: 2 }];
-  await s.saveCheckIns('__proto__', log);
+  await s.saveCheckIns(key, log);
   const all = await s.listAllCheckIns();
-  assert.equal(Object.prototype.hasOwnProperty.call(all, '__proto__'), true);
-  assert.deepEqual(all.__proto__, log);
+  assert.equal(Object.prototype.hasOwnProperty.call(all, key), true);
+  assert.deepEqual(all[key], log);
 });
 
 
@@ -168,4 +174,26 @@ test('本机 revision key 与 snapshot.id 不一致时不会流入历史', async
   const revisions = await s.loadRevisions('owner');
   assert.equal(revisions.length, 1);
   assert.equal(revisions[0]?.id, 'owner');
+});
+
+
+test('check-in exact operations 拒绝 bare / noncanonical definitionKey 且不写入', async () => {
+  const kv = createInMemoryKV();
+  const s = createStorage(kv);
+  const log = [{ nodeId: 'dose', scheduledFor: 1, taken: true, at: 2 }];
+
+  await assert.rejects(() => s.saveCheckIns('bare-flow-id', log));
+  await assert.rejects(() => s.loadCheckIns('bare-flow-id'));
+  await assert.rejects(() => s.deleteCheckIns('bare-flow-id'));
+  assert.equal(await kv.getItem('checkins:v1:bare-flow-id'), null);
+});
+
+test('listAllCheckIns 遇到 malformed identity fail closed，避免导出后静默丢日志', async () => {
+  const kv = createInMemoryKV();
+  const s = createStorage(kv);
+  const raw = JSON.stringify([{ nodeId: 'dose', scheduledFor: 1, taken: true, at: 2 }]);
+  await kv.setItem('checkins:v1:bare-flow-id', raw);
+
+  await assert.rejects(() => s.listAllCheckIns());
+  assert.equal(await kv.getItem('checkins:v1:bare-flow-id'), raw);
 });
