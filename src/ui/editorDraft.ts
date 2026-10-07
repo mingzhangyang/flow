@@ -6,10 +6,20 @@ import type { Flow, FlowNode, Recurrence } from '../domain/types';
 function normalizeRepeat(flow: Flow): Recurrence | null {
   if (flow.topology !== 'scheduled') return null;
   const repeat = flow.repeat ?? { kind: 'once' };
-  if (repeat.kind === 'weekly') {
-    return { ...repeat, days: [...repeat.days].sort((a, b) => a - b) };
+
+  // Rebuild every variant instead of spreading/import-preserving objects.
+  // JSON.stringify is order-sensitive for object keys, while recurrence
+  // semantics are not, so the signature needs one fixed representation.
+  switch (repeat.kind) {
+    case 'once':
+      return { kind: 'once' };
+    case 'daily':
+      return { kind: 'daily' };
+    case 'weekly':
+      return { kind: 'weekly', days: [...repeat.days].sort((a, b) => a - b) };
+    case 'everyNDays':
+      return { kind: 'everyNDays', n: repeat.n, fromDay: repeat.fromDay };
   }
-  return repeat;
 }
 
 function normalizeNode(node: FlowNode): unknown {
