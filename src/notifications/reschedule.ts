@@ -45,6 +45,13 @@ export async function enrollFlow(kv: KVStore, flowId: string): Promise<void> {
   await kv.setItem(ENROLLED_KEY, JSON.stringify([...ids, flowId]));
 }
 
+/** 关闭某条 flow 的提醒登记（幂等）。删除用户 Flow 前调用，避免同 id fallback 继承登记。 */
+export async function unenrollFlow(kv: KVStore, flowId: string): Promise<void> {
+  const ids = await enrolledFlowIds(kv);
+  if (!ids.includes(flowId)) return;
+  await kv.setItem(ENROLLED_KEY, JSON.stringify(ids.filter((id) => id !== flowId)));
+}
+
 /**
  * 重排全部已登记 flow 的日程提醒。
  * @param flows 候选全集（示例 + 库中全部）；已登记但不在其中的（已删除）自然不再排。

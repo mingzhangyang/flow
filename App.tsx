@@ -22,7 +22,7 @@ import { createExpoNotifier } from './src/notifications/expoNotifier';
 import { createExpoNotificationResponseSource } from './src/notifications/notificationResponses';
 import { configureExpoNotificationPresentation } from './src/notifications/notificationPresentation';
 import { type NotificationRouteData } from './src/notifications/notificationRoute';
-import { enrollFlow, rescheduleReminders } from './src/notifications/reschedule';
+import { enrollFlow, rescheduleReminders, unenrollFlow } from './src/notifications/reschedule';
 import { systemTimeZone } from './src/runtime/systemTimeZone';
 import { systemSharer } from './src/sharing/systemSharer';
 import { HomeScreen } from './src/ui/HomeScreen';
@@ -72,6 +72,17 @@ export default function App() {
     home();
   };
 
+  const deleteOwnedFlow = useCallback(async (flowId: string): Promise<void> => {
+    // 先取消 enrollment，再删除定义。这样即使同 id 的内置示例随后重新可见，
+    // 也不会继承被删用户 Flow 的通知登记；finally 触发重排，清掉旧系统通知。
+    await unenrollFlow(asyncStorageKV, flowId);
+    try {
+      await library.remove(flowId);
+    } finally {
+      setRefreshKey((k) => k + 1);
+    }
+  }, [library]);
+
   // 通知只携带稳定 id；真正的 Flow 总是从当前示例/本地库重新读取，
   // 避免把可能过期的定义快照塞进系统通知（C6/E5）。
   const openFlowFromNotification = useCallback(async (flowId: string): Promise<void> => {
@@ -104,21 +115,14 @@ export default function App() {
     return () => sub.remove();
   }, [refreshReminders, refreshKey]);
 
-  // 运行中点击走 listener；App 已被系统杀掉时由 last response 补上冷启动路径。
-  // 原生适配器消费后清掉 last response，避免下次普通启动再次跳转。
+  // 原生 response source 内部协调冷启动 last response 与运行中 listener：
+  // 启动窗口先读 initial、缓冲 listener，再按顺序去重交付，避免重复/乱序导航。
   useEffect(() => {
     let active = true;
-    const open = (route: NotificationRouteData): void => {
+    const unsubscribe = notificationResponses.start((route: NotificationRouteData) => {
       if (!active) return;
       openFlowFromNotification(route.flowId).catch(() => {});
-    };
-    const unsubscribe = notificationResponses.subscribe(open);
-    notificationResponses
-      .getInitialRoute()
-      .then((route) => {
-        if (route) open(route);
-      })
-      .catch(() => {});
+    });
     return () => {
       active = false;
       unsubscribe();
@@ -141,6 +145,7 @@ export default function App() {
           onEdit={(flow) => setScreen({ name: 'edit', flow })}
           onExport={(flow) => setScreen({ name: 'export', flow })}
           onInsight={(flow) => setScreen({ name: 'insight', flow })}
+          onDelete={deleteOwnedFlow}
           onImport={() => setScreen({ name: 'import' })}
           onGenerate={() => setScreen({ name: 'generate' })}
         />

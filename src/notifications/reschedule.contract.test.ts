@@ -9,7 +9,7 @@ import { medicationFlow } from '../examples/medication';
 import { coffeeFlow } from '../examples/coffee';
 import { type Reminder } from './plan';
 import { type Notifier } from './notifier';
-import { enrollFlow, enrolledFlowIds, rescheduleReminders, RESCHEDULE_CAP } from './reschedule';
+import { enrollFlow, enrolledFlowIds, rescheduleReminders, unenrollFlow, RESCHEDULE_CAP } from './reschedule';
 
 /** 记录型 Notifier：断言排入/取消了什么。 */
 function recordingNotifier() {
@@ -33,12 +33,14 @@ function recordingNotifier() {
 const NOW = 25_200_000; // 1970-01-01 07:00 UTC
 const tz = fixedTimeZone(0);
 
-test('enroll 幂等，登记清单可读回', async () => {
+test('enroll / unenroll 幂等，登记清单可读回', async () => {
   const kv = createInMemoryKV();
   await enrollFlow(kv, 'a');
   await enrollFlow(kv, 'a');
   await enrollFlow(kv, 'b');
-  assert.deepEqual(await enrolledFlowIds(kv), ['a', 'b']);
+  await unenrollFlow(kv, 'a');
+  await unenrollFlow(kv, 'a');
+  assert.deepEqual(await enrolledFlowIds(kv), ['b']);
 });
 
 test('只为已登记的日程型 flow 排提醒；未登记/顺序型不排', async () => {
@@ -106,4 +108,23 @@ test('提醒总量截断到 RESCHEDULE_CAP（平台待决上限）', async () =>
   const batch = scheduled.at(-1) ?? [];
   assert.equal(batch.length, RESCHEDULE_CAP);
   for (let i = 1; i < batch.length; i++) assert.ok(batch[i - 1].at <= batch[i].at); // 最近优先
+});
+
+
+test('删除同 id 用户 Flow 时先 unenroll：旧提醒被取消，fallback 示例不会继承登记', async () => {
+  const kv = createInMemoryKV();
+  const { notifier, scheduled, cancelled } = recordingNotifier();
+  const owned = { ...medicationFlow, title: '用户版本' };
+  const fallback = { ...medicationFlow, title: '内置示例' };
+
+  await enrollFlow(kv, owned.id);
+  await rescheduleReminders({ kv, notifier, flows: [owned], now: NOW, deviceTz: tz });
+  const oldIds = (scheduled.at(-1) ?? []).map((r) => r.id);
+  assert.ok(oldIds.length > 0);
+
+  await unenrollFlow(kv, owned.id);
+  await rescheduleReminders({ kv, notifier, flows: [fallback], now: NOW + 1, deviceTz: tz });
+
+  assert.deepEqual(cancelled.at(-1), oldIds);
+  assert.deepEqual(scheduled.at(-1), []);
 });

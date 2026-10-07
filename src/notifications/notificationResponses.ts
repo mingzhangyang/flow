@@ -5,10 +5,7 @@ import { type NotificationResponseSource } from './notificationResponsesCore';
 
 export function createExpoNotificationResponseSource(): NotificationResponseSource {
   return {
-    async getInitialRoute() {
-      return null;
-    },
-    subscribe() {
+    start() {
       return () => {};
     },
   };

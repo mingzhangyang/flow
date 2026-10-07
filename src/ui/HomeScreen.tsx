@@ -53,6 +53,7 @@ export function HomeScreen(props: {
   onEdit: (flow: Flow) => void;
   onExport: (flow: Flow) => void;
   onInsight: (flow: Flow) => void;
+  onDelete: (flowId: string) => Promise<void>;
   onImport: () => void;
   onGenerate: () => void;
 }) {
@@ -81,7 +82,7 @@ export function HomeScreen(props: {
   useEffect(reload, [props.refreshKey]);
 
   const del = (id: string): void => {
-    props.library.remove(id).then(reload).catch(() => {});
+    props.onDelete(id).catch(() => {});
   };
 
   const now = Date.now();

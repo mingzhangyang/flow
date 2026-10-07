@@ -48,7 +48,11 @@ if (!Number.isInteger(app.expo.android?.versionCode) || app.expo.android.version
   fail('android.versionCode must be a positive integer');
 }
 
-const plugins = new Set(app.expo.plugins ?? []);
+const plugins = new Set(
+  (app.expo.plugins ?? [])
+    .map((entry) => (Array.isArray(entry) ? entry[0] : entry))
+    .filter((entry) => typeof entry === 'string'),
+);
 for (const required of ['expo-notifications', 'expo-secure-store', 'expo-localization']) {
   if (!plugins.has(required)) fail(`required Expo plugin missing: ${required}`);
 }
