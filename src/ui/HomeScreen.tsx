@@ -1,11 +1,11 @@
 // 首页：先回答「此刻该干嘛」（接下来块），再是 flow 库（我的 + 示例）。
 // 卡片带由 id 派生的低饱和色线与拓扑图形徽章，库一多也有节奏而不吵。
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
 import { type Flow, type Topology } from '../domain/types';
 import { type Library } from '../session/library';
-import { examplesVisibleAlongsideOwned, reminderEnrollmentIdentity } from '../session/flowCatalog';
+import { examplesVisibleAlongsideOwned, reminderEnrollmentIdentity, type OwnedCatalogSnapshot } from '../session/flowCatalog';
 import { type Sharer, type ShareOutcome } from '../sharing/sharer';
 import { nextEvents, type ScheduledOccurrence } from '../runtime/engine';
 import { timeOfDay, MS_PER_DAY } from '../runtime/clock';
@@ -46,7 +46,7 @@ function SchedGlyph(props: { color: string }) {
 export function HomeScreen(props: {
   library: Library;
   examples: Flow[];
-  refreshKey: number;
+  catalog: OwnedCatalogSnapshot;
   sharer: Sharer;
   onRun: (flow: Flow, enrollmentKey: string) => void;
   onNew: (topology: Topology) => void;
@@ -60,8 +60,9 @@ export function HomeScreen(props: {
   const c = paletteFor(useColorScheme());
   const styles = useMemo(() => createStyles(c), [c]);
   const { t } = useI18n();
-  const [mine, setMine] = useState<Flow[]>([]);
   const [backupNote, setBackupNote] = useState<string | null>(null);
+  const catalogReady = props.catalog.status === 'ready';
+  const mine = catalogReady ? props.catalog.flows : [];
 
   // 整库备份（C6 兜底）：全部 flow + 历史修订 + 打卡日志，经系统分享面板存文件/发给自己。
   const backup = (): void => {
@@ -76,11 +77,6 @@ export function HomeScreen(props: {
       .then((outcome) => setBackupNote(outcomeText[outcome]))
       .catch(() => setBackupNote(null)); // 用户取消等——不打扰
   };
-  const reload = (): void => {
-    props.library.list().then(setMine).catch(() => {});
-  };
-  useEffect(reload, [props.refreshKey]);
-
   const del = (flow: Flow): void => {
     const identity = reminderEnrollmentIdentity(flow.id, 'owned', props.examples);
     props.onDelete(flow, identity.key, identity.legacyId).catch(() => {});
@@ -89,8 +85,8 @@ export function HomeScreen(props: {
   const now = Date.now();
   const today = new Date(now);
   const visibleExamples = useMemo(
-    () => examplesVisibleAlongsideOwned(props.examples, mine),
-    [props.examples, mine],
+    () => catalogReady ? examplesVisibleAlongsideOwned(props.examples, mine) : [],
+    [catalogReady, props.examples, mine],
   );
 
   const enrollmentKeyOf = (flow: Flow, own: boolean): string =>
@@ -98,6 +94,7 @@ export function HomeScreen(props: {
 
   // 接下来：所有可见日程型 flow 的最近一次提醒（我的优先，无则看未被同 id 用户 Flow 遮蔽的示例）
   const upNext = useMemo(() => {
+    if (!catalogReady) return null;
     const mineSched = mine.filter((f) => f.topology === 'scheduled');
     const pool = mineSched.length > 0
       ? mineSched.map((flow) => ({ flow, own: true }))
@@ -113,7 +110,7 @@ export function HomeScreen(props: {
       if (occ && (!best || occ.at < best.occ.at)) best = { ...candidate, occ };
     }
     return best;
-  }, [mine, visibleExamples, props.refreshKey]);
+  }, [catalogReady, mine, visibleExamples]);
 
   const card = (flow: Flow, own: boolean) => (
     <View key={flow.id} style={styles.card}>
@@ -168,34 +165,38 @@ export function HomeScreen(props: {
           </Pressable>
         ) : null}
 
-        <View style={styles.actions}>
-          <Pressable style={styles.action} onPress={() => props.onNew('sequential')}>
-            <Text style={styles.actionText}>{t.newSequential}</Text>
-          </Pressable>
-          <Pressable style={styles.action} onPress={() => props.onNew('scheduled')}>
-            <Text style={styles.actionText}>{t.newScheduled}</Text>
-          </Pressable>
-          <Pressable style={[styles.action, styles.actionGhost]} onPress={props.onGenerate}>
-            <Text style={styles.actionGhostText}>{t.aiGenerate}</Text>
-          </Pressable>
-          <Pressable style={[styles.action, styles.actionGhost]} onPress={props.onImport}>
-            <Text style={styles.actionGhostText}>{t.importAction}</Text>
-          </Pressable>
-          <Pressable style={[styles.action, styles.actionGhost]} onPress={backup}>
-            <Text style={styles.actionGhostText}>{t.backupAction}</Text>
-          </Pressable>
-        </View>
-        {backupNote ? <Text style={styles.backupNote}>{backupNote}</Text> : null}
-
-        {mine.length > 0 ? (
+        {catalogReady ? (
           <>
-            <Text style={styles.sectionKicker}>{t.sectionMine}</Text>
-            {mine.map((f) => card(f, true))}
+            <View style={styles.actions}>
+              <Pressable style={styles.action} onPress={() => props.onNew('sequential')}>
+                <Text style={styles.actionText}>{t.newSequential}</Text>
+              </Pressable>
+              <Pressable style={styles.action} onPress={() => props.onNew('scheduled')}>
+                <Text style={styles.actionText}>{t.newScheduled}</Text>
+              </Pressable>
+              <Pressable style={[styles.action, styles.actionGhost]} onPress={props.onGenerate}>
+                <Text style={styles.actionGhostText}>{t.aiGenerate}</Text>
+              </Pressable>
+              <Pressable style={[styles.action, styles.actionGhost]} onPress={props.onImport}>
+                <Text style={styles.actionGhostText}>{t.importAction}</Text>
+              </Pressable>
+              <Pressable style={[styles.action, styles.actionGhost]} onPress={backup}>
+                <Text style={styles.actionGhostText}>{t.backupAction}</Text>
+              </Pressable>
+            </View>
+            {backupNote ? <Text style={styles.backupNote}>{backupNote}</Text> : null}
+
+            {mine.length > 0 ? (
+              <>
+                <Text style={styles.sectionKicker}>{t.sectionMine}</Text>
+                {mine.map((f) => card(f, true))}
+              </>
+            ) : null}
+
+            <Text style={styles.sectionKicker}>{t.sectionExamples}</Text>
+            {visibleExamples.map((f) => card(f, false))}
           </>
         ) : null}
-
-        <Text style={styles.sectionKicker}>{t.sectionExamples}</Text>
-        {visibleExamples.map((f) => card(f, false))}
       </ScrollView>
     </View>
   );

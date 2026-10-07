@@ -1,8 +1,8 @@
 // 准时 / Zhunshi —— 应用外壳。
-// Phase 3：内置示例 + 用户自建的 flow 库；可新建/编辑/导出/导入，按拓扑运行。
-// 简单的状态机即导航（Constraint 0：先别引入路由库）。
+// Catalog snapshot、提醒重排和持久化删除恢复由 composition root 统一协调，
+// Home 只消费已经就绪的 snapshot，避免多处异步读取产生短暂错误视图。
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, SafeAreaView, StyleSheet, useColorScheme } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -17,8 +17,16 @@ import { createStorage } from './src/storage/storage';
 import { asyncStorageKV } from './src/storage/asyncStorageKv';
 import { secureKV } from './src/storage/secureKv';
 import { createLibrary } from './src/session/library';
-import { catalogEntriesWithOwnedPrecedence, resolveCatalogEntry } from './src/session/flowCatalog';
-import { deleteOwnedFlowSafely } from './src/session/deleteOwnedFlow';
+import {
+  catalogEntriesWithOwnedPrecedence,
+  LOADING_CATALOG,
+  resolveCatalogEntry,
+  type OwnedCatalogSnapshot,
+} from './src/session/flowCatalog';
+import {
+  deleteOwnedFlowDurably,
+  recoverPendingOwnedFlowDeletions,
+} from './src/session/deleteOwnedFlow';
 import { createExpoNotifier } from './src/notifications/expoNotifier';
 import { createExpoNotificationResponseSource } from './src/notifications/notificationResponses';
 import { configureExpoNotificationPresentation } from './src/notifications/notificationPresentation';
@@ -51,12 +59,9 @@ type Screen =
   | { name: 'generate' };
 
 export default function App() {
-  // 数字展示字体（时刻/倒计时专用）；加载极快，未就绪前不渲染以免字体跳变
   const [fontsLoaded] = useFonts({ IBMPlexMono_200ExtraLight, IBMPlexMono_500Medium });
-  // 跟随系统深/浅色模式（运行页除外——那是不随模式变的沉浸场景）
   const scheme = useColorScheme();
   const c = paletteFor(scheme);
-  // 语言在此读取一次，向下显式传递；示例内容随语言切换（id 不变，记录不丢）
   const { locale } = useI18n();
   const examples = useMemo(() => examplesFor(locale), [locale]);
   const storage = useMemo(() => createStorage(asyncStorageKV), []);
@@ -65,12 +70,40 @@ export default function App() {
   const notificationResponses = useMemo(() => createExpoNotificationResponseSource(), []);
 
   const [screen, setScreen] = useState<Screen>({ name: 'home' });
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [catalog, setCatalog] = useState<OwnedCatalogSnapshot>(LOADING_CATALOG);
+  const refreshGeneration = useRef(0);
 
   const home = (): void => setScreen({ name: 'home' });
+
+  const refreshCatalog = useCallback(async (): Promise<void> => {
+    const generation = ++refreshGeneration.current;
+    setCatalog(LOADING_CATALOG);
+
+    try {
+      await recoverPendingOwnedFlowDeletions({
+        kv: asyncStorageKV,
+        removeFlow: (id) => library.remove(id),
+        unenroll: (key, legacyId) => unenrollFlow(asyncStorageKV, key, legacyId),
+      });
+      const flows = await library.list();
+      await rescheduleReminders({
+        kv: asyncStorageKV,
+        notifier,
+        flows: catalogEntriesWithOwnedPrecedence(examples, flows),
+        now: Date.now(),
+        deviceTz: systemTimeZone,
+      });
+      if (generation === refreshGeneration.current) {
+        setCatalog({ status: 'ready', flows });
+      }
+    } catch {
+      if (generation === refreshGeneration.current) setCatalog(LOADING_CATALOG);
+    }
+  }, [examples, library, notifier]);
+
   const homeRefreshed = (): void => {
-    setRefreshKey((k) => k + 1);
     home();
+    void refreshCatalog();
   };
 
   const deleteOwnedFlow = useCallback(async (
@@ -78,66 +111,39 @@ export default function App() {
     enrollmentKey: string,
     legacyEnrollmentId?: string,
   ): Promise<void> => {
+    setCatalog(LOADING_CATALOG);
     try {
-      await deleteOwnedFlowSafely(flow, enrollmentKey, legacyEnrollmentId, {
+      await deleteOwnedFlowDurably(flow, enrollmentKey, legacyEnrollmentId, {
+        kv: asyncStorageKV,
         removeFlow: (id) => library.remove(id),
-        restoreFlow: (original) => storage.saveFlow(original),
         unenroll: (key, legacyId) => unenrollFlow(asyncStorageKV, key, legacyId),
       });
     } finally {
-      setRefreshKey((k) => k + 1);
+      await refreshCatalog();
     }
-  }, [library, storage]);
-
-  // 通知只携带稳定 id；真正的 Flow 总是从当前示例/本地库重新读取，
-  // 避免把可能过期的定义快照塞进系统通知（C6/E5）。
-  const openFlowFromNotification = useCallback(async (flowId: string): Promise<void> => {
-    const owned = await library.get(flowId);
-    const entry = resolveCatalogEntry(flowId, owned ? [owned] : [], examples);
-    if (entry) setScreen({ name: 'run', flow: entry.flow, enrollmentKey: entry.enrollmentKey });
-  }, [examples, library]);
-
-  // 重排已登记 flow 未来数日的日程提醒——启动、回到前台、库变更时各续一次（C5）。
-  const refreshReminders = useCallback((): void => {
-    library
-      .list()
-      .then((flows) =>
-        rescheduleReminders({
-          kv: asyncStorageKV,
-          notifier,
-          flows: catalogEntriesWithOwnedPrecedence(examples, flows),
-          now: Date.now(),
-          deviceTz: systemTimeZone,
-        }),
-      )
-      .catch(() => {});
-  }, [library, notifier, examples]);
+  }, [library, refreshCatalog]);
 
   useEffect(() => {
-    refreshReminders();
+    void refreshCatalog();
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') refreshReminders();
+      if (state === 'active') void refreshCatalog();
     });
     return () => sub.remove();
-  }, [refreshReminders, refreshKey]);
+  }, [refreshCatalog]);
 
-  // 原生 response source 内部协调冷启动 last response 与运行中 listener：
-  // 启动窗口先读 initial、缓冲 listener，再按顺序去重交付，避免重复/乱序导航。
   useEffect(() => {
+    if (catalog.status !== 'ready') return undefined;
     let active = true;
     const unsubscribe = notificationResponses.start(async (route: NotificationRouteData) => {
       if (!active) return;
-      try {
-        await openFlowFromNotification(route.flowId);
-      } catch {
-        // 单次路由失败不打断后续通知响应队列。
-      }
+      const entry = resolveCatalogEntry(route.flowId, catalog.flows, examples);
+      if (entry) setScreen({ name: 'run', flow: entry.flow, enrollmentKey: entry.enrollmentKey });
     });
     return () => {
       active = false;
       unsubscribe();
     };
-  }, [notificationResponses, openFlowFromNotification]);
+  }, [catalog, examples, notificationResponses]);
 
   if (!fontsLoaded) return null;
 
@@ -148,7 +154,7 @@ export default function App() {
         <HomeScreen
           library={library}
           examples={examples}
-          refreshKey={refreshKey}
+          catalog={catalog}
           sharer={systemSharer}
           onRun={(flow, enrollmentKey) => setScreen({ name: 'run', flow, enrollmentKey })}
           onNew={(topology: Topology) => setScreen({ name: 'edit', flow: createFlow({ id: newFlowId(), title: '', topology }) })}
@@ -167,7 +173,7 @@ export default function App() {
             storage={storage}
             notifier={notifier}
             onEnrollReminders={(enrollmentKey) => {
-              enrollFlow(asyncStorageKV, enrollmentKey).then(refreshReminders).catch(() => {});
+              enrollFlow(asyncStorageKV, enrollmentKey).then(refreshCatalog).catch(() => {});
             }}
             onExit={home}
           />

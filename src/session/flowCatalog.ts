@@ -19,6 +19,12 @@ export interface CatalogEntry {
   legacyEnrollmentId?: string;
 }
 
+export type OwnedCatalogSnapshot =
+  | { status: 'loading' }
+  | { status: 'ready'; flows: Flow[] };
+
+export const LOADING_CATALOG: OwnedCatalogSnapshot = { status: 'loading' };
+
 const ENROLLMENT_KEY_VERSION = 'v2';
 
 /**

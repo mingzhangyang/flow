@@ -58,7 +58,8 @@
   flow 走）。恢复绝不覆盖本机：读回逐条过闸门（坏条目跳过），同 id 的 flow 走 commit
   入历史，打卡按占位合并、本机记录优先。
 - **Flow ID 冲突规则**：用户库是权威层，内置示例是只读 fallback。导入/备份允许保留外部稳定 id；若与示例同 id，用户 Flow 在首页、提醒重排和通知点击路由中一致地遮蔽示例。删除该用户 Flow 后示例重新可见。
-- **提醒登记身份**：新 enrollment 一律以结构化 v2 记录保存，identity 为 `(source, flowId)` 的注入式编码；不使用任何“保留字符串前缀”，因此开放 Flow ID 无法与生成 key 碰撞。旧 bare-ID 仅在来源无歧义时迁移；shadowing owned 不接受 bare-ID 别名，避免把示例旧登记转给用户 Flow。删除用户 Flow 采用 remove→unenroll 的事务式编排，失败时恢复原定义。
+- **提醒登记身份**：新 enrollment 一律以结构化 v2 记录保存，identity 为 `(source, flowId)` 的注入式编码；不使用任何“保留字符串前缀”，因此开放 Flow ID 无法与生成 key 碰撞。旧 bare-ID 仅在来源无歧义时迁移；shadowing owned 不接受 bare-ID 别名，避免把示例旧登记转给用户 Flow。
+- **Catalog snapshot 与删除事务**：App 是用户库 snapshot 的唯一拥有者；`loading` 与“已加载且为空”是不同状态，Home/通知路由/提醒重排只消费 ready snapshot，因此首帧不会短暂暴露被 owned Flow 遮蔽的示例。删除不依赖脆弱的即时 rollback：先持久化 deletion intent，再按 remove→unenroll→清 intent commit-forward；任一步失败 intent 都保留，启动/回前台/库刷新会在发布下一份 snapshot 前重试恢复。
 
 ### 4. Notification Engine（`src/notifications/`）
 把 Runtime 给出的触发时刻翻译成平台的本地定时通知/闹钟（expo-notifications）。
@@ -75,7 +76,8 @@
 - **登记与重排（`reschedule.ts`）**：用户打开某条日程型 flow 的运行视图即为它**登记**提醒
   （enroll，不为没打开过的 flow 自动推送）；App 启动 / 回到前台 / 库变更时把已登记 flow
   的提醒整批重排（上一批 id 记在 KV，先取消再排入；重复触发器 id 稳定，重排即同 id 替换）。
-  删除用户 Flow 时先 `unenroll` 再删定义，并立即触发重排；因此同 id 内置示例重新可见时不会继承旧登记。
+  删除用户 Flow 的状态一致性由 Storage 层的 durable deletion intent 保证；catalog refresh 会先恢复未完成删除，
+  再以同一 ready snapshot 做提醒重排，因此 fallback 示例不会在删除事务未收口时继承或暴露旧状态。
   单批截断到 48 条（iOS 待决通知上限 64，留余量）；计划本身是纯函数（`plan.ts`），编排不含时钟隐读（E3）。
 
 ### 5. AI Assistant（`src/ai/`）
