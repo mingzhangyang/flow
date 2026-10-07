@@ -9,6 +9,7 @@ import { createInMemoryKV } from './kv';
 import { createStorage } from './storage';
 import { coffeeFlow } from '../examples/coffee';
 import { medicationFlow } from '../examples/medication';
+import { catalogDefinitionKey } from '../session/flowCatalog';
 
 function fresh() {
   return createStorage(createInMemoryKV());
@@ -68,20 +69,21 @@ test('保存 / 读取 Run（含事件日志）', async () => {
 
 test('保存 / 读取打卡日志', async () => {
   const s = fresh();
-  assert.deepEqual(await s.loadCheckIns('example.medication'), []);
+  const key = catalogDefinitionKey('example.medication', 'example');
+  assert.deepEqual(await s.loadCheckIns(key), []);
 
   const log = [{ nodeId: 'morning', scheduledFor: 28_800_000, taken: true, at: 28_800_500 }];
-  await s.saveCheckIns('example.medication', log);
-  assert.deepEqual(await s.loadCheckIns('example.medication'), log);
+  await s.saveCheckIns(key, log);
+  assert.deepEqual(await s.loadCheckIns(key), log);
 });
 
-// ---- 持久数据回到纯核心前的闸门：坏数据返回 null / 跳过，绝不流入运行时 ----
+// ---- 持久数据回到纯核心前的闸门：精确读取 fail closed；仅显式 best-effort 枚举可跳过 ----
 
-test('损坏的 Run 记录 → loadRun 为 null，listRuns 跳过', async () => {
+test('损坏的 Run 精确读取 fail closed；listRuns 枚举可跳过坏记录', async () => {
   const kv = createInMemoryKV();
   const s = createStorage(kv);
   await kv.setItem('run:broken-json', '{not json');
-  await kv.setItem('run:bad-shape', JSON.stringify({ id: 'x' })); // 缺 events
+  await kv.setItem('run:bad-shape', JSON.stringify({ id: 'x' }));
   await kv.setItem(
     'run:illegal-log',
     JSON.stringify({
@@ -89,14 +91,14 @@ test('损坏的 Run 记录 → loadRun 为 null，listRuns 跳过', async () => 
       flow: coffeeFlow,
       events: [
         { type: 'started', at: 0 },
-        { type: 'wentBack', toIndex: 999, at: 1 }, // 越界——重放即校验（E4）
+        { type: 'wentBack', toIndex: 999, at: 1 },
       ],
     }),
   );
 
-  assert.equal(await s.loadRun('broken-json'), null);
-  assert.equal(await s.loadRun('bad-shape'), null);
-  assert.equal(await s.loadRun('illegal-log'), null);
+  await assert.rejects(() => s.loadRun('broken-json'));
+  await assert.rejects(() => s.loadRun('bad-shape'));
+  await assert.rejects(() => s.loadRun('illegal-log'));
   assert.deepEqual(await s.listRuns(), []);
 });
 
@@ -121,22 +123,144 @@ test('Run 内嵌的旧 schema flow 快照在读取时被迁移', async () => {
   assert.deepEqual(run.flow.repeat, { kind: 'daily' }); // 节点上的 repeat 上移到 flow 级
 });
 
-test('损坏的打卡日志 → 坏条目单独丢弃', async () => {
+test('打卡容器损坏 fail closed；坏条目可单独丢弃', async () => {
   const kv = createInMemoryKV();
   const s = createStorage(kv);
-  await kv.setItem('checkins:x', '{not json');
-  assert.deepEqual(await s.loadCheckIns('x'), []);
+  const brokenKey = catalogDefinitionKey('x', 'owned');
+  const notArrayKey = catalogDefinitionKey('not-array', 'owned');
+  const goodKey = catalogDefinitionKey('y', 'owned');
+  await kv.setItem('checkins:v1:' + brokenKey, '{not json');
+  await assert.rejects(() => s.loadCheckIns(brokenKey));
+  await kv.setItem('checkins:v1:' + notArrayKey, '{}');
+  await assert.rejects(() => s.loadCheckIns(notArrayKey));
 
   const good = { nodeId: 'a', scheduledFor: 1, taken: true, at: 2 };
-  await kv.setItem('checkins:y', JSON.stringify([good, { nodeId: 42 }, null]));
-  assert.deepEqual(await s.loadCheckIns('y'), [good]);
+  await kv.setItem('checkins:v1:' + goodKey, JSON.stringify([good, { nodeId: 42 }, null]));
+  assert.deepEqual(await s.loadCheckIns(goodKey), [good]);
 });
 
-test('损坏的历史修订 → 坏快照跳过，其余保留', async () => {
+test('历史修订容器损坏 fail closed；坏快照跳过、其余保留', async () => {
   const kv = createInMemoryKV();
   const s = createStorage(kv);
-  await kv.setItem('rev:x', JSON.stringify([coffeeFlow, { not: 'a flow' }]));
+  await kv.setItem('rev:broken', '{not json');
+  await assert.rejects(() => s.loadRevisions('broken'));
+
+  const ownedByX = { ...coffeeFlow, id: 'x' };
+  await kv.setItem('rev:x', JSON.stringify([ownedByX, { not: 'a flow' }]));
   const revisions = await s.loadRevisions('x');
   assert.equal(revisions.length, 1);
-  assert.equal(revisions[0].id, coffeeFlow.id);
+  assert.equal(revisions[0].id, 'x');
+});
+
+
+test('listAllCheckIns 保留 "__proto__" 这类开放 flowId 的 canonical identity', async () => {
+  const s = fresh();
+  const key = catalogDefinitionKey('__proto__', 'owned');
+  const log = [{ nodeId: 'dose', scheduledFor: 1, taken: true, at: 2 }];
+  await s.saveCheckIns(key, log);
+  const all = await s.listAllCheckIns();
+  assert.equal(Object.prototype.hasOwnProperty.call(all, key), true);
+  assert.deepEqual(all[key], log);
+});
+
+
+test('本机 revision key 与 snapshot.id 不一致时不会流入历史', async () => {
+  const kv = createInMemoryKV();
+  const s = createStorage(kv);
+  await kv.setItem(
+    'rev:owner',
+    JSON.stringify([{ ...coffeeFlow, id: 'other', title: 'wrong owner' }, { ...coffeeFlow, id: 'owner' }]),
+  );
+  const revisions = await s.loadRevisions('owner');
+  assert.equal(revisions.length, 1);
+  assert.equal(revisions[0]?.id, 'owner');
+});
+
+
+test('check-in exact operations 拒绝 bare / noncanonical definitionKey 且不写入', async () => {
+  const kv = createInMemoryKV();
+  const s = createStorage(kv);
+  const log = [{ nodeId: 'dose', scheduledFor: 1, taken: true, at: 2 }];
+
+  await assert.rejects(() => s.saveCheckIns('bare-flow-id', log));
+  await assert.rejects(() => s.loadCheckIns('bare-flow-id'));
+  await assert.rejects(() => s.deleteCheckIns('bare-flow-id'));
+  assert.equal(await kv.getItem('checkins:v1:bare-flow-id'), null);
+});
+
+test('listAllCheckIns 遇到 malformed identity fail closed，避免导出后静默丢日志', async () => {
+  const kv = createInMemoryKV();
+  const s = createStorage(kv);
+  const raw = JSON.stringify([{ nodeId: 'dose', scheduledFor: 1, taken: true, at: 2 }]);
+  await kv.setItem('checkins:v1:bare-flow-id', raw);
+
+  await assert.rejects(() => s.listAllCheckIns());
+  assert.equal(await kv.getItem('checkins:v1:bare-flow-id'), raw);
+});
+
+
+test('Run storage key 与 embedded id 不一致时精确读取 fail closed，枚举也不归一化', async () => {
+  const kv = createInMemoryKV();
+  const s = createStorage(kv);
+  const persisted = JSON.stringify({
+    id: 'other-run',
+    flow: coffeeFlow,
+    events: [{ type: 'started', at: 1 }],
+  });
+  await kv.setItem('run:expected-run', persisted);
+
+  await assert.rejects(() => s.loadRun('expected-run'));
+  assert.deepEqual(await s.listRuns(), []);
+  assert.equal(await kv.getItem('run:expected-run'), persisted);
+});
+
+for (const [label, text] of [
+  ['wrong owner', serializeFlow({ ...coffeeFlow, id: 'other' })],
+  ['wrong owner in old schema', JSON.stringify({ ...coffeeFlow, schemaVersion: 1, id: 'other' })],
+  ['empty value', ''],
+  ['broken JSON', '{'],
+  ['null value', 'null'],
+  ['invalid shape', '{}'],
+] as const) {
+  test(`Flow ${label}: exact read, enumeration and export reject without changing persisted data`, async () => {
+    const kv = createInMemoryKV();
+    const storage = createStorage(kv);
+    await storage.saveFlow(medicationFlow);
+    await kv.setItem('flow:expected', text);
+    await assert.rejects(() => storage.loadFlow('expected'));
+    await assert.rejects(() => storage.listFlows());
+    await assert.rejects(() => storage.exportFlow('expected'));
+    assert.equal(await kv.getItem('flow:expected'), text);
+    assert.deepEqual(await storage.loadFlow(medicationFlow.id), medicationFlow);
+  });
+}
+
+test('Flow identity uses the entire opaque ID, including prefixes, punctuation and Unicode', async () => {
+  const storage = fresh();
+  const ids = ['__proto__', 'flow:x', 'x:y', '["owned","x"]', ' 流程 🫖 '];
+  for (const id of ids) {
+    const flow = { ...coffeeFlow, id };
+    await storage.saveFlow(flow);
+    assert.deepEqual(await storage.loadFlow(id), flow);
+    assert.equal(await storage.exportFlow(id), serializeFlow(flow));
+  }
+  assert.deepEqual((await storage.listFlows()).map((flow) => flow.id), [...ids].sort());
+  assert.equal(await storage.loadFlow('missing'), null);
+  assert.equal(await storage.exportFlow('missing'), null);
+});
+
+test('Flow enumeration tolerates disappeared keys but propagates storage read failures', async () => {
+  const kv = createInMemoryKV();
+  const storage = createStorage({
+    ...kv,
+    keys: async () => ['flow:gone', 'flow:' + coffeeFlow.id],
+  });
+  await storage.saveFlow(coffeeFlow);
+  assert.deepEqual(await storage.listFlows(), [coffeeFlow]);
+  const failed = createStorage({
+    ...kv,
+    getItem: async () => { throw new Error('disk unavailable'); },
+  });
+  await assert.rejects(() => failed.loadFlow(coffeeFlow.id), /disk unavailable/);
+  await assert.rejects(() => failed.listFlows(), /disk unavailable/);
 });

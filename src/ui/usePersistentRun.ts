@@ -1,16 +1,13 @@
-// 把运行状态、持久化与通知编织在一起的 Hook。
-// - 打开时从 Storage 载入该 flow 的进行中 run（C6：掉线可恢复）。
-// - 每次事件后保存，并重排“下一步计时”提醒（C5）。
-// 时钟仍停在此处（Date.now()），向下全是纯函数。
+// 顺序型运行状态、持久化与通知。
+// 有事件的 Run 始终以 run.flow 快照为事实源；当前 catalog Flow 只用于未开始或 reset 后的新 Run。
 
 import { useEffect, useState } from 'react';
 import { type Flow, type Run, type RunEvent } from '../domain/types';
 import { type Locale } from '../i18n/locale';
 import { type Instant } from '../runtime/clock';
 import { reduce, project, type RunState } from '../runtime/engine';
-import { type Storage } from '../storage/storage';
-import { type Notifier } from '../notifications/notifier';
-import { planSequentialReminder } from '../notifications/plan';
+import { type RuntimeSession } from '../session/definitionRuntime';
+import { activeRunId } from '../session/runPersistence';
 import {
   startAction,
   completeCurrentAction,
@@ -20,9 +17,10 @@ import {
   backAction,
 } from '../session/actions';
 
-const runIdFor = (flow: Flow): string => `active-${flow.id}`;
-
 export interface PersistentRun {
+  status: 'loading' | 'ready' | 'error';
+  retry: () => void;
+  flow: Flow;
   state: RunState;
   start: () => void;
   complete: () => void;
@@ -35,69 +33,73 @@ export interface PersistentRun {
 
 export function usePersistentRun(
   flow: Flow,
-  storage: Storage,
-  notifier: Notifier,
+  session: RuntimeSession,
   locale: Locale,
 ): PersistentRun {
-  const [run, setRun] = useState<Run>(() => ({ id: runIdFor(flow), flow, events: [] }));
+  const runId = activeRunId(session.definitionKey);
+  const [run, setRun] = useState<Run>(() => ({ id: runId, flow, events: [] }));
   const [now, setNow] = useState<Instant>(() => Date.now());
-  const [loaded, setLoaded] = useState(false);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
-  // 恢复进行中的 run
   useEffect(() => {
     let alive = true;
-    storage
-      .loadRun(runIdFor(flow))
-      .then((saved) => {
-        if (!alive) return;
-        if (saved && saved.flow.id === flow.id) setRun(saved);
-        setLoaded(true);
-      })
-      .catch(() => alive && setLoaded(true));
+    setStatus('loading');
+
+    void (async () => {
+      const loaded = await session.loadRun(flow);
+      if (!alive) return;
+
+      setRun(loaded);
+      setStatus('ready');
+    })().catch(() => {
+      if (!alive) return;
+      // Fail closed: a transient read error must never be reinterpreted as "no saved run",
+      // otherwise the save effect could overwrite a real in-progress Run with an empty one.
+      setStatus('error');
+    });
+
     return () => {
       alive = false;
     };
-  }, [flow, storage]);
+  }, [flow, loadAttempt, session]);
 
-  const state = project(flow, run.events, now);
+  const runtimeFlow = run.flow;
+  const state = project(runtimeFlow, run.events, now);
 
-  // 计时进行时按秒刷新
   useEffect(() => {
     if (state.status !== 'running') return;
     const id = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(id);
   }, [state.status]);
 
-  // 保存 + 重排提醒
   useEffect(() => {
-    if (!loaded) return;
-    storage.saveRun(run).catch(() => {});
-    const reminder = planSequentialReminder(flow, run.events, Date.now(), run.id, locale);
-    notifier
-      .cancel([run.id])
-      .then(() => (reminder ? notifier.schedule([reminder]) : undefined))
-      .catch(() => {});
-  }, [run, loaded]);
+    if (status !== 'ready') return;
+    session.saveRun(run, locale).catch(() => {});
+  }, [locale, run, session, status]);
 
   const apply = (event: RunEvent | null): void => {
-    if (!event) return;
-    setRun((r) => reduce(r, event));
+    if (status !== 'ready' || !event) return;
+    setRun((current) => reduce(current, event));
     setNow(Date.now());
   };
   const reset = (): void => {
-    setRun({ id: runIdFor(flow), flow, events: [] });
+    if (status !== 'ready') return;
+    setRun({ id: runId, flow, events: [] });
     setNow(Date.now());
   };
 
   return {
+    status,
+    retry: () => setLoadAttempt((attempt) => attempt + 1),
+    flow: runtimeFlow,
     state,
     start: () => apply(startAction(Date.now())),
-    complete: () => apply(completeCurrentAction(flow, run.events, Date.now())),
-    skip: () => apply(skipCurrentAction(flow, run.events, Date.now())),
-    pause: () => apply(pauseAction(flow, run.events, Date.now())),
-    resume: () => apply(resumeAction(flow, run.events, Date.now())),
-    back: () => apply(backAction(flow, run.events, Date.now())),
+    complete: () => apply(completeCurrentAction(runtimeFlow, run.events, Date.now())),
+    skip: () => apply(skipCurrentAction(runtimeFlow, run.events, Date.now())),
+    pause: () => apply(pauseAction(runtimeFlow, run.events, Date.now())),
+    resume: () => apply(resumeAction(runtimeFlow, run.events, Date.now())),
+    back: () => apply(backAction(runtimeFlow, run.events, Date.now())),
     reset,
   };
 }
-

@@ -14,5 +14,5 @@
   },
   "include": ["src/**/*.ts", "e2e/**/*.ts"],
   "//exclude": "以下适配器引用原生模块（RN/Expo），由应用侧 tsconfig.json 检查，不进入 node 端检查。",
-  "exclude": ["src/storage/asyncStorageKv.ts", "src/storage/secureKv.ts", "src/storage/secureKv.native.ts", "src/notifications/expoNotifier.native.ts", "src/sharing/systemSharer.ts", "src/ui"]
+  "exclude": ["src/**/*.native.ts", "src/storage/asyncStorageKv.ts", "src/storage/secureKv.ts", "src/sharing/systemSharer.ts", "src/ui"]
 }

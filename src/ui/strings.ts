@@ -25,6 +25,8 @@ const zh = {
   backupOutcomeShared: '已唤起分享，把备份存到文件或发给自己 ✓',
   backupOutcomeCopied: '已复制备份数据，请粘贴保存到安全的地方 ✓',
   backupOutcomeUnavailable: '此环境不支持分享或剪贴板',
+  catalogUnavailable: '本地数据暂时无法读取；为避免打开错误的流程，已暂停显示流程库。',
+  retry: '重试',
   sectionMine: '我的',
   sectionExamples: '示例',
   cardMeta: (n: number, topology: 'sequential' | 'scheduled'): string =>
@@ -43,6 +45,7 @@ const zh = {
   runInstantHint: '完成即过',
   runFlowFinished: '这条 flow 走完了',
   runTimeUp: '计时完成，可进入下一步',
+  runStorageUnavailable: '进行中的运行记录暂时无法读取。为避免覆盖已有进度，已暂停运行。',
   runRestart: '重新开始',
   runStart: '开始',
   runConfirm: '确认',
@@ -73,6 +76,7 @@ const zh = {
   scheduleNotifDenied: '提醒未开启：通知权限被拒绝，到点不会有提醒。',
   scheduleNotifSettings: '去系统设置开启 ›',
   scheduleNotifWeb: '网页版不支持定时提醒；请在手机 App 上使用提醒功能。',
+  scheduleStorageUnavailable: '打卡记录暂时无法读取。为避免覆盖已有记录，已暂停打卡。',
 
   // 编辑器
   editorTitle: '编辑',
@@ -172,6 +176,8 @@ const zhHant: Strings = {
   backupOutcomeShared: '已喚起分享，把備份存到檔案或傳給自己 ✓',
   backupOutcomeCopied: '已複製備份資料，請貼上保存到安全的地方 ✓',
   backupOutcomeUnavailable: '此環境不支援分享或剪貼簿',
+  catalogUnavailable: '本機資料暫時無法讀取；為避免開啟錯誤的流程，已暫停顯示流程庫。',
+  retry: '重試',
   sectionMine: '我的',
   sectionExamples: '範例',
   cardMeta: (n, topology) => `${n} ${topology === 'sequential' ? '步' : '個時刻'} · 點按執行`,
@@ -187,6 +193,7 @@ const zhHant: Strings = {
   runInstantHint: '完成即過',
   runFlowFinished: '這條 flow 走完了',
   runTimeUp: '計時完成，可進入下一步',
+  runStorageUnavailable: '進行中的執行記錄暫時無法讀取。為避免覆蓋既有進度，已暫停執行。',
   runRestart: '重新開始',
   runStart: '開始',
   runConfirm: '確認',
@@ -215,6 +222,7 @@ const zhHant: Strings = {
   scheduleNotifDenied: '提醒未開啟：通知權限被拒絕，到點不會有提醒。',
   scheduleNotifSettings: '去系統設定開啟 ›',
   scheduleNotifWeb: '網頁版不支援定時提醒；請在手機 App 上使用提醒功能。',
+  scheduleStorageUnavailable: '打卡記錄暫時無法讀取。為避免覆蓋既有記錄，已暫停打卡。',
 
   editorTitle: '編輯',
   editorFlowName: '流程名稱',
@@ -304,6 +312,8 @@ const en: Strings = {
   backupOutcomeShared: 'Share sheet opened — save the backup to a file or send it to yourself ✓',
   backupOutcomeCopied: 'Backup copied — paste it somewhere safe ✓',
   backupOutcomeUnavailable: 'Sharing and clipboard are unavailable here',
+  catalogUnavailable: 'Local data is temporarily unavailable. The catalog is hidden to avoid opening the wrong flow.',
+  retry: 'Retry',
   sectionMine: 'MINE',
   sectionExamples: 'EXAMPLES',
   cardMeta: (n, topology) =>
@@ -320,6 +330,7 @@ const en: Strings = {
   runInstantHint: 'Tap when done',
   runFlowFinished: 'This flow is complete',
   runTimeUp: "Time's up — continue when ready",
+  runStorageUnavailable: 'The active run could not be read. Running is paused to avoid overwriting saved progress.',
   runRestart: 'Restart',
   runStart: 'Start',
   runConfirm: 'Confirm',
@@ -350,6 +361,7 @@ const en: Strings = {
   scheduleNotifDenied: 'Reminders are off: notification permission was denied, so nothing will fire on time.',
   scheduleNotifSettings: 'Enable in system settings ›',
   scheduleNotifWeb: 'The web version cannot deliver scheduled reminders — use the mobile app for reminders.',
+  scheduleStorageUnavailable: 'Check-in history could not be read. Check-ins are paused to avoid overwriting saved records.',
 
   editorTitle: 'Edit',
   editorFlowName: 'Flow name',

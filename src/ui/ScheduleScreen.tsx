@@ -21,7 +21,7 @@ import {
   type DoseState,
   type DoseStatus,
 } from '../runtime/adherence';
-import { type Storage } from '../storage/storage';
+import { type RuntimeSession } from '../session/definitionRuntime';
 import { nextEvents } from '../runtime/engine';
 import { fmtTimeOfDay } from './format';
 import { useI18n } from './i18n';
@@ -69,13 +69,13 @@ function DoseBead(props: { status: DoseStatus; s: Styles; bs: BeadStyles }) {
 
 export function ScheduleScreen(props: {
   flow: Flow;
-  storage: Storage;
-  notifier: Notifier;
+  session: RuntimeSession;
+  notifier: Pick<Notifier, 'status'>;
   /** 打开即视为为这条 flow 开启提醒；实际登记与多日重排由 App 层编排。 */
-  onEnrollReminders: (flowId: string) => void;
+  onEnrollReminders: () => void;
   onExit: () => void;
 }) {
-  const { flow, storage } = props;
+  const { flow, session } = props;
   const c = paletteFor(useColorScheme());
   const { locale, t } = useI18n();
   const styles = useMemo(() => createStyles(c), [c]);
@@ -83,6 +83,8 @@ export function ScheduleScreen(props: {
   // 显式注入时区（E3）：flow 锚定了 IANA 时区则按锚定时区，否则跟随设备；跨 DST 正确
   const tz = timeZoneForFlow(flow, systemTimeZone);
   const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
+  const [checkInsStatus, setCheckInsStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [checkInsAttempt, setCheckInsAttempt] = useState(0);
   const [now, setNow] = useState<number>(() => Date.now());
   // 提醒可用状态：被拒/不支持时必须让用户看见（E6 诚实原则——静默失效会伤人）。
   // 打开与回到前台时各查一次（从系统设置回来后横幅要能消失）。
@@ -100,12 +102,24 @@ export function ScheduleScreen(props: {
 
   useEffect(() => {
     let alive = true;
-    storage.loadCheckIns(flow.id).then((log) => alive && setCheckIns(log)).catch(() => {});
-    props.onEnrollReminders(flow.id);
+    setCheckIns([]);
+    setCheckInsStatus('loading');
+
+    session.loadCheckIns()
+      .then((log) => {
+        if (!alive) return;
+        setCheckIns(log);
+        setCheckInsStatus('ready');
+      })
+      .catch(() => {
+        if (alive) setCheckInsStatus('error');
+      });
+
+    props.onEnrollReminders();
     return () => {
       alive = false;
     };
-  }, [flow]);
+  }, [checkInsAttempt, flow, session]);
 
   // 让 due → missed 等状态随时间推移刷新
   useEffect(() => {
@@ -113,7 +127,8 @@ export function ScheduleScreen(props: {
     return () => clearInterval(id);
   }, []);
 
-  const doses = todayDoses(flow, checkIns, now, tz, GRACE_MINUTES);
+  const checkInsReady = checkInsStatus === 'ready';
+  const doses = checkInsReady ? todayDoses(flow, checkIns, now, tz, GRACE_MINUTES) : [];
   // 节律在 flow 级：今天不在节律上时给出下一次的日子
   const cadence = describeRecurrence(flow.repeat ?? { kind: 'once' }, locale);
   const STATUS_LABEL = statusLabels(t);
@@ -125,7 +140,8 @@ export function ScheduleScreen(props: {
 
   const persist = (next: CheckIn[]): void => {
     setCheckIns(next);
-    storage.saveCheckIns(flow.id, next).catch(() => {});
+    if (!checkInsReady) return;
+    session.saveCheckIns(next).catch(() => {});
   };
   const take = (d: DoseState): void =>
     persist(recordCheckIn(checkIns, checkIn(d.nodeId, d.scheduledFor, true, Date.now())));
@@ -153,6 +169,16 @@ export function ScheduleScreen(props: {
         ) : null}
         <Text style={styles.sectionKicker}>{t.scheduleToday(cadence, flow.timeZone)}</Text>
 
+        {checkInsStatus === 'error' ? (
+          <View style={styles.storageError}>
+            <Text style={styles.storageErrorText}>{t.scheduleStorageUnavailable}</Text>
+            <Pressable style={styles.retryButton} onPress={() => setCheckInsAttempt((n) => n + 1)}>
+              <Text style={styles.retryText}>{t.retry}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {checkInsReady ? (
         <View style={styles.card}>
           {doses.length === 0 ? (
             <Text style={styles.empty}>
@@ -202,6 +228,7 @@ export function ScheduleScreen(props: {
           ))}
           {cursorAt === doses.length && doses.length > 0 ? <NowCursor minutes={nowMinutes} s={styles} t={t} /> : null}
         </View>
+        ) : null}
 
         {(flow.repeat ?? { kind: 'once' }).kind === 'once' ? (
           // once「过时不候」——在运行视图里明说，不让默认语义只活在文档里
@@ -251,6 +278,16 @@ const createStyles = (c: Palette) => StyleSheet.create({
   notifBannerLink: { color: c.accent, fontSize: 14, fontWeight: '600' },
   notifWeb: { fontSize: 13, color: c.textMuted, marginLeft: spacing.xs },
   sectionKicker: { fontSize: type.caption + 1, color: c.textMuted, letterSpacing: 1, marginLeft: spacing.xs },
+  storageError: {
+    backgroundColor: c.surface, borderRadius: radius.md, borderWidth: 1, borderColor: c.warn,
+    padding: spacing.md, gap: spacing.sm,
+  },
+  storageErrorText: { color: c.warn, fontSize: 14, lineHeight: 20 },
+  retryButton: {
+    alignSelf: 'flex-start', borderRadius: radius.pill, borderWidth: 1, borderColor: c.accent,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
+  },
+  retryText: { color: c.accent, fontSize: 14, fontWeight: '600' },
   card: {
     backgroundColor: c.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border,
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,

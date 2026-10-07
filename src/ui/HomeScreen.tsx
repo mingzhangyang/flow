@@ -1,10 +1,11 @@
 // 首页：先回答「此刻该干嘛」（接下来块），再是 flow 库（我的 + 示例）。
 // 卡片带由 id 派生的低饱和色线与拓扑图形徽章，库一多也有节奏而不吵。
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
 import { type Flow, type Topology } from '../domain/types';
 import { type Library } from '../session/library';
+import { catalogDefinitionKey, examplesVisibleAlongsideOwned, type FlowCatalogSource, type OwnedCatalogSnapshot } from '../session/flowCatalog';
 import { type Sharer, type ShareOutcome } from '../sharing/sharer';
 import { nextEvents, type ScheduledOccurrence } from '../runtime/engine';
 import { timeOfDay, MS_PER_DAY } from '../runtime/clock';
@@ -45,22 +46,24 @@ function SchedGlyph(props: { color: string }) {
 export function HomeScreen(props: {
   library: Library;
   examples: Flow[];
-  refreshKey: number;
+  catalog: OwnedCatalogSnapshot;
   sharer: Sharer;
-  onRun: (flow: Flow) => void;
+  onRetry: () => void;
+  onRun: (flow: Flow, definitionKey: string) => void;
   onNew: (topology: Topology) => void;
   onEdit: (flow: Flow) => void;
   onExport: (flow: Flow) => void;
-  onInsight: (flow: Flow) => void;
+  onInsight: (flow: Flow, source: FlowCatalogSource) => void;
+  onDelete: (flow: Flow, definitionKey: string) => Promise<void>;
   onImport: () => void;
   onGenerate: () => void;
 }) {
   const c = paletteFor(useColorScheme());
   const styles = useMemo(() => createStyles(c), [c]);
   const { t } = useI18n();
-  const [mine, setMine] = useState<Flow[]>([]);
   const [backupNote, setBackupNote] = useState<string | null>(null);
-
+  const catalogReady = props.catalog.status === 'ready';
+  const mine: Flow[] = props.catalog.status === 'ready' ? props.catalog.flows : [];
   // 整库备份（C6 兜底）：全部 flow + 历史修订 + 打卡日志，经系统分享面板存文件/发给自己。
   const backup = (): void => {
     const outcomeText: Record<ShareOutcome, string> = {
@@ -74,34 +77,45 @@ export function HomeScreen(props: {
       .then((outcome) => setBackupNote(outcomeText[outcome]))
       .catch(() => setBackupNote(null)); // 用户取消等——不打扰
   };
-  const reload = (): void => {
-    props.library.list().then(setMine).catch(() => {});
-  };
-  useEffect(reload, [props.refreshKey]);
-
-  const del = (id: string): void => {
-    props.library.remove(id).then(reload).catch(() => {});
+  const del = (flow: Flow): void => {
+    props.onDelete(flow, catalogDefinitionKey(flow.id, 'owned')).catch(() => {});
   };
 
   const now = Date.now();
   const today = new Date(now);
+  const visibleExamples = useMemo(
+    () => catalogReady ? examplesVisibleAlongsideOwned(props.examples, mine) : [],
+    [catalogReady, props.examples, mine],
+  );
 
-  // 接下来：所有可见日程型 flow 的最近一次提醒（我的优先，无则看示例）
+  const run = (flow: Flow, own: boolean): void => {
+    props.onRun(flow, catalogDefinitionKey(flow.id, own ? 'owned' : 'example'));
+  };
+
+  // 接下来：所有可见日程型 flow 的最近一次提醒（我的优先，无则看未被同 id 用户 Flow 遮蔽的示例）
   const upNext = useMemo(() => {
+    if (!catalogReady) return null;
     const mineSched = mine.filter((f) => f.topology === 'scheduled');
-    const pool = mineSched.length > 0 ? mineSched : props.examples.filter((f) => f.topology === 'scheduled');
-    let best: { flow: Flow; occ: ScheduledOccurrence } | null = null;
-    for (const flow of pool) {
-      const [occ] = nextEvents(flow, now, timeZoneForFlow(flow, systemTimeZone), MS_PER_DAY);
-      if (occ && (!best || occ.at < best.occ.at)) best = { flow, occ };
+    const pool = mineSched.length > 0
+      ? mineSched.map((flow) => ({ flow, own: true }))
+      : visibleExamples.filter((f) => f.topology === 'scheduled').map((flow) => ({ flow, own: false }));
+    let best: { flow: Flow; occ: ScheduledOccurrence; own: boolean } | null = null;
+    for (const candidate of pool) {
+      const [occ] = nextEvents(
+        candidate.flow,
+        now,
+        timeZoneForFlow(candidate.flow, systemTimeZone),
+        MS_PER_DAY,
+      );
+      if (occ && (!best || occ.at < best.occ.at)) best = { ...candidate, occ };
     }
     return best;
-  }, [mine, props.examples, props.refreshKey]);
+  }, [catalogReady, mine, visibleExamples]);
 
   const card = (flow: Flow, own: boolean) => (
     <View key={flow.id} style={styles.card}>
       <View style={[styles.stripe, { backgroundColor: stripeOf(flow.id) }]} />
-      <Pressable onPress={() => props.onRun(flow)}>
+      <Pressable onPress={() => run(flow, own)}>
         <View style={styles.cardTop}>
           <Text style={styles.cardTitle}>{flow.title}</Text>
           <View style={styles.badge}>
@@ -117,12 +131,12 @@ export function HomeScreen(props: {
         <Text style={styles.cardMeta}>{t.cardMeta(flow.nodes.length, flow.topology)}</Text>
       </Pressable>
       <View style={styles.rowActions}>
-        <Pressable onPress={() => props.onInsight(flow)}><Text style={styles.link}>{t.linkInsight}</Text></Pressable>
+        <Pressable onPress={() => props.onInsight(flow, own ? 'owned' : 'example')}><Text style={styles.link}>{t.linkInsight}</Text></Pressable>
         {own ? (
           <>
             <Pressable onPress={() => props.onEdit(flow)}><Text style={styles.link}>{t.linkEdit}</Text></Pressable>
             <Pressable onPress={() => props.onExport(flow)}><Text style={styles.link}>{t.linkShare}</Text></Pressable>
-            <Pressable onPress={() => del(flow.id)}><Text style={[styles.link, styles.danger]}>{t.delete}</Text></Pressable>
+            <Pressable onPress={() => del(flow)}><Text style={[styles.link, styles.danger]}>{t.delete}</Text></Pressable>
           </>
         ) : null}
       </View>
@@ -139,8 +153,17 @@ export function HomeScreen(props: {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        {props.catalog.status === 'error' ? (
+          <View style={styles.catalogError}>
+            <Text style={styles.catalogErrorText}>{t.catalogUnavailable}</Text>
+            <Pressable style={styles.retryButton} onPress={() => props.onRetry()}>
+              <Text style={styles.retryText}>{t.retry}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
         {upNext ? (
-          <Pressable style={styles.next} onPress={() => props.onRun(upNext.flow)}>
+          <Pressable style={styles.next} onPress={() => run(upNext.flow, upNext.own)}>
             <Text style={styles.nextTime}>{fmtTimeOfDay(timeOfDay(upNext.occ.at, systemTimeZone))}</Text>
             <View style={styles.nextBody}>
               <Text style={styles.nextKicker}>{t.upNext}</Text>
@@ -151,34 +174,38 @@ export function HomeScreen(props: {
           </Pressable>
         ) : null}
 
-        <View style={styles.actions}>
-          <Pressable style={styles.action} onPress={() => props.onNew('sequential')}>
-            <Text style={styles.actionText}>{t.newSequential}</Text>
-          </Pressable>
-          <Pressable style={styles.action} onPress={() => props.onNew('scheduled')}>
-            <Text style={styles.actionText}>{t.newScheduled}</Text>
-          </Pressable>
-          <Pressable style={[styles.action, styles.actionGhost]} onPress={props.onGenerate}>
-            <Text style={styles.actionGhostText}>{t.aiGenerate}</Text>
-          </Pressable>
-          <Pressable style={[styles.action, styles.actionGhost]} onPress={props.onImport}>
-            <Text style={styles.actionGhostText}>{t.importAction}</Text>
-          </Pressable>
-          <Pressable style={[styles.action, styles.actionGhost]} onPress={backup}>
-            <Text style={styles.actionGhostText}>{t.backupAction}</Text>
-          </Pressable>
-        </View>
-        {backupNote ? <Text style={styles.backupNote}>{backupNote}</Text> : null}
-
-        {mine.length > 0 ? (
+        {catalogReady ? (
           <>
-            <Text style={styles.sectionKicker}>{t.sectionMine}</Text>
-            {mine.map((f) => card(f, true))}
+            <View style={styles.actions}>
+              <Pressable style={styles.action} onPress={() => props.onNew('sequential')}>
+                <Text style={styles.actionText}>{t.newSequential}</Text>
+              </Pressable>
+              <Pressable style={styles.action} onPress={() => props.onNew('scheduled')}>
+                <Text style={styles.actionText}>{t.newScheduled}</Text>
+              </Pressable>
+              <Pressable style={[styles.action, styles.actionGhost]} onPress={props.onGenerate}>
+                <Text style={styles.actionGhostText}>{t.aiGenerate}</Text>
+              </Pressable>
+              <Pressable style={[styles.action, styles.actionGhost]} onPress={props.onImport}>
+                <Text style={styles.actionGhostText}>{t.importAction}</Text>
+              </Pressable>
+              <Pressable style={[styles.action, styles.actionGhost]} onPress={backup}>
+                <Text style={styles.actionGhostText}>{t.backupAction}</Text>
+              </Pressable>
+            </View>
+            {backupNote ? <Text style={styles.backupNote}>{backupNote}</Text> : null}
+
+            {mine.length > 0 ? (
+              <>
+                <Text style={styles.sectionKicker}>{t.sectionMine}</Text>
+                {mine.map((f) => card(f, true))}
+              </>
+            ) : null}
+
+            <Text style={styles.sectionKicker}>{t.sectionExamples}</Text>
+            {visibleExamples.map((f) => card(f, false))}
           </>
         ) : null}
-
-        <Text style={styles.sectionKicker}>{t.sectionExamples}</Text>
-        {props.examples.map((f) => card(f, false))}
       </ScrollView>
     </View>
   );
@@ -219,6 +246,16 @@ const createStyles = (c: Palette) => StyleSheet.create({
 
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   backupNote: { fontSize: 13, color: c.accent, marginLeft: spacing.xs },
+  catalogError: {
+    backgroundColor: c.surface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
+    padding: spacing.md, gap: spacing.sm,
+  },
+  catalogErrorText: { fontSize: 14, color: c.textMuted },
+  retryButton: {
+    alignSelf: 'flex-start', borderRadius: radius.pill, borderWidth: 1, borderColor: c.accent,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
+  },
+  retryText: { color: c.accent, fontSize: 14, fontWeight: '600' },
   action: {
     backgroundColor: c.accent, borderRadius: radius.pill,
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,

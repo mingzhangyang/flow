@@ -64,3 +64,31 @@ test('AI 解读（本地解释器）对示例可用', async () => {
   await page.getByText('‹ 返回', { exact: true }).click();
   await expectText(page, '示例');
 });
+
+test('运行后退出并删除，重新导入相同 ID 得到新的空白运行', async () => {
+  const page = await e2e.openApp();
+  const flow = {
+    schemaVersion: 2, id: 'deletion-lifecycle', title: '删除生命周期', topology: 'sequential',
+    nodes: [{ id: 'step', kind: 'timed', label: '等待', durationSec: 60 }],
+  };
+  const importFlow = async (): Promise<void> => {
+    await page.getByText('导入', { exact: true }).click();
+    await page.locator('textarea').fill(JSON.stringify(flow));
+    await page.getByText('确认导入', { exact: true }).click();
+    await expectText(page, flow.title);
+  };
+  await importFlow();
+  await page.getByText(flow.title, { exact: true }).click();
+  await page.getByText('开始', { exact: true }).click();
+  await page.getByText('暂停', { exact: true }).click();
+  await page.getByText('‹ 返回', { exact: true }).click();
+  await page.getByText('删除', { exact: true }).click();
+  await page.getByText(flow.title, { exact: true }).waitFor({ state: 'detached' });
+
+  await importFlow();
+  await page.getByText(flow.title, { exact: true }).click();
+  await expectText(page, '开始');
+  assert.equal(await page.getByText('恢复', { exact: true }).count(), 0);
+  await page.getByText('开始', { exact: true }).click();
+  await expectText(page, '暂停');
+});

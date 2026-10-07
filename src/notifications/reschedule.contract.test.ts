@@ -1,109 +1,326 @@
-// 提醒登记与重排的契约测试（C10），基于内存 KV 与记录型 Notifier。
-
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createInMemoryKV } from '../storage/kv';
+import { createInMemoryKV, type KVStore } from '../storage/kv';
 import { fixedTimeZone, MS_PER_DAY } from '../runtime/clock';
 import { medicationFlow } from '../examples/medication';
 import { coffeeFlow } from '../examples/coffee';
+import { catalogDefinitionKey } from '../session/flowCatalog';
 import { type Reminder } from './plan';
 import { type Notifier } from './notifier';
-import { enrollFlow, enrolledFlowIds, rescheduleReminders, RESCHEDULE_CAP } from './reschedule';
+import { dailyReminderId, sequentialReminderId } from './notificationIdentity';
+import { cancelScheduledRemindersForDefinition, enrollFlow, enrolledFlowKeys, rescheduleReminders, unenrollFlow, RESCHEDULE_CAP } from './reschedule';
 
-/** 记录型 Notifier：断言排入/取消了什么。 */
 function recordingNotifier() {
   const scheduled: Reminder[][] = [];
   const cancelled: string[][] = [];
   const notifier: Notifier = {
-    async schedule(reminders) {
-      scheduled.push(reminders);
-    },
-    async cancel(ids) {
-      cancelled.push(ids);
-    },
+    async schedule(reminders) { scheduled.push(reminders); },
+    async cancel(ids) { cancelled.push(ids); },
     async cancelAll() {},
-    async status() {
-      return 'ready';
-    },
+    async status() { return 'ready'; },
   };
   return { notifier, scheduled, cancelled };
 }
 
-const NOW = 25_200_000; // 1970-01-01 07:00 UTC
+const NOW = 25_200_000;
 const tz = fixedTimeZone(0);
+const medKey = catalogDefinitionKey(medicationFlow.id, 'example');
 
-test('enroll 幂等，登记清单可读回', async () => {
+test('enroll / unenroll 仅保存 definitionKey 且幂等', async () => {
   const kv = createInMemoryKV();
-  await enrollFlow(kv, 'a');
-  await enrollFlow(kv, 'a');
-  await enrollFlow(kv, 'b');
-  assert.deepEqual(await enrolledFlowIds(kv), ['a', 'b']);
+  await enrollFlow(kv, medKey);
+  await enrollFlow(kv, medKey);
+  assert.deepEqual(await enrolledFlowKeys(kv), [medKey]);
+  await unenrollFlow(kv, medKey);
+  await unenrollFlow(kv, medKey);
+  assert.deepEqual(await enrolledFlowKeys(kv), []);
 });
 
-test('只为已登记的日程型 flow 排提醒；未登记/顺序型不排', async () => {
+test('只为已登记的日程 definition 排提醒', async () => {
   const kv = createInMemoryKV();
   const { notifier, scheduled } = recordingNotifier();
-  await enrollFlow(kv, medicationFlow.id);
-
+  await enrollFlow(kv, medKey);
   await rescheduleReminders({
     kv,
     notifier,
-    flows: [coffeeFlow, medicationFlow],
+    flows: [
+      { flow: coffeeFlow, definitionKey: catalogDefinitionKey(coffeeFlow.id, 'example') },
+      { flow: medicationFlow, definitionKey: medKey },
+    ],
     now: NOW,
     deviceTz: tz,
   });
-
-  const batch = scheduled.at(-1) ?? [];
-  // 跟随设备时区的 daily → 系统级重复触发器：每节点 1 条，长期有效、不断档
-  assert.equal(batch.length, 3);
-  assert.ok(batch.every((r) => r.repeat?.kind === 'daily'));
-  assert.ok(batch.every((r) => r.id.startsWith('example.medication:')));
+  assert.equal((scheduled.at(-1) ?? []).length, 3);
+  assert.ok((scheduled.at(-1) ?? []).every((r) => r.data?.definitionKey === medKey));
 });
 
-test('锚定非设备时区的 flow 走多日预排窗口（重复触发器无法表达异地墙钟）', async () => {
+test('same-id example / owned enrollment 完全隔离', async () => {
   const kv = createInMemoryKV();
   const { notifier, scheduled } = recordingNotifier();
-  const anchored = { ...medicationFlow, id: 'anchored', timeZone: 'UTC' };
-  await enrollFlow(kv, anchored.id);
+  const owned = { ...medicationFlow, title: 'owned' };
+  const exampleKey = catalogDefinitionKey(medicationFlow.id, 'example');
+  const ownedKey = catalogDefinitionKey(owned.id, 'owned');
 
-  await rescheduleReminders({ kv, notifier, flows: [anchored], now: NOW, deviceTz: tz });
-  const batch = scheduled.at(-1) ?? [];
-  assert.ok(batch.length >= 3 * 7); // 3 剂 × 7 天窗口
-  assert.ok(batch.every((r) => r.repeat === undefined));
-});
-
-test('重排先取消上一批的 id——不留孤儿，也不触碰别人的提醒', async () => {
-  const kv = createInMemoryKV();
-  const { notifier, scheduled, cancelled } = recordingNotifier();
-  await enrollFlow(kv, medicationFlow.id);
-
-  const opts = { kv, notifier, flows: [medicationFlow], now: NOW, deviceTz: tz };
-  await rescheduleReminders(opts);
-  await rescheduleReminders({ ...opts, now: NOW + MS_PER_DAY });
-
-  const firstBatchIds = (scheduled[0] ?? []).map((r) => r.id);
-  assert.deepEqual(cancelled[1], firstBatchIds); // 第二次重排取消的正是第一批
-});
-
-test('已登记但已被删除的 flow 不再排提醒', async () => {
-  const kv = createInMemoryKV();
-  const { notifier, scheduled } = recordingNotifier();
-  await enrollFlow(kv, 'gone');
-
-  await rescheduleReminders({ kv, notifier, flows: [medicationFlow], now: NOW, deviceTz: tz });
+  await enrollFlow(kv, exampleKey);
+  await rescheduleReminders({
+    kv,
+    notifier,
+    flows: [{ flow: owned, definitionKey: ownedKey }],
+    now: NOW,
+    deviceTz: tz,
+  });
   assert.deepEqual(scheduled.at(-1), []);
 });
 
-test('提醒总量截断到 RESCHEDULE_CAP（平台待决上限）', async () => {
+test('重排先取消上一批 id', async () => {
+  const kv = createInMemoryKV();
+  const { notifier, scheduled, cancelled } = recordingNotifier();
+  await enrollFlow(kv, medKey);
+  const opts = {
+    kv,
+    notifier,
+    flows: [{ flow: medicationFlow, definitionKey: medKey }],
+    now: NOW,
+    deviceTz: tz,
+  };
+  await rescheduleReminders(opts);
+  await rescheduleReminders({ ...opts, now: NOW + MS_PER_DAY });
+  assert.deepEqual(cancelled[1], (scheduled[0] ?? []).map((r) => r.id));
+});
+
+test('提醒总量截断到 RESCHEDULE_CAP', async () => {
   const kv = createInMemoryKV();
   const { notifier, scheduled } = recordingNotifier();
-  // 锚定时区（走预排窗口）：4 条各 3 剂/日 × 7 天 = 84 > cap
   const flows = [0, 1, 2, 3].map((i) => ({ ...medicationFlow, id: `med-${i}`, timeZone: 'UTC' }));
-  for (const f of flows) await enrollFlow(kv, f.id);
-
-  await rescheduleReminders({ kv, notifier, flows, now: NOW, deviceTz: tz });
-  const batch = scheduled.at(-1) ?? [];
-  assert.equal(batch.length, RESCHEDULE_CAP);
-  for (let i = 1; i < batch.length; i++) assert.ok(batch[i - 1].at <= batch[i].at); // 最近优先
+  const entries = flows.map((flow) => ({
+    flow,
+    definitionKey: catalogDefinitionKey(flow.id, 'owned'),
+  }));
+  for (const item of entries) await enrollFlow(kv, item.definitionKey);
+  await rescheduleReminders({ kv, notifier, flows: entries, now: NOW, deviceTz: tz });
+  assert.equal((scheduled.at(-1) ?? []).length, RESCHEDULE_CAP);
 });
+
+test('损坏 enrollment registry fail closed，enroll / unenroll 不覆盖原值', async () => {
+  for (const malformed of [
+    '',
+    '{not json',
+    JSON.stringify({ not: 'array' }),
+    JSON.stringify([medKey, 7]),
+    JSON.stringify([medicationFlow.id]),
+  ]) {
+    const kv = createInMemoryKV();
+    await kv.setItem('notif:enrolled:v1', malformed);
+
+    await assert.rejects(() => enrolledFlowKeys(kv));
+    await assert.rejects(() => enrollFlow(kv, medKey));
+    await assert.rejects(() => unenrollFlow(kv, medKey));
+    assert.equal(await kv.getItem('notif:enrolled:v1'), malformed);
+  }
+});
+
+test('损坏 previous notification id registry 时重排 fail closed，不取消也不覆盖', async () => {
+  const kv = createInMemoryKV();
+  const { notifier, scheduled, cancelled } = recordingNotifier();
+  await enrollFlow(kv, medKey);
+  const malformed = JSON.stringify(['valid-id', 7]);
+  await kv.setItem('notif:scheduled-ids:v1', malformed);
+
+  await assert.rejects(() =>
+    rescheduleReminders({
+      kv,
+      notifier,
+      flows: [{ flow: medicationFlow, definitionKey: medKey }],
+      now: NOW,
+      deviceTz: tz,
+    }),
+  );
+
+  assert.deepEqual(cancelled, []);
+  assert.deepEqual(scheduled, []);
+  assert.equal(await kv.getItem('notif:scheduled-ids:v1'), malformed);
+  await assert.rejects(() => cancelScheduledRemindersForDefinition({ kv, notifier, definitionKey: medKey }));
+  assert.deepEqual(cancelled, []);
+  assert.equal(await kv.getItem('notif:scheduled-ids:v1'), malformed);
+});
+
+
+test('previous-ID registry 拒绝 sequential / unrelated identifier，绝不误取消计时器', async () => {
+  for (const unsafeId of [sequentialReminderId('active-run'), 'unrelated-id']) {
+    const kv = createInMemoryKV();
+    const { notifier, scheduled, cancelled } = recordingNotifier();
+    await enrollFlow(kv, medKey);
+    const persisted = JSON.stringify([unsafeId]);
+    await kv.setItem('notif:scheduled-ids:v1', persisted);
+
+    await assert.rejects(() =>
+      rescheduleReminders({
+        kv,
+        notifier,
+        flows: [{ flow: medicationFlow, definitionKey: medKey }],
+        now: NOW,
+        deviceTz: tz,
+      }),
+    );
+
+    assert.deepEqual(cancelled, []);
+    assert.deepEqual(scheduled, []);
+    assert.equal(await kv.getItem('notif:scheduled-ids:v1'), persisted);
+    await assert.rejects(() => cancelScheduledRemindersForDefinition({ kv, notifier, definitionKey: medKey }));
+    assert.deepEqual(cancelled, []);
+    assert.equal(await kv.getItem('notif:scheduled-ids:v1'), persisted);
+  }
+});
+
+
+test('enroll / unenroll 在 read-modify-write 前拒绝非 canonical definitionKey', async () => {
+  const kv = createInMemoryKV();
+
+  await assert.rejects(() => enrollFlow(kv, medicationFlow.id));
+  assert.equal(await kv.getItem('notif:enrolled:v1'), null);
+
+  await enrollFlow(kv, medKey);
+  const persisted = await kv.getItem('notif:enrolled:v1');
+  await assert.rejects(() => enrollFlow(kv, ` ${medKey}`));
+  await assert.rejects(() => unenrollFlow(kv, medicationFlow.id));
+  assert.equal(await kv.getItem('notif:enrolled:v1'), persisted);
+});
+
+for (const recovery of ['retry', 'remove'] as const) {
+  test(`mid-batch failure tracks every candidate ID for ${recovery}`, async () => {
+    const kv = createInMemoryKV();
+    await enrollFlow(kv, medKey);
+    const oldId = dailyReminderId(medKey, 'old-dose');
+    await kv.setItem('notif:scheduled-ids:v1', JSON.stringify([oldId]));
+    const pending = new Set([oldId]);
+    let fail = true;
+    let expectedIds: string[] = [];
+    const notifier: Notifier = {
+      ...recordingNotifier().notifier,
+      async cancel(ids) { for (const id of ids) pending.delete(id); },
+      async schedule(reminders) {
+        expectedIds = reminders.map((r) => r.id);
+        if (reminders.length > 0) {
+          const durable = JSON.parse((await kv.getItem('notif:scheduled-ids:v1')) as string) as string[];
+          assert.ok(expectedIds.every((id) => durable.includes(id)), 'all IDs must be durable before native scheduling');
+        }
+        for (const [i, reminder] of reminders.entries()) {
+          pending.add(reminder.id);
+          if (fail && i === 0) throw new Error('native batch failed after one scheduled item');
+        }
+      },
+    };
+    const opts = { kv, notifier, flows: [{ flow: medicationFlow, definitionKey: medKey }], now: NOW, deviceTz: tz };
+    await assert.rejects(() => rescheduleReminders(opts));
+    const registry = JSON.parse((await kv.getItem('notif:scheduled-ids:v1')) as string) as string[];
+    assert.deepEqual(new Set(registry), new Set([oldId, ...expectedIds]));
+    assert.ok([...pending].every((id) => registry.includes(id)));
+
+    fail = false;
+    if (recovery === 'remove') await unenrollFlow(kv, medKey);
+    await rescheduleReminders(opts);
+    assert.deepEqual(pending, new Set(recovery === 'retry' ? expectedIds : []));
+    assert.deepEqual(JSON.parse((await kv.getItem('notif:scheduled-ids:v1')) as string), [...pending]);
+  });
+}
+
+test('recovery-set persistence failure stops all platform side effects', async () => {
+  const base = createInMemoryKV();
+  await enrollFlow(base, medKey);
+  const oldId = dailyReminderId(medKey, 'old-dose');
+  const original = JSON.stringify([oldId]);
+  await base.setItem('notif:scheduled-ids:v1', original);
+  const kv: KVStore = { ...base, async setItem() { throw new Error('disk full'); } };
+  const { notifier, scheduled, cancelled } = recordingNotifier();
+  await assert.rejects(() => rescheduleReminders({ kv, notifier, flows: [{ flow: medicationFlow, definitionKey: medKey }], now: NOW, deviceTz: tz }), /disk full/);
+  assert.deepEqual(scheduled, []);
+  assert.deepEqual(cancelled, []);
+  assert.equal(await base.getItem('notif:scheduled-ids:v1'), original);
+});
+
+for (const failure of ['cancel', 'final registry write'] as const) {
+  test(`${failure} failure preserves recovery IDs until a subsequent cleanup succeeds`, async () => {
+    const base = createInMemoryKV();
+    await enrollFlow(base, medKey);
+    const oldId = dailyReminderId(medKey, 'old-dose');
+    await base.setItem('notif:scheduled-ids:v1', JSON.stringify([oldId]));
+    const pending = new Set([oldId]);
+    let writes = 0;
+    let fail = true;
+    const kv: KVStore = {
+      ...base,
+      async setItem(key, value) {
+        if (key === 'notif:scheduled-ids:v1' && ++writes === 2 && failure === 'final registry write' && fail) {
+          throw new Error('registry commit failed');
+        }
+        await base.setItem(key, value);
+      },
+    };
+    const notifier: Notifier = {
+      ...recordingNotifier().notifier,
+      async cancel(ids) {
+        for (const id of ids) {
+          pending.delete(id);
+          if (fail && failure === 'cancel') throw new Error('partial cancellation');
+        }
+      },
+      async schedule(reminders) { for (const r of reminders) pending.add(r.id); },
+    };
+    const opts = { kv, notifier, flows: [{ flow: medicationFlow, definitionKey: medKey }], now: NOW, deviceTz: tz };
+    await assert.rejects(() => rescheduleReminders(opts));
+    const registry = JSON.parse((await base.getItem('notif:scheduled-ids:v1')) as string) as string[];
+    assert.ok(registry.includes(oldId));
+    assert.ok([...pending].every((id) => registry.includes(id)));
+    fail = false;
+    await unenrollFlow(base, medKey);
+    await rescheduleReminders(opts);
+    assert.equal(pending.size, 0);
+    assert.deepEqual(JSON.parse((await base.getItem('notif:scheduled-ids:v1')) as string), []);
+  });
+}
+
+test('definition cancellation removes only exact owned IDs, preserving same-ID example and other flows', async () => {
+  const kv = createInMemoryKV();
+  const ownedKey = catalogDefinitionKey(medicationFlow.id, 'owned');
+  const target = dailyReminderId(ownedKey, 'dose');
+  const kept = [dailyReminderId(medKey, 'dose'), dailyReminderId(catalogDefinitionKey('other', 'owned'), 'dose')];
+  await kv.setItem('notif:scheduled-ids:v1', JSON.stringify([target, ...kept]));
+  const { notifier, cancelled } = recordingNotifier();
+  await cancelScheduledRemindersForDefinition({ kv, notifier, definitionKey: ownedKey });
+  assert.deepEqual(cancelled, [[target]]);
+  assert.deepEqual(JSON.parse((await kv.getItem('notif:scheduled-ids:v1')) as string), kept);
+});
+
+for (const failure of ['platform', 'registry'] as const) {
+  test(`definition cancellation ${failure} failure leaves the original recovery set for retry`, async () => {
+    const base = createInMemoryKV();
+    const ids = [dailyReminderId(medKey, 'dose-a'), dailyReminderId(medKey, 'dose-b')];
+    const original = JSON.stringify(ids);
+    await base.setItem('notif:scheduled-ids:v1', original);
+    const pending = new Set(ids);
+    let fail = true;
+    const kv: KVStore = {
+      ...base,
+      async setItem(key, value) {
+        if (fail && failure === 'registry') throw new Error('registry write failed');
+        await base.setItem(key, value);
+      },
+    };
+    const notifier: Notifier = {
+      ...recordingNotifier().notifier,
+      async cancel(ids) {
+        for (const id of ids) {
+          pending.delete(id);
+          if (fail && failure === 'platform') throw new Error('partial platform cancel');
+        }
+      },
+    };
+    await assert.rejects(() => cancelScheduledRemindersForDefinition({ kv, notifier, definitionKey: medKey }));
+    assert.equal(await base.getItem('notif:scheduled-ids:v1'), original);
+    fail = false;
+    await cancelScheduledRemindersForDefinition({ kv, notifier, definitionKey: medKey });
+    assert.equal(pending.size, 0);
+    assert.equal(await base.getItem('notif:scheduled-ids:v1'), '[]');
+  });
+}

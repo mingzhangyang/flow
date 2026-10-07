@@ -4,8 +4,7 @@
 
 import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { type Flow } from '../domain/types';
-import { type Storage } from '../storage/storage';
-import { type Notifier } from '../notifications/notifier';
+import { type RuntimeSession } from '../session/definitionRuntime';
 import { usePersistentRun } from './usePersistentRun';
 import { Timeline } from './Timeline';
 import { ProgressRing } from './ProgressRing';
@@ -17,13 +16,16 @@ const RING = 268;
 
 export function RunnerScreen(props: {
   flow: Flow;
-  storage: Storage;
-  notifier: Notifier;
+  session: RuntimeSession;
   onExit: () => void;
 }) {
-  const { flow } = props;
   const { locale, t } = useI18n();
-  const run = usePersistentRun(flow, props.storage, props.notifier, locale);
+  const run = usePersistentRun(
+    props.flow,
+    props.session,
+    locale,
+  );
+  const flow = run.flow;
   const state = run.state;
   const node = state.currentIndex < flow.nodes.length ? flow.nodes[state.currentIndex] : null;
   const running = state.status === 'running' || state.status === 'paused';
@@ -35,6 +37,27 @@ export function RunnerScreen(props: {
     timed && node.durationSec > 0 ? (node.durationSec - state.remainingSec) / node.durationSec : 0;
   const closing = timed && state.remainingSec > 0 && state.remainingSec <= 10; // 收尾时刻转暖
   const beadColor = paused ? dark.faint : closing ? dark.warm : dark.accent;
+
+  if (run.status === 'loading') return <View style={styles.screen} />;
+  if (run.status === 'error') {
+    return (
+      <View style={styles.screen}>
+        <View style={styles.header}>
+          <Pressable onPress={props.onExit} hitSlop={12}>
+            <Text style={styles.back}>{t.back}</Text>
+          </Pressable>
+          <Text style={styles.title} numberOfLines={1}>{props.flow.title}</Text>
+          <View style={{ width: 48 }} />
+        </View>
+        <View style={styles.loadError}>
+          <Text style={styles.loadErrorText}>{t.runStorageUnavailable}</Text>
+          <Pressable style={styles.retry} onPress={run.retry}>
+            <Text style={styles.retryText}>{t.retry}</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.screen}>
@@ -141,6 +164,13 @@ const styles = StyleSheet.create({
   back: { fontSize: 16, color: dark.accent, width: 48 },
   title: { flex: 1, textAlign: 'center', fontSize: type.emphasis - 1, fontWeight: '600', color: dark.textMuted },
   content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
+  loadError: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.xl },
+  loadErrorText: { color: dark.textMuted, fontSize: type.body, textAlign: 'center' },
+  retry: {
+    borderRadius: radius.pill, borderWidth: 1, borderColor: dark.accent,
+    paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
+  },
+  retryText: { color: dark.accent, fontSize: type.body, fontWeight: '600' },
   stage: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.lg },
   kicker: { fontSize: type.caption + 1, color: dark.textMuted, letterSpacing: 2, marginBottom: spacing.md },
   clock: {
