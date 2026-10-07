@@ -29,18 +29,16 @@ function isRunEvent(value: unknown): value is RunEvent {
   return typeof e.type === 'string' && EVENT_TYPES.has(e.type as RunEventType) && typeof e.at === 'number';
 }
 
-function parseRun(text: string): Run | null {
-  try {
-    const raw = JSON.parse(text) as { id?: unknown; flow?: unknown; events?: unknown };
-    if (typeof raw.id !== 'string' || !Array.isArray(raw.events)) return null;
-    if (!raw.events.every(isRunEvent)) return null;
-    const flow = coerceFlow(raw.flow);
-    let run: Run = { id: raw.id, flow, events: [] };
-    for (const event of raw.events) run = reduce(run, event);
-    return run;
-  } catch {
-    return null;
+function parseRun(text: string): Run {
+  const raw = JSON.parse(text) as { id?: unknown; flow?: unknown; events?: unknown };
+  if (typeof raw.id !== 'string' || !Array.isArray(raw.events)) {
+    throw new Error('invalid persisted Run');
   }
+  if (!raw.events.every(isRunEvent)) throw new Error('invalid persisted Run events');
+  const flow = coerceFlow(raw.flow);
+  let run: Run = { id: raw.id, flow, events: [] };
+  for (const event of raw.events) run = reduce(run, event);
+  return run;
 }
 
 export interface Storage {
@@ -70,7 +68,7 @@ export interface Storage {
 export function createStorage(kv: KVStore): Storage {
   async function loadFlow(id: string): Promise<Flow | null> {
     const text = await kv.getItem(FLOW + id);
-    return text ? deserializeFlow(text) : null;
+    return text === null ? null : deserializeFlow(text);
   }
 
   async function saveFlow(flow: Flow): Promise<void> {
@@ -79,13 +77,12 @@ export function createStorage(kv: KVStore): Storage {
 
   async function loadCheckIns(definitionKey: string): Promise<CheckIn[]> {
     const text = await kv.getItem(CHECKINS + definitionKey);
-    if (!text) return [];
-    try {
-      const raw = JSON.parse(text) as unknown;
-      return Array.isArray(raw) ? raw.filter(isCheckIn) : [];
-    } catch {
-      return [];
-    }
+    if (text === null) return [];
+    const raw = JSON.parse(text) as unknown;
+    if (!Array.isArray(raw)) throw new Error('invalid persisted check-in log');
+    // Individual malformed entries are independently unusable and may be skipped; a malformed
+    // container/JSON is a read failure and must never be reinterpreted as an empty user log.
+    return raw.filter(isCheckIn);
   }
 
   return {
@@ -96,7 +93,7 @@ export function createStorage(kv: KVStore): Storage {
       const flows: Flow[] = [];
       for (const key of keys) {
         const text = await kv.getItem(key);
-        if (text) flows.push(deserializeFlow(text));
+        if (text !== null) flows.push(deserializeFlow(text));
       }
       flows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
       return flows;
@@ -119,15 +116,19 @@ export function createStorage(kv: KVStore): Storage {
     },
     async loadRun(id) {
       const text = await kv.getItem(RUN + id);
-      return text ? parseRun(text) : null;
+      return text === null ? null : parseRun(text);
     },
     async listRuns() {
       const keys = (await kv.keys()).filter((k) => k.startsWith(RUN));
       const runs: Run[] = [];
       for (const key of keys) {
         const text = await kv.getItem(key);
-        const run = text ? parseRun(text) : null;
-        if (run) runs.push(run);
+        if (text === null) continue;
+        try {
+          runs.push(parseRun(text));
+        } catch {
+          // Enumeration can skip one unreadable Run; exact loadRun(id) remains fail-closed.
+        }
       }
       return runs;
     },
@@ -158,22 +159,18 @@ export function createStorage(kv: KVStore): Storage {
     },
     async loadRevisions(flowId) {
       const text = await kv.getItem(REV + flowId);
-      if (!text) return [];
-      try {
-        const raw = JSON.parse(text) as unknown;
-        if (!Array.isArray(raw)) return [];
-        const revisions: Flow[] = [];
-        for (const item of raw) {
-          try {
-            revisions.push(coerceFlow(item));
-          } catch {
-            // skip invalid snapshot
-          }
+      if (text === null) return [];
+      const raw = JSON.parse(text) as unknown;
+      if (!Array.isArray(raw)) throw new Error('invalid persisted revision history');
+      const revisions: Flow[] = [];
+      for (const item of raw) {
+        try {
+          revisions.push(coerceFlow(item));
+        } catch {
+          // One unusable snapshot does not invalidate the readable remainder.
         }
-        return revisions;
-      } catch {
-        return [];
       }
+      return revisions;
     },
     async deleteRevisions(flowId) {
       await kv.removeItem(REV + flowId);
