@@ -17,7 +17,8 @@ import { createStorage } from './src/storage/storage';
 import { asyncStorageKV } from './src/storage/asyncStorageKv';
 import { secureKV } from './src/storage/secureKv';
 import { createLibrary } from './src/session/library';
-import { catalogEntriesWithOwnedPrecedence, reminderEnrollmentKey, resolveCatalogEntry } from './src/session/flowCatalog';
+import { catalogEntriesWithOwnedPrecedence, resolveCatalogEntry } from './src/session/flowCatalog';
+import { deleteOwnedFlowSafely } from './src/session/deleteOwnedFlow';
 import { createExpoNotifier } from './src/notifications/expoNotifier';
 import { createExpoNotificationResponseSource } from './src/notifications/notificationResponses';
 import { configureExpoNotificationPresentation } from './src/notifications/notificationPresentation';
@@ -72,15 +73,21 @@ export default function App() {
     home();
   };
 
-  const deleteOwnedFlow = useCallback(async (flowId: string): Promise<void> => {
-    // 只关闭 owned catalog identity；同 id 示例若曾单独登记，不会被误删。
-    await unenrollFlow(asyncStorageKV, reminderEnrollmentKey(flowId, 'owned', examples));
+  const deleteOwnedFlow = useCallback(async (
+    flow: Flow,
+    enrollmentKey: string,
+    legacyEnrollmentId?: string,
+  ): Promise<void> => {
     try {
-      await library.remove(flowId);
+      await deleteOwnedFlowSafely(flow, enrollmentKey, legacyEnrollmentId, {
+        removeFlow: (id) => library.remove(id),
+        restoreFlow: (original) => storage.saveFlow(original),
+        unenroll: (key, legacyId) => unenrollFlow(asyncStorageKV, key, legacyId),
+      });
     } finally {
       setRefreshKey((k) => k + 1);
     }
-  }, [examples, library]);
+  }, [library, storage]);
 
   // 通知只携带稳定 id；真正的 Flow 总是从当前示例/本地库重新读取，
   // 避免把可能过期的定义快照塞进系统通知（C6/E5）。

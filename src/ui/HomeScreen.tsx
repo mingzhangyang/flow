@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
 import { type Flow, type Topology } from '../domain/types';
 import { type Library } from '../session/library';
-import { examplesVisibleAlongsideOwned, reminderEnrollmentKey } from '../session/flowCatalog';
+import { examplesVisibleAlongsideOwned, reminderEnrollmentIdentity } from '../session/flowCatalog';
 import { type Sharer, type ShareOutcome } from '../sharing/sharer';
 import { nextEvents, type ScheduledOccurrence } from '../runtime/engine';
 import { timeOfDay, MS_PER_DAY } from '../runtime/clock';
@@ -53,7 +53,7 @@ export function HomeScreen(props: {
   onEdit: (flow: Flow) => void;
   onExport: (flow: Flow) => void;
   onInsight: (flow: Flow) => void;
-  onDelete: (flowId: string) => Promise<void>;
+  onDelete: (flow: Flow, enrollmentKey: string, legacyEnrollmentId?: string) => Promise<void>;
   onImport: () => void;
   onGenerate: () => void;
 }) {
@@ -81,8 +81,9 @@ export function HomeScreen(props: {
   };
   useEffect(reload, [props.refreshKey]);
 
-  const del = (id: string): void => {
-    props.onDelete(id).catch(() => {});
+  const del = (flow: Flow): void => {
+    const identity = reminderEnrollmentIdentity(flow.id, 'owned', props.examples);
+    props.onDelete(flow, identity.key, identity.legacyId).catch(() => {});
   };
 
   const now = Date.now();
@@ -93,7 +94,7 @@ export function HomeScreen(props: {
   );
 
   const enrollmentKeyOf = (flow: Flow, own: boolean): string =>
-    reminderEnrollmentKey(flow.id, own ? 'owned' : 'example', props.examples);
+    reminderEnrollmentIdentity(flow.id, own ? 'owned' : 'example', props.examples).key;
 
   // 接下来：所有可见日程型 flow 的最近一次提醒（我的优先，无则看未被同 id 用户 Flow 遮蔽的示例）
   const upNext = useMemo(() => {
@@ -138,7 +139,7 @@ export function HomeScreen(props: {
           <>
             <Pressable onPress={() => props.onEdit(flow)}><Text style={styles.link}>{t.linkEdit}</Text></Pressable>
             <Pressable onPress={() => props.onExport(flow)}><Text style={styles.link}>{t.linkShare}</Text></Pressable>
-            <Pressable onPress={() => del(flow.id)}><Text style={[styles.link, styles.danger]}>{t.delete}</Text></Pressable>
+            <Pressable onPress={() => del(flow)}><Text style={[styles.link, styles.danger]}>{t.delete}</Text></Pressable>
           </>
         ) : null}
       </View>

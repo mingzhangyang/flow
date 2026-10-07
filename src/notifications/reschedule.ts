@@ -1,11 +1,9 @@
-// 日程提醒的登记与重排编排（C5：现实里 App 可能几天不被打开，提醒不能因此断档）。
+// 日程提醒的登记与重排编排（C5）。
 //
-// - 登记（enroll）：用户打开某条日程型 catalog 定义 = 为“该定义”开启提醒。
-//   enrollmentKey 由 catalog 层提供；同 id 的示例/用户 Flow 可以拥有不同 key，互不转移。
-// - 重排（reschedule）：App 启动、回到前台、库变更时，把已登记定义未来数日的
-//   提醒整批重排。上一批的 id 记在 KV：先取消再排入，不留孤儿通知，
-//   也不触碰顺序型运行的计时提醒（那些 id 不在这份清单里）。
-// 时钟与时区依旧显式注入（E3）；计划本身是纯函数（plan.ts），本模块只做编排。
+// 新 enrollment 以对象记录 {v:2,key} 持久化；旧版本 string[] 作为 legacy bare flowId 读取。
+// 结构化记录与字符串在 JSON 类型层面分离，因此开放 Flow ID 无法与新 catalog key 碰撞。
+// legacy bare ID 只在 catalog entry 显式声明 legacyEnrollmentId 时迁移；shadowing owned 不声明，
+// 从而不会把示例旧登记转给同 id 用户 Flow。
 
 import { type Flow } from '../domain/types';
 import { type Instant, type TimeZone, MS_PER_DAY } from '../runtime/clock';
@@ -17,14 +15,26 @@ import { planScheduledBatch } from './plan';
 const ENROLLED_KEY = 'notif:enrolled';
 const LAST_IDS_KEY = 'notif:scheduled-ids';
 
-/** 一次重排覆盖的天数。到期前用户任何一次打开 App 都会续上。 */
 export const RESCHEDULE_HORIZON_MS = 7 * MS_PER_DAY;
-/** 单批提醒上限：iOS 待决通知上限为 64，留出顺序型计时提醒等余量。 */
 export const RESCHEDULE_CAP = 48;
 
 export interface ScheduledCatalogEntry {
   flow: Flow;
   enrollmentKey: string;
+  legacyEnrollmentId?: string;
+}
+
+interface EnrollmentRecordV2 {
+  v: 2;
+  key: string;
+}
+
+type StoredEnrollment = string | EnrollmentRecordV2;
+
+function isEnrollmentRecordV2(value: unknown): value is EnrollmentRecordV2 {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const raw = value as { v?: unknown; key?: unknown };
+  return raw.v === 2 && typeof raw.key === 'string';
 }
 
 async function readStringArray(kv: KVStore, key: string): Promise<string[]> {
@@ -38,32 +48,56 @@ async function readStringArray(kv: KVStore, key: string): Promise<string[]> {
   }
 }
 
-/** 已开启提醒的 catalog enrollment key 清单。 */
-export function enrolledFlowKeys(kv: KVStore): Promise<string[]> {
-  return readStringArray(kv, ENROLLED_KEY);
+async function readEnrollments(kv: KVStore): Promise<StoredEnrollment[]> {
+  const text = await kv.getItem(ENROLLED_KEY);
+  if (!text) return [];
+  try {
+    const raw = JSON.parse(text) as unknown;
+    if (!Array.isArray(raw)) return [];
+    return raw.filter((item): item is StoredEnrollment =>
+      typeof item === 'string' || isEnrollmentRecordV2(item));
+  } catch {
+    return [];
+  }
 }
 
-/** 旧名字保留给现有调用；值语义现为 enrollment key。 */
-export const enrolledFlowIds = enrolledFlowKeys;
+async function writeEnrollments(kv: KVStore, records: StoredEnrollment[]): Promise<void> {
+  await kv.setItem(ENROLLED_KEY, JSON.stringify(records));
+}
 
-/** 为某个 catalog 定义开启提醒（幂等）。 */
+/** 调试/测试视图：legacy 返回原字符串，v2 返回其 canonical key。 */
+export async function enrolledFlowKeys(kv: KVStore): Promise<string[]> {
+  return (await readEnrollments(kv)).map((record) =>
+    typeof record === 'string' ? record : record.key);
+}
+
+/** 为某个 catalog 定义开启提醒（幂等）；新数据永远写结构化 v2 记录。 */
 export async function enrollFlow(kv: KVStore, enrollmentKey: string): Promise<void> {
-  const keys = await enrolledFlowKeys(kv);
-  if (keys.includes(enrollmentKey)) return;
-  await kv.setItem(ENROLLED_KEY, JSON.stringify([...keys, enrollmentKey]));
+  const records = await readEnrollments(kv);
+  if (records.some((record) => typeof record !== 'string' && record.key === enrollmentKey)) return;
+  await writeEnrollments(kv, [...records, { v: 2, key: enrollmentKey }]);
 }
 
-/** 关闭某个 catalog 定义的提醒登记（幂等）。 */
-export async function unenrollFlow(kv: KVStore, enrollmentKey: string): Promise<void> {
-  const keys = await enrolledFlowKeys(kv);
-  if (!keys.includes(enrollmentKey)) return;
-  await kv.setItem(ENROLLED_KEY, JSON.stringify(keys.filter((key) => key !== enrollmentKey)));
+/**
+ * 关闭某个 catalog 定义的提醒登记（幂等）。
+ * legacyEnrollmentId 只在来源无歧义时传入，因此不会误删另一个 catalog 定义的旧登记。
+ */
+export async function unenrollFlow(
+  kv: KVStore,
+  enrollmentKey: string,
+  legacyEnrollmentId?: string,
+): Promise<void> {
+  const records = await readEnrollments(kv);
+  const next = records.filter((record) => {
+    if (typeof record === 'string') return record !== legacyEnrollmentId;
+    return record.key !== enrollmentKey;
+  });
+  if (next.length !== records.length) await writeEnrollments(kv, next);
 }
 
 /**
  * 重排全部已登记 catalog 定义的日程提醒。
- * 只有当前可见 entry 且其 enrollmentKey 已登记时才排入；
- * shadowing 不会让相同 flowId 的另一份定义继承登记。
+ * 匹配到无歧义 legacy bare ID 时会原地迁移为 v2 结构化记录。
  */
 export async function rescheduleReminders(opts: {
   kv: KVStore;
@@ -72,14 +106,43 @@ export async function rescheduleReminders(opts: {
   now: Instant;
   deviceTz: TimeZone;
 }): Promise<void> {
-  const enrolled = new Set(await enrolledFlowKeys(opts.kv));
-  const entries = opts.flows
-    .filter((entry) => entry.flow.topology === 'scheduled' && enrolled.has(entry.enrollmentKey))
+  const records = await readEnrollments(opts.kv);
+  const current = new Set(
+    records.flatMap((record) => typeof record === 'string' ? [] : [record.key]),
+  );
+  const legacy = new Set(
+    records.flatMap((record) => typeof record === 'string' ? [record] : []),
+  );
+
+  const migratedLegacy = new Set<string>();
+  const migratedKeys = new Set<string>();
+  const activeEntries = opts.flows.filter((entry) => {
+    if (current.has(entry.enrollmentKey)) return true;
+    if (entry.legacyEnrollmentId && legacy.has(entry.legacyEnrollmentId)) {
+      migratedLegacy.add(entry.legacyEnrollmentId);
+      migratedKeys.add(entry.enrollmentKey);
+      return true;
+    }
+    return false;
+  });
+
+  if (migratedLegacy.size > 0) {
+    const next: StoredEnrollment[] = records.filter(
+      (record) => typeof record !== 'string' || !migratedLegacy.has(record),
+    );
+    for (const key of migratedKeys) {
+      if (!next.some((record) => typeof record !== 'string' && record.key === key)) {
+        next.push({ v: 2, key });
+      }
+    }
+    await writeEnrollments(opts.kv, next);
+  }
+
+  const entries = activeEntries
+    .filter((entry) => entry.flow.topology === 'scheduled')
     .map(({ flow }) => ({
       flow,
       tz: timeZoneForFlow(flow, opts.deviceTz),
-      // 跟随设备时区的 daily/weekly 用系统重复触发器（App 几周不开也不断档）；
-      // 锚定非设备时区（Flow.timeZone）的墙钟无法按设备墙钟重复，仍走多日预排窗口。
       repeatingTriggers: !flow.timeZone,
     }));
   const reminders = planScheduledBatch(entries, opts.now, RESCHEDULE_HORIZON_MS, RESCHEDULE_CAP);
