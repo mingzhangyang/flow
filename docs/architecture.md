@@ -70,6 +70,15 @@
 - **Active Run reachability**：catalog mutation 不得让已有事件的 active Run 失去入口。已有 owned Run 时禁止 topology replacement；example Run 活跃时禁止创建同-ID owned Flow 遮蔽它。普通同-topology 修订仍可继续，运行中的投影始终使用 `run.flow` 快照。
 - **Catalog snapshot 与删除事务**：App 是用户库 snapshot 的唯一拥有者；`loading / ready / error` 与“已加载且为空”明确区分。所有 catalog 写入（编辑保存、导入/备份恢复、历史恢复、enroll、delete）以及 refresh 都通过 `catalogCoordinator` 串行执行，提醒 cancel/schedule 不会并发互踩；只有最新请求可以发布 snapshot。业务 mutation 与派生同步结果分离：数据写入已成功但后续 reminder/catalog sync 失败时，不向编辑/导入 UI 伪报“保存失败”，而由 Home 的 error/retry 收口；mutation 本身失败才返回原错误。通知 listener 持续订阅，在 snapshot 未 ready 时等待 coordinator。删除不依赖脆弱的即时 rollback：deletion journal 的 **key 是唯一 Flow 身份来源**（canonical 编码 `flowId`），value 只保存 v1 版本标记；恢复时从 key 推导 owned `definitionKey`，不会让 key/body 两份身份发生漂移，再按 remove Flow → unenroll → cancel sequential timer → delete Run/check-ins/revisions → 清 intent 的顺序 commit-forward；任一步失败都保留 intent，由下一次 refresh 幂等恢复。 Catalog cycle 在任何较新的 mutation 前先回放既有 deletion intent，并在 mutation 后再次恢复当前 mutation 新建的 intent，之后才发布 projection。
 
+### 运行副作用与删除屏障（`session/definitionRuntime.ts`）
+
+运行页只持有导航授予的 `RuntimeSession`，不再直接写 Storage 或调度计时通知。每个 definitionKey 有一条串行队列，load、save 和整段 cancel→schedule 都在该队列中执行；同页的多次保存以及退出后重新打开的读取保持提交顺序。时钟从 composition root 注入。
+
+- App 在进入运行页时创建会话，退出或切换运行页时同步 close；会话 ID 作为 React key，确保同定义重新打开也有独立生命周期。关闭会话拒绝新提交，但已接受的保存继续完成，退出不会丢弃最后一笔已提交进度。
+- durable delete/recovery 必须使用同一个 runtime 实例的 `retire(definitionKey, cleanup)`：立即封锁新会话并关闭旧会话，等待所有已接受的读写与原生通知 Promise 结束，然后执行删除与取消，最后才移除 journal。清理失败时保留 journal 和封锁，恢复重试成功后才允许新会话；重新导入同 ID 不会重新启用旧句柄。
+- scheduled enrollment 仍在 catalog coordinator 内执行，但提交与执行时都检查会话是否仍开放，避免已退出/删除页面的延迟 effect 重新登记。屏幕仅持有通知权限查询端口。
+- 契约测试使用可控 Promise 分别阻塞 Run 保存、打卡保存、取消和调度，断言清理不能越过它们；另覆盖退出/重开、旧会话拒绝、清理失败恢复、同 ID 的 example 隔离。实际界面回归覆盖运行→退出→删除→同 ID 重新导入。
+
 ### 4. Notification Engine（`src/notifications/`）
 把 Runtime 给出的触发时刻翻译成平台的本地定时通知/闹钟（expo-notifications）。
 - 接口：`schedule(events) / cancel(ids) / rescheduleFor(run)`。

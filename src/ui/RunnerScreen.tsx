@@ -4,8 +4,7 @@
 
 import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { type Flow } from '../domain/types';
-import { type Storage } from '../storage/storage';
-import { type Notifier } from '../notifications/notifier';
+import { type RuntimeSession } from '../session/definitionRuntime';
 import { usePersistentRun } from './usePersistentRun';
 import { Timeline } from './Timeline';
 import { ProgressRing } from './ProgressRing';
@@ -17,17 +16,13 @@ const RING = 268;
 
 export function RunnerScreen(props: {
   flow: Flow;
-  definitionKey: string;
-  storage: Storage;
-  notifier: Notifier;
+  session: RuntimeSession;
   onExit: () => void;
 }) {
   const { locale, t } = useI18n();
   const run = usePersistentRun(
     props.flow,
-    props.definitionKey,
-    props.storage,
-    props.notifier,
+    props.session,
     locale,
   );
   const flow = run.flow;

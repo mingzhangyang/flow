@@ -7,6 +7,7 @@ import { type KVStore } from '../storage/kv';
 import { sequentialReminderIdsForRun } from '../notifications/notificationIdentity';
 import { catalogDefinitionKey } from './flowCatalog';
 import { activeRunId } from './runPersistence';
+import { type DefinitionRuntime } from './definitionRuntime';
 
 const DELETE_INTENT_PREFIX = 'txn:delete-owned-flow:v1:';
 
@@ -16,6 +17,7 @@ interface DeleteOwnedFlowIntent {
 
 export interface DeleteOwnedFlowDeps {
   kv: KVStore;
+  runtime: Pick<DefinitionRuntime, 'retire'>;
   removeFlow(id: string): Promise<void>;
   unenroll(definitionKey: string): Promise<void>;
   cancelNotifications(ids: string[]): Promise<void>;
@@ -76,13 +78,15 @@ async function completeIntent(
   const definitionKey = catalogDefinitionKey(flowId, 'owned');
   const runId = activeRunId(definitionKey);
 
-  await deps.removeFlow(flowId);
-  await deps.unenroll(definitionKey);
-  await deps.cancelNotifications(sequentialReminderIdsForRun(runId));
-  await deps.deleteRun(runId);
-  await deps.deleteCheckIns(definitionKey);
-  await deps.deleteRevisions(flowId);
-  await deps.kv.removeItem(key);
+  await deps.runtime.retire(definitionKey, async () => {
+    await deps.removeFlow(flowId);
+    await deps.unenroll(definitionKey);
+    await deps.cancelNotifications(sequentialReminderIdsForRun(runId));
+    await deps.deleteRun(runId);
+    await deps.deleteCheckIns(definitionKey);
+    await deps.deleteRevisions(flowId);
+    await deps.kv.removeItem(key);
+  });
 }
 
 export async function deleteOwnedFlowDurably(

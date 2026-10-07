@@ -26,6 +26,7 @@ import {
   type OwnedCatalogSnapshot,
 } from './src/session/flowCatalog';
 import { createCatalogCoordinator } from './src/session/catalogCoordinator';
+import { createDefinitionRuntime, type RuntimeSession } from './src/session/definitionRuntime';
 import { runCommittedCatalogMutation } from './src/session/catalogMutation';
 import { runCatalogCycle } from './src/session/catalogCycle';
 import { assertFlowMutationKeepsActiveRunReachable } from './src/session/catalogRunGuard';
@@ -58,7 +59,7 @@ const newFlowId = (): string => `flow-${Date.now().toString(36)}-${Math.random()
 
 type Screen =
   | { name: 'home' }
-  | { name: 'run'; flow: Flow; definitionKey: string }
+  | { name: 'run'; flow: Flow; session: RuntimeSession }
   | { name: 'edit'; flow: Flow }
   | { name: 'export'; flow: Flow }
   | { name: 'insight'; flow: Flow; source: FlowCatalogSource }
@@ -76,17 +77,37 @@ export default function App() {
   const storage = useMemo(() => createStorage(asyncStorageKV), []);
   const library = useMemo(() => createLibrary(storage), [storage]);
   const notifier = useMemo(() => createExpoNotifier(), []);
+  const runtime = useMemo(() => createDefinitionRuntime({ storage, notifier, now: Date.now }), [storage, notifier]);
+  const currentSession = useRef<RuntimeSession | null>(null);
   const notificationResponses = useMemo(() => createExpoNotificationResponseSource(), []);
 
   const [screen, setScreen] = useState<Screen>({ name: 'home' });
   const [catalog, setCatalog] = useState<OwnedCatalogSnapshot>(LOADING_CATALOG);
   const catalogCoordinator = useMemo(() => createCatalogCoordinator(setCatalog), []);
 
-  const home = (): void => setScreen({ name: 'home' });
+  const home = (): void => {
+    currentSession.current?.close();
+    currentSession.current = null;
+    setScreen({ name: 'home' });
+  };
+
+  const openRun = useCallback((flowId: string, definitionKey: string): void => {
+    const snapshot = catalogCoordinator.current();
+    if (snapshot.status !== 'ready') return;
+    const entry = resolveCatalogEntryForRoute(flowId, definitionKey, snapshot.flows, examplesRef.current);
+    if (!entry) return;
+    currentSession.current?.close();
+    const session = runtime.open(entry.definitionKey);
+    currentSession.current = session;
+    setScreen({ name: 'run', flow: entry.flow, session });
+  }, [catalogCoordinator, runtime]);
+
+  useEffect(() => () => currentSession.current?.close(), []);
 
   const recoverDeletions = useCallback(() =>
     recoverPendingOwnedFlowDeletions({
       kv: asyncStorageKV,
+      runtime,
       removeFlow: (id) => library.remove(id),
       unenroll: (key) => unenrollFlow(asyncStorageKV, key),
       cancelNotifications: (ids) => notifier.cancel(ids),
@@ -94,7 +115,7 @@ export default function App() {
       deleteCheckIns: (key) => storage.deleteCheckIns(key),
       deleteRevisions: (id) => storage.deleteRevisions(id),
     }),
-  [library, notifier, storage]);
+  [library, notifier, runtime, storage]);
 
   const projectCatalog = useCallback(async (): Promise<CatalogProjection> => {
     const flows = await library.list();
@@ -178,6 +199,7 @@ export default function App() {
     runCatalogMutation(() =>
       deleteOwnedFlowDurably(flow, definitionKey, {
         kv: asyncStorageKV,
+        runtime,
         removeFlow: (id) => library.remove(id),
         unenroll: (key) => unenrollFlow(asyncStorageKV, key),
         cancelNotifications: (ids) => notifier.cancel(ids),
@@ -185,7 +207,7 @@ export default function App() {
         deleteCheckIns: (key) => storage.deleteCheckIns(key),
         deleteRevisions: (id) => storage.deleteRevisions(id),
       })),
-  [library, notifier, runCatalogMutation, storage]);
+  [library, notifier, runCatalogMutation, runtime, storage]);
 
   const refreshCatalogInBackground = useCallback((
     mutation?: () => Promise<void>,
@@ -215,18 +237,14 @@ export default function App() {
         examplesRef.current,
       );
       if (entry) {
-        setScreen({
-          name: 'run',
-          flow: entry.flow,
-          definitionKey: entry.definitionKey,
-        });
+        openRun(entry.flow.id, entry.definitionKey);
       }
     });
     return () => {
       active = false;
       unsubscribe();
     };
-  }, [catalogCoordinator, notificationResponses]);
+  }, [catalogCoordinator, notificationResponses, openRun]);
 
   if (!fontsLoaded) return null;
 
@@ -241,7 +259,7 @@ export default function App() {
           sharer={systemSharer}
           onRetry={refreshCatalogInBackground}
           onRun={(flow, definitionKey) =>
-            setScreen({ name: 'run', flow, definitionKey })}
+            openRun(flow.id, definitionKey)}
           onNew={(topology: Topology) => setScreen({ name: 'edit', flow: createFlow({ id: newFlowId(), title: '', topology }) })}
           onEdit={(flow) => setScreen({ name: 'edit', flow })}
           onExport={(flow) => setScreen({ name: 'export', flow })}
@@ -253,23 +271,23 @@ export default function App() {
       ) : screen.name === 'run' ? (
         screen.flow.topology === 'scheduled' ? (
           <ScheduleScreen
-            key={JSON.stringify([screen.definitionKey, screen.flow.version ?? 1])}
+            key={screen.session.id}
             flow={screen.flow}
-            definitionKey={screen.definitionKey}
-            storage={storage}
+            session={screen.session}
             notifier={notifier}
-            onEnrollReminders={(definitionKey) => {
-              refreshCatalogInBackground(() => enrollFlow(asyncStorageKV, definitionKey));
+            onEnrollReminders={() => {
+              if (!screen.session.isOpen()) return;
+              refreshCatalogInBackground(async () => {
+                if (screen.session.isOpen()) await enrollFlow(asyncStorageKV, screen.session.definitionKey);
+              });
             }}
             onExit={home}
           />
         ) : (
           <RunnerScreen
-            key={JSON.stringify([screen.definitionKey, screen.flow.version ?? 1])}
+            key={screen.session.id}
             flow={screen.flow}
-            definitionKey={screen.definitionKey}
-            storage={storage}
-            notifier={notifier}
+            session={screen.session}
             onExit={home}
           />
         )

@@ -7,6 +7,9 @@ import { sequentialReminderIdsForRun } from '../notifications/notificationIdenti
 import { catalogDefinitionKey } from './flowCatalog';
 import { activeRunId } from './runPersistence';
 import { deleteOwnedFlowDurably, recoverPendingOwnedFlowDeletions } from './deleteOwnedFlow';
+import { createDefinitionRuntime } from './definitionRuntime';
+import { createStorage } from '../storage/storage';
+import { noopNotifier } from '../notifications/notifier';
 
 const flow: Flow = {
   schemaVersion: 2,
@@ -35,6 +38,7 @@ function deps(kv: KVStore, overrides: Partial<{
 }> = {}) {
   return {
     kv,
+    runtime: createDefinitionRuntime({ storage: createStorage(kv), notifier: noopNotifier, now: () => 0 }),
     removeFlow: overrides.removeFlow ?? (async () => {}),
     unenroll: overrides.unenroll ?? (async () => {}),
     cancelNotifications: overrides.cancelNotifications ?? (async () => {}),

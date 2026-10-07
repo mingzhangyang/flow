@@ -6,11 +6,8 @@ import { type Flow, type Run, type RunEvent } from '../domain/types';
 import { type Locale } from '../i18n/locale';
 import { type Instant } from '../runtime/clock';
 import { reduce, project, type RunState } from '../runtime/engine';
-import { type Storage } from '../storage/storage';
-import { type Notifier } from '../notifications/notifier';
-import { planSequentialReminder } from '../notifications/plan';
-import { sequentialReminderIdsForRun } from '../notifications/notificationIdentity';
-import { activeRunId, loadRunForDefinition } from '../session/runPersistence';
+import { type RuntimeSession } from '../session/definitionRuntime';
+import { activeRunId } from '../session/runPersistence';
 import {
   startAction,
   completeCurrentAction,
@@ -36,12 +33,10 @@ export interface PersistentRun {
 
 export function usePersistentRun(
   flow: Flow,
-  definitionKey: string,
-  storage: Storage,
-  notifier: Notifier,
+  session: RuntimeSession,
   locale: Locale,
 ): PersistentRun {
-  const runId = activeRunId(definitionKey);
+  const runId = activeRunId(session.definitionKey);
   const [run, setRun] = useState<Run>(() => ({ id: runId, flow, events: [] }));
   const [now, setNow] = useState<Instant>(() => Date.now());
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -52,7 +47,7 @@ export function usePersistentRun(
     setStatus('loading');
 
     void (async () => {
-      const loaded = await loadRunForDefinition(storage, flow, definitionKey);
+      const loaded = await session.loadRun(flow);
       if (!alive) return;
 
       setRun(loaded);
@@ -67,7 +62,7 @@ export function usePersistentRun(
     return () => {
       alive = false;
     };
-  }, [definitionKey, flow, loadAttempt, storage]);
+  }, [flow, loadAttempt, session]);
 
   const runtimeFlow = run.flow;
   const state = project(runtimeFlow, run.events, now);
@@ -80,20 +75,8 @@ export function usePersistentRun(
 
   useEffect(() => {
     if (status !== 'ready') return;
-    storage.saveRun(run).catch(() => {});
-    const reminder = planSequentialReminder(
-      runtimeFlow,
-      run.events,
-      Date.now(),
-      run.id,
-      locale,
-      definitionKey,
-    );
-    notifier
-      .cancel(sequentialReminderIdsForRun(run.id))
-      .then(() => (reminder ? notifier.schedule([reminder]) : undefined))
-      .catch(() => {});
-  }, [definitionKey, locale, notifier, run, runtimeFlow, status, storage]);
+    session.saveRun(run, locale).catch(() => {});
+  }, [locale, run, session, status]);
 
   const apply = (event: RunEvent | null): void => {
     if (status !== 'ready' || !event) return;

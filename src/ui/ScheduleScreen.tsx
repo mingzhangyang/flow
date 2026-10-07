@@ -21,7 +21,7 @@ import {
   type DoseState,
   type DoseStatus,
 } from '../runtime/adherence';
-import { type Storage } from '../storage/storage';
+import { type RuntimeSession } from '../session/definitionRuntime';
 import { nextEvents } from '../runtime/engine';
 import { fmtTimeOfDay } from './format';
 import { useI18n } from './i18n';
@@ -69,14 +69,13 @@ function DoseBead(props: { status: DoseStatus; s: Styles; bs: BeadStyles }) {
 
 export function ScheduleScreen(props: {
   flow: Flow;
-  definitionKey: string;
-  storage: Storage;
-  notifier: Notifier;
+  session: RuntimeSession;
+  notifier: Pick<Notifier, 'status'>;
   /** 打开即视为为这条 flow 开启提醒；实际登记与多日重排由 App 层编排。 */
-  onEnrollReminders: (definitionKey: string) => void;
+  onEnrollReminders: () => void;
   onExit: () => void;
 }) {
-  const { flow, storage } = props;
+  const { flow, session } = props;
   const c = paletteFor(useColorScheme());
   const { locale, t } = useI18n();
   const styles = useMemo(() => createStyles(c), [c]);
@@ -106,7 +105,7 @@ export function ScheduleScreen(props: {
     setCheckIns([]);
     setCheckInsStatus('loading');
 
-    storage.loadCheckIns(props.definitionKey)
+    session.loadCheckIns()
       .then((log) => {
         if (!alive) return;
         setCheckIns(log);
@@ -116,11 +115,11 @@ export function ScheduleScreen(props: {
         if (alive) setCheckInsStatus('error');
       });
 
-    props.onEnrollReminders(props.definitionKey);
+    props.onEnrollReminders();
     return () => {
       alive = false;
     };
-  }, [checkInsAttempt, flow, props.definitionKey, storage]);
+  }, [checkInsAttempt, flow, session]);
 
   // 让 due → missed 等状态随时间推移刷新
   useEffect(() => {
@@ -142,7 +141,7 @@ export function ScheduleScreen(props: {
   const persist = (next: CheckIn[]): void => {
     setCheckIns(next);
     if (!checkInsReady) return;
-    storage.saveCheckIns(props.definitionKey, next).catch(() => {});
+    session.saveCheckIns(next).catch(() => {});
   };
   const take = (d: DoseState): void =>
     persist(recordCheckIn(checkIns, checkIn(d.nodeId, d.scheduledFor, true, Date.now())));
