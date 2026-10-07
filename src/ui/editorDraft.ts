@@ -1,0 +1,52 @@
+// Editor dirty-state contract: compare the editable definition, not scattered UI flags.
+// This stays in the UI/application layer and does not change the Flow domain model.
+
+import type { Flow, FlowNode, Recurrence } from '../domain/types';
+
+function normalizeRepeat(flow: Flow): Recurrence | null {
+  if (flow.topology !== 'scheduled') return null;
+  return flow.repeat ?? { kind: 'once' };
+}
+
+function normalizeNode(node: FlowNode): unknown {
+  const base = {
+    id: node.id,
+    kind: node.kind,
+    label: node.label,
+    rationale: node.rationale ?? '',
+  };
+
+  switch (node.kind) {
+    case 'timed':
+      return { ...base, durationSec: node.durationSec };
+    case 'scheduled':
+      return { ...base, at: node.at };
+    case 'parallel':
+      return { ...base, children: node.children.map(normalizeNode) };
+    case 'gate':
+    case 'instant':
+      return base;
+  }
+}
+
+/**
+ * Stable snapshot of every field the Editor can mutate.
+ *
+ * Metadata that belongs to persistence/versioning (id, schemaVersion, version,
+ * provenance) is intentionally excluded. Optional visible text is normalized so
+ * typing and then clearing a field returns to a clean state.
+ */
+export function editorDraftSignature(flow: Flow): string {
+  return JSON.stringify({
+    topology: flow.topology,
+    title: flow.title,
+    description: flow.description ?? '',
+    timeZone: flow.timeZone ?? '',
+    repeat: normalizeRepeat(flow),
+    nodes: flow.nodes.map(normalizeNode),
+  });
+}
+
+export function isEditorDraftDirty(initial: Flow, current: Flow): boolean {
+  return editorDraftSignature(initial) !== editorDraftSignature(current);
+}
