@@ -61,11 +61,9 @@ export function RunnerScreen(props: {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={props.onExit} hitSlop={12}>
-          <Text style={styles.back}>{t.back}</Text>
-        </Pressable>
+        <HeaderBackButton accessibilityLabel={t.back} color={dark.accent} onPress={props.onExit} />
         <Text style={styles.title} numberOfLines={1}>{flow.title}</Text>
-        <View style={{ width: 48 }} />
+        <HeaderSideSpacer />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
