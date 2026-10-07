@@ -56,6 +56,19 @@ test('unchanged and semantically-empty optional fields stay clean', () => {
   );
 });
 
+test('weekly day order is canonicalized as set semantics', () => {
+  const initial = {
+    ...scheduled(),
+    repeat: { kind: 'weekly' as const, days: [5, 1] },
+  };
+  const reordered = {
+    ...initial,
+    repeat: { kind: 'weekly' as const, days: [1, 5] },
+  };
+
+  assert.equal(isEditorDraftDirty(initial, reordered), false);
+});
+
 test('flow metadata edits are dirty and reverting is clean', () => {
   const initial = scheduled();
 
