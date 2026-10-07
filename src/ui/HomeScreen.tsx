@@ -13,15 +13,7 @@ import { systemTimeZone } from '../runtime/systemTimeZone';
 import { timeZoneForFlow } from '../runtime/ianaTimeZone';
 import { fmtTimeOfDay } from './format';
 import { useI18n } from './i18n';
-import { paletteFor, type Palette, dark, spacing, radius, type, mono } from './theme';
-
-/** 卡片色线的低饱和候选色；由 flow id 稳定派生。 */
-const STRIPES = ['#7A9E87', '#C2915C', '#8B9DB0', '#B08B9B', '#9AA05F', '#7FA6A0'];
-function stripeOf(id: string): string {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return STRIPES[h % STRIPES.length];
-}
+import { paletteFor, flowIdentityFor, type Palette, dark, spacing, radius, type, mono } from './theme';
 
 function SeqGlyph(props: { color: string }) {
   return (
@@ -112,17 +104,19 @@ export function HomeScreen(props: {
     return best;
   }, [catalogReady, mine, visibleExamples]);
 
-  const card = (flow: Flow, own: boolean) => (
-    <View key={flow.id} style={styles.card}>
-      <View style={[styles.stripe, { backgroundColor: stripeOf(flow.id) }]} />
+  const card = (flow: Flow, own: boolean) => {
+    const tone = flowIdentityFor(c, flow.id);
+    return (
+    <View key={flow.id} style={[styles.card, { backgroundColor: tone.soft }]}>
+      <View style={[styles.stripe, { backgroundColor: tone.accent }]} />
       <Pressable onPress={() => run(flow, own)}>
         <View style={styles.cardTop}>
           <Text style={styles.cardTitle}>{flow.title}</Text>
           <View style={styles.badge}>
             {flow.topology === 'sequential' ? (
-              <SeqGlyph color={c.textMuted} />
+              <SeqGlyph color={tone.accent} />
             ) : (
-              <SchedGlyph color={c.textMuted} />
+              <SchedGlyph color={tone.accent} />
             )}
             {own ? <Text style={styles.badgeText}>v{flow.version ?? 1}</Text> : null}
           </View>
@@ -141,7 +135,8 @@ export function HomeScreen(props: {
         ) : null}
       </View>
     </View>
-  );
+    );
+  };
 
   return (
     <View style={styles.screen}>
@@ -220,17 +215,18 @@ const glyph = StyleSheet.create({
 });
 
 const createStyles = (c: Palette) => StyleSheet.create({
-  screen: { flex: 1, backgroundColor: c.bg },
+  screen: { flex: 1, backgroundColor: c.canvas },
   header: {
     paddingHorizontal: spacing.lg, paddingTop: spacing.xl, paddingBottom: spacing.md,
     flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between',
   },
-  brand: { fontSize: type.display, fontWeight: '800', color: c.text, letterSpacing: 4 },
+  brand: { fontSize: type.display, fontWeight: '800', color: c.primary, letterSpacing: 4 },
   date: { fontSize: type.body - 1, color: c.textMuted, fontVariant: ['tabular-nums'] },
   content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
 
   next: {
     backgroundColor: dark.bg, borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: dark.border,
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
   },
@@ -245,30 +241,32 @@ const createStyles = (c: Palette) => StyleSheet.create({
   nextGo: { fontSize: 28, color: dark.textMuted, fontWeight: '300' },
 
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  backupNote: { fontSize: 13, color: c.accent, marginLeft: spacing.xs },
+  backupNote: { fontSize: 13, color: c.primary, marginLeft: spacing.xs },
   catalogError: {
-    backgroundColor: c.surface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
+    backgroundColor: c.dangerSoft, borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: c.danger,
     padding: spacing.md, gap: spacing.sm,
   },
-  catalogErrorText: { fontSize: 14, color: c.textMuted },
+  catalogErrorText: { fontSize: 14, color: c.danger },
   retryButton: {
-    alignSelf: 'flex-start', borderRadius: radius.pill, borderWidth: 1, borderColor: c.accent,
+    alignSelf: 'flex-start', borderRadius: radius.pill, borderWidth: 1, borderColor: c.primary,
     paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
   },
-  retryText: { color: c.accent, fontSize: 14, fontWeight: '600' },
+  retryText: { color: c.primary, fontSize: 14, fontWeight: '600' },
   action: {
-    backgroundColor: c.accent, borderRadius: radius.pill,
+    backgroundColor: c.primary, borderRadius: radius.pill,
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
-  actionText: { color: c.accentText, fontSize: 14, fontWeight: '700' },
-  actionGhost: { backgroundColor: c.surface, borderWidth: 1, borderColor: c.border },
+  actionText: { color: c.onPrimary, fontSize: 14, fontWeight: '700' },
+  actionGhost: { backgroundColor: c.surfaceSubtle, borderWidth: 1, borderColor: c.border },
   actionGhostText: { color: c.text, fontSize: 14, fontWeight: '600' },
   sectionKicker: {
-    fontSize: type.caption + 1, color: c.textMuted, letterSpacing: 2,
+    fontSize: type.caption + 1, color: c.textFaint, letterSpacing: 2,
     marginLeft: spacing.xs, marginTop: spacing.sm,
   },
   card: {
-    backgroundColor: c.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border,
+    backgroundColor: c.surfaceRaised, borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: c.border,
     padding: spacing.lg, gap: spacing.xs, overflow: 'hidden',
   },
   stripe: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, opacity: 0.8 },
@@ -282,6 +280,6 @@ const createStyles = (c: Palette) => StyleSheet.create({
     flexDirection: 'row', gap: spacing.lg, marginTop: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border, paddingTop: spacing.sm,
   },
-  link: { fontSize: 14, color: c.accent, fontWeight: '600' },
-  danger: { color: c.warn },
+  link: { fontSize: 14, color: c.primary, fontWeight: '600' },
+  danger: { color: c.danger },
 });

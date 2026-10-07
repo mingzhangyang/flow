@@ -39,10 +39,10 @@ const statusLabels = (t: Strings): Record<DoseStatus, string> => ({
 });
 
 const statusColors = (c: Palette): Record<DoseStatus, string> => ({
-  upcoming: c.textMuted,
-  due: c.accent,
-  taken: c.accent,
-  missed: c.warn,
+  upcoming: c.textFaint,
+  due: c.primary,
+  taken: c.success,
+  missed: c.danger,
 });
 
 
@@ -152,7 +152,7 @@ export function ScheduleScreen(props: {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <HeaderBackButton accessibilityLabel={t.back} color={c.accent} onPress={props.onExit} />
+        <HeaderBackButton accessibilityLabel={t.back} color={c.primary} onPress={props.onExit} />
         <Text style={styles.title} numberOfLines={1}>{flow.title}</Text>
         <HeaderSideSpacer />
       </View>
@@ -258,14 +258,14 @@ function NowCursor(props: { minutes: number; s: Styles; t: Strings }) {
 const BEAD = 22;
 
 const createBeadStyles = (c: Palette) => StyleSheet.create({
-  upcoming: { backgroundColor: c.surface, borderWidth: 2, borderColor: c.pending },
-  due: { backgroundColor: c.surface, borderWidth: 3, borderColor: c.accent },
-  taken: { backgroundColor: c.accent, borderWidth: 0 },
-  missed: { backgroundColor: c.done, borderWidth: 0 },
+  upcoming: { backgroundColor: c.inputSurface, borderWidth: 2, borderColor: c.textFaint },
+  due: { backgroundColor: c.primarySoft, borderWidth: 3, borderColor: c.primary },
+  taken: { backgroundColor: c.success, borderWidth: 0 },
+  missed: { backgroundColor: c.dangerSoft, borderWidth: 2, borderColor: c.danger },
 });
 
 const createStyles = (c: Palette) => StyleSheet.create({
-  screen: { flex: 1, backgroundColor: c.bg },
+  screen: { flex: 1, backgroundColor: c.canvas },
   header: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
@@ -276,26 +276,29 @@ const createStyles = (c: Palette) => StyleSheet.create({
   },
   content: { padding: spacing.md, gap: spacing.sm },
   notifBanner: {
-    backgroundColor: c.surface, borderRadius: radius.md, borderWidth: 1, borderColor: c.warn,
+    backgroundColor: c.warningSoft, borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: c.warning,
     padding: spacing.md, gap: spacing.xs,
   },
-  notifBannerText: { color: c.warn, fontSize: 14, lineHeight: 20 },
-  notifBannerLink: { color: c.accent, fontSize: 14, fontWeight: '600' },
+  notifBannerText: { color: c.warning, fontSize: 14, lineHeight: 20 },
+  notifBannerLink: { color: c.primary, fontSize: 14, fontWeight: '600' },
   notifWeb: { fontSize: 13, color: c.textMuted, marginLeft: spacing.xs },
   sectionKicker: { fontSize: type.caption + 1, color: c.textMuted, letterSpacing: 1, marginLeft: spacing.xs },
   storageError: {
-    backgroundColor: c.surface, borderRadius: radius.md, borderWidth: 1, borderColor: c.warn,
+    backgroundColor: c.dangerSoft, borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: c.danger,
     padding: spacing.md, gap: spacing.sm,
   },
-  storageErrorText: { color: c.warn, fontSize: 14, lineHeight: 20 },
+  storageErrorText: { color: c.danger, fontSize: 14, lineHeight: 20 },
   retryButton: {
     minHeight: mobileControlSize.compact, justifyContent: 'center',
-    alignSelf: 'flex-start', borderRadius: radius.pill, borderWidth: 1, borderColor: c.accent,
+    alignSelf: 'flex-start', borderRadius: radius.pill, borderWidth: 1, borderColor: c.primary,
     paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
   },
-  retryText: { color: c.accent, fontSize: 14, fontWeight: '600' },
+  retryText: { color: c.primary, fontSize: 14, fontWeight: '600' },
   card: {
-    backgroundColor: c.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border,
+    backgroundColor: c.surfaceRaised, borderRadius: radius.lg,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: c.border,
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md },
@@ -314,26 +317,26 @@ const createStyles = (c: Palette) => StyleSheet.create({
     backgroundColor: c.border, marginTop: BEAD / 2 + 4,
   },
   bead: { width: BEAD, height: BEAD, borderRadius: BEAD / 2, alignItems: 'center', justifyContent: 'center' },
-  beadCheck: { color: c.accentText, fontSize: 12, fontWeight: '800' },
+  beadCheck: { color: c.onPrimary, fontSize: 12, fontWeight: '800' },
   body: { flex: 1 },
   label: { fontSize: type.body, color: c.text },
   labelTaken: { color: c.textMuted, textDecorationLine: 'line-through' },
   status: { fontSize: type.caption + 1, marginTop: 2 },
   take: {
     minHeight: mobileControlSize.compact, justifyContent: 'center',
-    backgroundColor: c.accent, borderRadius: radius.pill,
+    backgroundColor: c.primary, borderRadius: radius.pill,
     paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
   },
-  takeText: { color: c.accentText, fontSize: 14, fontWeight: '700' },
+  takeText: { color: c.onPrimary, fontSize: 14, fontWeight: '700' },
   undoButton: {
     minWidth: mobileControlSize.compact, minHeight: mobileControlSize.compact,
     alignItems: 'center', justifyContent: 'center',
   },
   undo: { color: c.textMuted, fontSize: 14, paddingHorizontal: spacing.sm },
   cursorRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 2 },
-  cursorLabel: { fontSize: type.caption, color: c.accent, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  cursorLine: { flex: 1, height: 1.5, backgroundColor: c.accent, opacity: 0.45, borderRadius: 1 },
+  cursorLabel: { fontSize: type.caption, color: c.primary, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  cursorLine: { flex: 1, height: 1.5, backgroundColor: c.primary, opacity: 0.45, borderRadius: 1 },
   empty: { fontSize: type.body - 1, color: c.textMuted, paddingVertical: spacing.md },
-  onceNote: { fontSize: 13, color: c.accent, marginTop: spacing.xs, lineHeight: 19 },
+  onceNote: { fontSize: 13, color: c.primary, marginTop: spacing.xs, lineHeight: 19 },
   note: { fontSize: 13, color: c.textMuted, marginTop: spacing.md, lineHeight: 19 },
 });
