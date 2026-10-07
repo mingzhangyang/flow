@@ -31,16 +31,9 @@ export interface Library {
 /** 每条 flow 保留的历史修订上限：超出时丢最旧的，避免存储无界增长。 */
 export const MAX_REVISIONS = 50;
 
-const NO_LEGACY_IDENTITY_REGISTRY: LegacyIdentityRegistry = {
-  async read() {
-    return [];
-  },
-  async mark() {},
-};
-
 export function createLibrary(
   storage: Storage,
-  legacyIdentities: LegacyIdentityRegistry = NO_LEGACY_IDENTITY_REGISTRY,
+  legacyIdentities: LegacyIdentityRegistry,
 ): Library {
   return {
     list: () => storage.listFlows(),
