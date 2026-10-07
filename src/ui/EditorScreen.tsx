@@ -1,12 +1,15 @@
 // Flow 编辑器。编辑“可以复杂”——这里可增删步骤、改类型、填 rationale（“为什么”，C2）。
 // 保存时经 library 提交为新修订（版本递增、旧版本入历史）。
 
-import { useState, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
+  KeyboardAvoidingView,
   Platform,
   View,
   Text,
   TextInput,
+  type TextInputProps,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -22,6 +25,7 @@ import { fmtTimeOfDay } from './format';
 import { useI18n } from './i18n';
 import { type Strings } from './strings';
 import { paletteFor, type Palette, spacing, radius } from './theme';
+import { isEditorDraftDirty } from './editorDraft';
 
 const newNodeId = (): string => `n-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
@@ -70,13 +74,82 @@ function toggleWeekday(repeat: Recurrence, d: number): Recurrence {
   return { kind: 'weekly', days: next };
 }
 
-export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Promise<Flow>; onSaved: (f: Flow) => void; onCancel: () => void }) {
+const inputContractStyles = StyleSheet.create({
+  base: {
+    includeFontPadding: false,
+  },
+  singleLine: {
+    minHeight: 48,
+    lineHeight: 20,
+    paddingVertical: 0,
+  },
+  multiline: {
+    minHeight: 96,
+    lineHeight: 20,
+    paddingVertical: 12,
+  },
+});
+
+/**
+ * One mobile text-input contract for the whole Editor.
+ * Explicit metrics keep Android font/placeholder layout independent of
+ * platform font padding; multiline fields opt into top alignment.
+ */
+function EditorTextInput({ style, multiline = false, ...props }: TextInputProps) {
+  return (
+    <TextInput
+      {...props}
+      multiline={multiline}
+      underlineColorAndroid="transparent"
+      textAlignVertical={multiline ? 'top' : 'center'}
+      style={[
+        inputContractStyles.base,
+        multiline ? inputContractStyles.multiline : inputContractStyles.singleLine,
+        style,
+      ]}
+    />
+  );
+}
+
+interface EditorScreenProps {
+  draft: Flow;
+  saveFlow: (flow: Flow) => Promise<Flow>;
+  onSaved: (flow: Flow) => void;
+  onCancel: () => void;
+  onBackHandlerChange?: (handler: (() => void) | null) => void;
+}
+
+export function EditorScreen(props: EditorScreenProps) {
   const c = paletteFor(useColorScheme());
   const styles = useMemo(() => createStyles(c), [c]);
   const { t } = useI18n();
   const [flow, setFlow] = useState<Flow>(props.draft);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const isScheduled = flow.topology === 'scheduled';
+  const isDirty = useMemo(() => isEditorDraftDirty(props.draft, flow), [flow, props.draft]);
+
+  const requestExit = useCallback((): void => {
+    if (!isDirty) {
+      props.onCancel();
+      return;
+    }
+
+    Alert.alert(
+      t.editorDiscardTitle,
+      t.editorDiscardMessage,
+      [
+        { text: t.editorContinueEditing, style: 'cancel' },
+        { text: t.editorDiscardChanges, style: 'destructive', onPress: props.onCancel },
+      ],
+    );
+  }, [isDirty, props.onCancel, t]);
+
+  useEffect(() => {
+    props.onBackHandlerChange?.(requestExit);
+    return () => props.onBackHandlerChange?.(null);
+  }, [props.onBackHandlerChange, requestExit]);
 
   const patch = (id: string, p: Partial<FlowNode>): void => setFlow((f) => updateNode(f, id, p));
   const changeKind = (id: string, kind: NodeKind): void =>
@@ -106,7 +179,9 @@ export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Pro
     }
   };
 
-  const save = (): void => {
+  const save = useCallback(async (): Promise<void> => {
+    if (savingRef.current) return;
+
     const issues = validateFlow(flow);
     if (issues.length > 0) {
       setError(issues[0].path + ': ' + issues[0].message);
@@ -116,15 +191,35 @@ export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Pro
       setError(t.editorInvalidTimeZone(flow.timeZone));
       return;
     }
-    props.saveFlow(flow).then(props.onSaved).catch((e) => setError(String(e)));
-  };
+
+    // The ref closes the same-frame double-tap window before React can render
+    // the disabled button state.
+    savingRef.current = true;
+    setSaving(true);
+    setError(null);
+    try {
+      const saved = await props.saveFlow(flow);
+      props.onSaved(saved);
+    } catch (e) {
+      savingRef.current = false;
+      setSaving(false);
+      setError(String(e));
+    }
+  }, [flow, props.onSaved, props.saveFlow, t]);
 
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={props.onCancel} hitSlop={12}><Text style={styles.headerBtn}>{t.cancel}</Text></Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={requestExit}
+          hitSlop={8}
+          style={styles.headerSide}
+        >
+          <Text style={styles.headerBtn}>{t.back}</Text>
+        </Pressable>
         <Text style={styles.title}>{t.editorTitle}</Text>
-        <Pressable onPress={save} hitSlop={12}><Text style={[styles.headerBtn, styles.save]}>{t.save}</Text></Pressable>
+        <View style={styles.headerSide} />
       </View>
 
       <ScrollView
@@ -134,14 +229,14 @@ export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Pro
         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
       >
-        <TextInput
+        <EditorTextInput
           style={styles.titleInput}
           value={flow.title}
           onChangeText={(text) => setFlow((f) => setMeta(f, { title: text }))}
           placeholder={t.editorFlowName}
           placeholderTextColor={c.pending}
         />
-        <TextInput
+        <EditorTextInput
           style={styles.descInput}
           value={flow.description ?? ''}
           onChangeText={(text) => setFlow((f) => setMeta(f, { description: text }))}
@@ -150,7 +245,7 @@ export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Pro
         />
         {isScheduled ? (
           <>
-            <TextInput
+            <EditorTextInput
               style={styles.descInput}
               value={flow.timeZone ?? ''}
               onChangeText={(text) => { setFlow((f) => setMeta(f, { timeZone: text })); setError(null); }}
@@ -203,7 +298,7 @@ export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Pro
               ) : null}
               {flow.repeat?.kind === 'everyNDays' ? (
                 <Row label={t.editorEveryNDays}>
-                  <TextInput
+                  <EditorTextInput
                     style={styles.smallInput}
                     keyboardType="number-pad"
                     defaultValue={String(flow.repeat.n)}
@@ -227,7 +322,7 @@ export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Pro
           <View key={node.id} style={styles.nodeCard}>
             <View style={styles.nodeTop}>
               <Text style={styles.nodeIndex}>{i + 1}</Text>
-              <TextInput
+              <EditorTextInput
                 style={styles.nodeLabel}
                 value={node.label}
                 onChangeText={(text) => patch(node.id, { label: text })}
@@ -238,7 +333,7 @@ export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Pro
 
             {isScheduled && node.kind === 'scheduled' ? (
               <Row label={t.editorTime}>
-                <TextInput
+                <EditorTextInput
                   style={styles.smallInput}
                   defaultValue={fmtTimeOfDay(node.at)}
                   onChangeText={(text) => {
@@ -267,7 +362,7 @@ export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Pro
 
             {node.kind === 'timed' ? (
               <Row label={t.editorDuration}>
-                <TextInput
+                <EditorTextInput
                   style={styles.smallInput}
                   keyboardType="number-pad"
                   defaultValue={String(node.durationSec)}
@@ -279,7 +374,7 @@ export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Pro
               </Row>
             ) : null}
 
-            <TextInput
+            <EditorTextInput
               style={styles.rationaleInput}
               value={node.rationale ?? ''}
               onChangeText={(text) => patch(node.id, { rationale: text || undefined })}
@@ -307,6 +402,24 @@ export function EditorScreen(props: { draft: Flow; saveFlow: (flow: Flow) => Pro
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
+
+      <KeyboardAvoidingView
+        enabled={Platform.OS === 'ios'}
+        behavior={Platform.OS === 'ios' ? 'position' : undefined}
+        style={styles.footerAvoider}
+        contentContainerStyle={styles.footerAvoiderContent}
+      >
+        <View style={styles.footer}>
+          <Pressable
+            accessibilityRole="button"
+            disabled={saving}
+            onPress={save}
+            style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+          >
+            <Text style={styles.saveButtonText}>{saving ? t.editorSaving : t.save}</Text>
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -330,20 +443,23 @@ const createStyles = (c: Palette) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: c.bg },
   scroll: { flex: 1 },
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
   },
-  headerBtn: { fontSize: 16, color: c.accent },
-  save: { fontWeight: '700' },
-  title: { fontSize: 16, fontWeight: '600', color: c.text },
+  headerSide: { flex: 1, minHeight: 44, justifyContent: 'center', alignItems: 'flex-start' },
+  headerBtn: { fontSize: 15, lineHeight: 20, color: c.accent },
+  title: { fontSize: 16, lineHeight: 22, fontWeight: '600', color: c.text, textAlign: 'center' },
   content: { padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xl },
   titleInput: {
+    minHeight: 56, lineHeight: 28,
     fontSize: 22, fontWeight: '700', color: c.text, backgroundColor: c.surface,
-    borderRadius: radius.md, borderWidth: 1, borderColor: c.border, padding: spacing.md,
+    borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
+    paddingHorizontal: spacing.md,
   },
   descInput: {
     fontSize: 15, color: c.text, backgroundColor: c.surface,
-    borderRadius: radius.md, borderWidth: 1, borderColor: c.border, padding: spacing.md,
+    borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
+    paddingHorizontal: spacing.md,
   },
   sectionKicker: { fontSize: 13, color: c.textMuted, letterSpacing: 2, marginTop: spacing.sm, marginLeft: spacing.xs },
   repeatCard: {
@@ -357,7 +473,7 @@ const createStyles = (c: Palette) => StyleSheet.create({
   },
   nodeTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   nodeIndex: { fontSize: 13, color: c.textMuted, width: 18 },
-  nodeLabel: { flex: 1, fontSize: 16, color: c.text, paddingVertical: spacing.xs },
+  nodeLabel: { flex: 1, fontSize: 16, lineHeight: 22, color: c.text, paddingHorizontal: 0 },
   kindRow: { flexDirection: 'row', gap: spacing.xs },
   kindBtn: {
     paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radius.pill,
@@ -369,13 +485,15 @@ const createStyles = (c: Palette) => StyleSheet.create({
   fieldRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   fieldLabel: { fontSize: 13, color: c.textMuted, width: 64 },
   smallInput: {
+    minHeight: 44,
     fontSize: 15, color: c.text, backgroundColor: c.bg,
     borderRadius: radius.sm, borderWidth: 1, borderColor: c.border,
-    paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, minWidth: 80,
+    paddingHorizontal: spacing.sm, minWidth: 80,
   },
   rationaleInput: {
     fontSize: 14, color: c.textMuted, backgroundColor: c.bg,
-    borderRadius: radius.sm, borderWidth: 1, borderColor: c.border, padding: spacing.sm,
+    borderRadius: radius.sm, borderWidth: 1, borderColor: c.border,
+    paddingHorizontal: spacing.sm,
   },
   nodeActions: { flexDirection: 'row', gap: spacing.lg, alignItems: 'center' },
   action: { fontSize: 15, color: c.accent },
@@ -387,4 +505,16 @@ const createStyles = (c: Palette) => StyleSheet.create({
   },
   addText: { color: c.accent, fontSize: 15, fontWeight: '600' },
   error: { color: c.warn, fontSize: 14, marginTop: spacing.sm },
+  footerAvoider: { backgroundColor: c.bg },
+  footerAvoiderContent: { backgroundColor: c.bg },
+  footer: {
+    borderTopWidth: 1, borderTopColor: c.border, backgroundColor: c.bg,
+    paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm,
+  },
+  saveButton: {
+    minHeight: 48, borderRadius: radius.md, backgroundColor: c.accent,
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.md,
+  },
+  saveButtonDisabled: { opacity: 0.55 },
+  saveButtonText: { color: c.accentText, fontSize: 16, lineHeight: 22, fontWeight: '700' },
 });
