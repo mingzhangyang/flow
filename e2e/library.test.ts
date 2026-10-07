@@ -44,10 +44,40 @@ test('新建顺序型 → 保存 → 导出 JSON → 改 id/标题后导入 → 
   assert.equal(await page.getByText('手冲滴滤', { exact: true }).count(), 1); // 原条目还在
 });
 
+test('顺序型编辑器：快捷等待与时长 preset 保存后可 round-trip', async () => {
+  const page = await e2e.openApp();
+
+  await page.getByText('＋ 顺序', { exact: true }).click();
+  await page.getByPlaceholder('流程名称').fill('快捷等待测试');
+
+  // 普通 Add Step 保持可用、语义不变。
+  await page.getByRole('button', { name: '＋ 添加步骤' }).click();
+  await page.getByPlaceholder('这一步做什么').last().fill('普通步骤');
+
+  await page.getByRole('button', { name: '＋ 等待' }).click();
+  const labels = page.getByPlaceholder('这一步做什么');
+  assert.equal(await labels.count(), 2);
+  assert.equal(await labels.last().inputValue(), '等待');
+
+  const durations = page.getByLabel('自定义（秒）');
+  assert.equal(await durations.last().inputValue(), '300');
+  await page.getByRole('button', { name: '10 分钟' }).last().click();
+  assert.equal(await durations.last().inputValue(), '600');
+
+  await page.getByText('保存', { exact: true }).click();
+  await expectText(page, '快捷等待测试');
+
+  // 重新进入 Editor，确认保存的是现有 durationSec=600，而不是 UI-only 状态。
+  await page.getByText('编辑', { exact: true }).click();
+  assert.equal(await page.getByLabel('自定义（秒）').last().inputValue(), '600');
+});
+
 test('日程型编辑器：once「过时不候」提示可见，选每天后消失', async () => {
   const page = await e2e.openApp();
 
   await page.getByText('＋ 日程', { exact: true }).click();
+  assert.equal(await page.getByText('＋ 等待', { exact: true }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: '5 分钟' }).count(), 0);
   await expectText(page, /过时不候/); // 缺省即 once，语义在选择处说明
   await page.getByText('每天', { exact: true }).click();
   await page.getByText(/过时不候/).waitFor({ state: 'detached' });
