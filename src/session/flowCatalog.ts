@@ -21,9 +21,11 @@ export interface CatalogEntry {
 
 export type OwnedCatalogSnapshot =
   | { status: 'loading' }
-  | { status: 'ready'; flows: Flow[] };
+  | { status: 'ready'; flows: Flow[] }
+  | { status: 'error' };
 
 export const LOADING_CATALOG: OwnedCatalogSnapshot = { status: 'loading' };
+export const ERROR_CATALOG: OwnedCatalogSnapshot = { status: 'error' };
 
 const ENROLLMENT_KEY_VERSION = 'v2';
 

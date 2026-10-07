@@ -102,7 +102,7 @@ test('journal 写入失败时绝不执行破坏性操作', async () => {
 
 test('坏 journal fail closed，不猜测删除目标', async () => {
   const kv = createInMemoryKV();
-  await kv.setItem('txn:delete-owned-flow:broken', '{"v":1,"enrollmentKey":"key","flow":{"id":7}}');
+  await kv.setItem('txn:delete-owned-flow:broken', '{"v":1,"enrollmentKey":"key","flowId":7}');
   const calls: string[] = [];
 
   await assert.rejects(() =>
@@ -113,4 +113,31 @@ test('坏 journal fail closed，不猜测删除目标', async () => {
     }),
   );
   assert.deepEqual(calls, []);
+});
+
+
+test('journal 只保存稳定删除标识，不依赖 Flow schema 快照', async () => {
+  const kv = createInMemoryKV();
+  let failRemove = true;
+  await assert.rejects(() =>
+    deleteOwnedFlowDurably(flow, 'key', 'legacy', {
+      kv,
+      async removeFlow() {
+        if (failRemove) throw new Error('stop after journal');
+      },
+      async unenroll() {},
+    }),
+  );
+
+  const [key] = await journalKeys(kv);
+  const raw = JSON.parse((await kv.getItem(key)) ?? '{}') as Record<string, unknown>;
+  assert.deepEqual(raw, {
+    v: 1,
+    flowId: 'owned',
+    enrollmentKey: 'key',
+    legacyEnrollmentId: 'legacy',
+  });
+  assert.equal('flow' in raw, false);
+
+  failRemove = false;
 });

@@ -59,7 +59,7 @@
   入历史，打卡按占位合并、本机记录优先。
 - **Flow ID 冲突规则**：用户库是权威层，内置示例是只读 fallback。导入/备份允许保留外部稳定 id；若与示例同 id，用户 Flow 在首页、提醒重排和通知点击路由中一致地遮蔽示例。删除该用户 Flow 后示例重新可见。
 - **提醒登记身份**：新 enrollment 一律以结构化 v2 记录保存，identity 为 `(source, flowId)` 的注入式编码；不使用任何“保留字符串前缀”，因此开放 Flow ID 无法与生成 key 碰撞。旧 bare-ID 仅在来源无歧义时迁移；shadowing owned 不接受 bare-ID 别名，避免把示例旧登记转给用户 Flow。
-- **Catalog snapshot 与删除事务**：App 是用户库 snapshot 的唯一拥有者；`loading` 与“已加载且为空”是不同状态，Home/通知路由/提醒重排只消费 ready snapshot，因此首帧不会短暂暴露被 owned Flow 遮蔽的示例。删除不依赖脆弱的即时 rollback：先持久化 deletion intent，再按 remove→unenroll→清 intent commit-forward；任一步失败 intent 都保留，启动/回前台/库刷新会在发布下一份 snapshot 前重试恢复。
+- **Catalog snapshot 与删除事务**：App 是用户库 snapshot 的唯一拥有者；`loading / ready / error` 与“已加载且为空”明确区分。所有 refresh、enroll、delete 通过 `catalogCoordinator` 串行执行，提醒 cancel/schedule 不会并发互踩；只有最新请求可以发布 snapshot。通知 listener 持续订阅，在 snapshot 未 ready 时等待 coordinator。删除不依赖脆弱的即时 rollback：先持久化最小 deletion intent（仅 flowId + enrollment identity），再按 remove→unenroll→清 intent commit-forward；任一步失败 intent 都保留，下一次 refresh 在发布 snapshot 前重试。
 
 ### 4. Notification Engine（`src/notifications/`）
 把 Runtime 给出的触发时刻翻译成平台的本地定时通知/闹钟（expo-notifications）。

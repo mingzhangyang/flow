@@ -48,6 +48,7 @@ export function HomeScreen(props: {
   examples: Flow[];
   catalog: OwnedCatalogSnapshot;
   sharer: Sharer;
+  onRetry: () => void;
   onRun: (flow: Flow, enrollmentKey: string) => void;
   onNew: (topology: Topology) => void;
   onEdit: (flow: Flow) => void;
@@ -62,7 +63,7 @@ export function HomeScreen(props: {
   const { t } = useI18n();
   const [backupNote, setBackupNote] = useState<string | null>(null);
   const catalogReady = props.catalog.status === 'ready';
-  const mine = catalogReady ? props.catalog.flows : [];
+  const mine: Flow[] = props.catalog.status === 'ready' ? props.catalog.flows : [];
 
   // 整库备份（C6 兜底）：全部 flow + 历史修订 + 打卡日志，经系统分享面板存文件/发给自己。
   const backup = (): void => {
@@ -153,6 +154,15 @@ export function HomeScreen(props: {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        {props.catalog.status === 'error' ? (
+          <View style={styles.catalogError}>
+            <Text style={styles.catalogErrorText}>{t.catalogUnavailable}</Text>
+            <Pressable style={styles.retryButton} onPress={props.onRetry}>
+              <Text style={styles.retryText}>{t.retry}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
         {upNext ? (
           <Pressable style={styles.next} onPress={() => props.onRun(upNext.flow, enrollmentKeyOf(upNext.flow, upNext.own))}>
             <Text style={styles.nextTime}>{fmtTimeOfDay(timeOfDay(upNext.occ.at, systemTimeZone))}</Text>
@@ -237,6 +247,16 @@ const createStyles = (c: Palette) => StyleSheet.create({
 
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   backupNote: { fontSize: 13, color: c.accent, marginLeft: spacing.xs },
+  catalogError: {
+    backgroundColor: c.surface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
+    padding: spacing.md, gap: spacing.sm,
+  },
+  catalogErrorText: { fontSize: 14, color: c.textMuted },
+  retryButton: {
+    alignSelf: 'flex-start', borderRadius: radius.pill, borderWidth: 1, borderColor: c.accent,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
+  },
+  retryText: { color: c.accent, fontSize: 14, fontWeight: '600' },
   action: {
     backgroundColor: c.accent, borderRadius: radius.pill,
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,

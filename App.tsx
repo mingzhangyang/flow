@@ -1,8 +1,8 @@
 // 准时 / Zhunshi —— 应用外壳。
-// Catalog snapshot、提醒重排和持久化删除恢复由 composition root 统一协调，
-// Home 只消费已经就绪的 snapshot，避免多处异步读取产生短暂错误视图。
+// Catalog snapshot、提醒重排、提醒登记和持久化删除恢复统一走一个串行 coordinator。
+// Home / 通知路由只消费 coordinator 发布的权威 snapshot。
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppState, SafeAreaView, StyleSheet, useColorScheme } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -23,6 +23,7 @@ import {
   resolveCatalogEntry,
   type OwnedCatalogSnapshot,
 } from './src/session/flowCatalog';
+import { createCatalogCoordinator } from './src/session/catalogCoordinator';
 import {
   deleteOwnedFlowDurably,
   recoverPendingOwnedFlowDeletions,
@@ -71,35 +72,36 @@ export default function App() {
 
   const [screen, setScreen] = useState<Screen>({ name: 'home' });
   const [catalog, setCatalog] = useState<OwnedCatalogSnapshot>(LOADING_CATALOG);
-  const refreshGeneration = useRef(0);
+  const catalogCoordinator = useMemo(() => createCatalogCoordinator(setCatalog), []);
 
   const home = (): void => setScreen({ name: 'home' });
 
-  const refreshCatalog = useCallback(async (): Promise<void> => {
-    const generation = ++refreshGeneration.current;
-    setCatalog(LOADING_CATALOG);
+  const runCatalogTask = useCallback(async (
+    mutation?: () => Promise<void>,
+  ): Promise<Flow[]> => {
+    if (mutation) await mutation();
 
-    try {
-      await recoverPendingOwnedFlowDeletions({
-        kv: asyncStorageKV,
-        removeFlow: (id) => library.remove(id),
-        unenroll: (key, legacyId) => unenrollFlow(asyncStorageKV, key, legacyId),
-      });
-      const flows = await library.list();
-      await rescheduleReminders({
-        kv: asyncStorageKV,
-        notifier,
-        flows: catalogEntriesWithOwnedPrecedence(examples, flows),
-        now: Date.now(),
-        deviceTz: systemTimeZone,
-      });
-      if (generation === refreshGeneration.current) {
-        setCatalog({ status: 'ready', flows });
-      }
-    } catch {
-      if (generation === refreshGeneration.current) setCatalog(LOADING_CATALOG);
-    }
+    await recoverPendingOwnedFlowDeletions({
+      kv: asyncStorageKV,
+      removeFlow: (id) => library.remove(id),
+      unenroll: (key, legacyId) => unenrollFlow(asyncStorageKV, key, legacyId),
+    });
+
+    const flows = await library.list();
+    await rescheduleReminders({
+      kv: asyncStorageKV,
+      notifier,
+      flows: catalogEntriesWithOwnedPrecedence(examples, flows),
+      now: Date.now(),
+      deviceTz: systemTimeZone,
+    });
+    return flows;
   }, [examples, library, notifier]);
+
+  const refreshCatalog = useCallback((
+    mutation?: () => Promise<void>,
+  ): Promise<void> => catalogCoordinator.request(() => runCatalogTask(mutation)),
+  [catalogCoordinator, runCatalogTask]);
 
   const homeRefreshed = (): void => {
     home();
@@ -111,16 +113,12 @@ export default function App() {
     enrollmentKey: string,
     legacyEnrollmentId?: string,
   ): Promise<void> => {
-    setCatalog(LOADING_CATALOG);
-    try {
-      await deleteOwnedFlowDurably(flow, enrollmentKey, legacyEnrollmentId, {
+    await refreshCatalog(() =>
+      deleteOwnedFlowDurably(flow, enrollmentKey, legacyEnrollmentId, {
         kv: asyncStorageKV,
         removeFlow: (id) => library.remove(id),
         unenroll: (key, legacyId) => unenrollFlow(asyncStorageKV, key, legacyId),
-      });
-    } finally {
-      await refreshCatalog();
-    }
+      }));
   }, [library, refreshCatalog]);
 
   useEffect(() => {
@@ -131,19 +129,21 @@ export default function App() {
     return () => sub.remove();
   }, [refreshCatalog]);
 
+  // response source 只启动一次；catalog 未 ready 时等待 coordinator，而不是退订 listener。
+  // 因此加载/删除恢复窗口中的多个 tap 仍由 response source 的串行队列完整保留。
   useEffect(() => {
-    if (catalog.status !== 'ready') return undefined;
     let active = true;
     const unsubscribe = notificationResponses.start(async (route: NotificationRouteData) => {
+      const flows = await catalogCoordinator.waitForReady();
       if (!active) return;
-      const entry = resolveCatalogEntry(route.flowId, catalog.flows, examples);
+      const entry = resolveCatalogEntry(route.flowId, flows, examples);
       if (entry) setScreen({ name: 'run', flow: entry.flow, enrollmentKey: entry.enrollmentKey });
     });
     return () => {
       active = false;
       unsubscribe();
     };
-  }, [catalog, examples, notificationResponses]);
+  }, [catalogCoordinator, examples, notificationResponses]);
 
   if (!fontsLoaded) return null;
 
@@ -156,6 +156,7 @@ export default function App() {
           examples={examples}
           catalog={catalog}
           sharer={systemSharer}
+          onRetry={() => { void refreshCatalog(); }}
           onRun={(flow, enrollmentKey) => setScreen({ name: 'run', flow, enrollmentKey })}
           onNew={(topology: Topology) => setScreen({ name: 'edit', flow: createFlow({ id: newFlowId(), title: '', topology }) })}
           onEdit={(flow) => setScreen({ name: 'edit', flow })}
@@ -173,7 +174,7 @@ export default function App() {
             storage={storage}
             notifier={notifier}
             onEnrollReminders={(enrollmentKey) => {
-              enrollFlow(asyncStorageKV, enrollmentKey).then(refreshCatalog).catch(() => {});
+              void refreshCatalog(() => enrollFlow(asyncStorageKV, enrollmentKey));
             }}
             onExit={home}
           />

@@ -25,6 +25,8 @@ const zh = {
   backupOutcomeShared: '已唤起分享，把备份存到文件或发给自己 ✓',
   backupOutcomeCopied: '已复制备份数据，请粘贴保存到安全的地方 ✓',
   backupOutcomeUnavailable: '此环境不支持分享或剪贴板',
+  catalogUnavailable: '本地数据暂时无法读取；为避免打开错误的流程，已暂停显示流程库。',
+  retry: '重试',
   sectionMine: '我的',
   sectionExamples: '示例',
   cardMeta: (n: number, topology: 'sequential' | 'scheduled'): string =>
@@ -172,6 +174,8 @@ const zhHant: Strings = {
   backupOutcomeShared: '已喚起分享，把備份存到檔案或傳給自己 ✓',
   backupOutcomeCopied: '已複製備份資料，請貼上保存到安全的地方 ✓',
   backupOutcomeUnavailable: '此環境不支援分享或剪貼簿',
+  catalogUnavailable: '本機資料暫時無法讀取；為避免開啟錯誤的流程，已暫停顯示流程庫。',
+  retry: '重試',
   sectionMine: '我的',
   sectionExamples: '範例',
   cardMeta: (n, topology) => `${n} ${topology === 'sequential' ? '步' : '個時刻'} · 點按執行`,
@@ -304,6 +308,8 @@ const en: Strings = {
   backupOutcomeShared: 'Share sheet opened — save the backup to a file or send it to yourself ✓',
   backupOutcomeCopied: 'Backup copied — paste it somewhere safe ✓',
   backupOutcomeUnavailable: 'Sharing and clipboard are unavailable here',
+  catalogUnavailable: 'Local data is temporarily unavailable. The catalog is hidden to avoid opening the wrong flow.',
+  retry: 'Retry',
   sectionMine: 'MINE',
   sectionExamples: 'EXAMPLES',
   cardMeta: (n, topology) =>
