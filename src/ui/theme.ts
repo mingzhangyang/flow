@@ -93,7 +93,7 @@ export const darkScheme: Palette = {
 
   text: '#F0F5F1',
   textMuted: '#A5B3AA',
-  textFaint: '#74847A',
+  textFaint: '#83938A',
 
   primary: '#76D3A0',
   onPrimary: '#10271B',
