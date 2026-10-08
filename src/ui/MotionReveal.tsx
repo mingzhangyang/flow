@@ -3,6 +3,7 @@ import { Animated, type StyleProp, type ViewStyle } from 'react-native';
 import {
   motionEasing,
   motionSpecFor,
+  shouldAnimateReveal,
   useReducedMotion,
   type SemanticMotion,
 } from './motion';
@@ -40,12 +41,13 @@ export function MotionReveal(props: {
     mounted.current = true;
     previousReplayKey.current = replayKey;
 
-    const shouldAnimate =
-      active &&
-      !reducedMotion &&
-      ((firstRender && animateOnMount) || replayChanged);
-
-    if (!shouldAnimate) {
+    if (!shouldAnimateReveal({
+      active,
+      reducedMotion,
+      firstRender,
+      animateOnMount,
+      replayChanged,
+    })) {
       value.setValue(1);
       return;
     }
