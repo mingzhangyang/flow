@@ -3,7 +3,7 @@
 // 「现在」游标标出此刻在一天中的位置。各剂量相互独立，漏一颗不阻塞其它（C5）。
 // 遵守 E6：描述性、非处方性，显式免责。
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import {
   View, Text, ScrollView, Pressable, StyleSheet, Animated, AppState, Linking, Alert, useColorScheme,
 } from 'react-native';
@@ -29,6 +29,7 @@ import { type Strings } from './strings';
 import { paletteFor, type Palette, spacing, radius, type, mono } from './theme';
 import { HeaderBackButton, HeaderSideSpacer, mobileControlSize } from './mobileControls';
 import { MotionPressable } from './MotionPressable';
+import { createLeaveGuard } from './leaveGuard';
 import { motionScale, motionSpring, useReducedMotion } from './motion';
 
 const GRACE_MINUTES = 120;
@@ -105,7 +106,8 @@ export function ScheduleScreen(props: {
   /** 打开即视为为这条 flow 开启提醒；实际登记与多日重排由 App 层编排。 */
   onEnrollReminders: () => void;
   onExit: () => void;
-  onRegisterExit?: (handler: (() => void) | null) => void;
+  /** App navigation, Android Back and notification replacement share this permission. */
+  onRegisterExit?: (request: (() => Promise<boolean>) | null) => void;
 }) {
   const { flow, session } = props;
   const c = paletteFor(useColorScheme());
@@ -233,28 +235,29 @@ export function ScheduleScreen(props: {
   const undo = (d: DoseState): void => submitIntent({
     kind: 'undo', nodeId: d.nodeId, scheduledFor: d.scheduledFor,
   });
+  // All exits (header, Android Back, notification replacement) ask this same
+  // screen-owned guard. Only App may perform the eventual route transition.
+  const confirmLeave = useRef<(done: (approved: boolean) => void) => void>(() => {});
+  confirmLeave.current = (done) => Alert.alert(t.scheduleUnsavedTitle, t.scheduleUnsavedExit, [
+    { text: t.cancel, style: 'cancel', onPress: () => done(false) },
+    { text: t.scheduleLeaveAnyway, style: 'destructive', onPress: () => done(true) },
+  ], { cancelable: true, onDismiss: () => done(false) });
+  const leaveGuard = useMemo(() => createLeaveGuard({
+    // Check the synchronous intent refs, not the lagging rendered status.
+    disposition: () => pendingIntent.current || inFlight.current ? 'confirm' : 'allow',
+    prompt: (done) => confirmLeave.current(done),
+  }), []);
+
   const requestExit = (): void => {
-    // Refs change synchronously on tap; a hardware Back in the same tick
-    // must not skip the warning before React has committed writeStatus.
-    if (!pendingIntent.current && !inFlight.current) {
-      props.onExit();
-      return;
-    }
-    Alert.alert(t.scheduleUnsavedTitle, t.scheduleUnsavedExit, [
-      { text: t.cancel, style: 'cancel' },
-      { text: t.scheduleLeaveAnyway, style: 'destructive', onPress: props.onExit },
-    ]);
+    void leaveGuard.request().then((approved) => {
+      if (approved && alive.current && session.isOpen()) props.onExit();
+    });
   };
-  // Android system Back must obey the same in-flight/unsaved intent warning.
-  // Registration changes with status, not with every ticking clock render.
-  const exitHandler = useRef(requestExit);
-  exitHandler.current = requestExit;
-  useEffect(() => {
-    if (!props.onRegisterExit) return;
-    const handle = (): void => exitHandler.current();
-    props.onRegisterExit(handle);
+  useLayoutEffect(() => {
+    props.onRegisterExit?.(leaveGuard.request);
     return () => props.onRegisterExit?.(null);
-  }, [props.onRegisterExit]);
+  }, [leaveGuard, props.onRegisterExit]);
+  useEffect(() => () => leaveGuard.cancel(), [leaveGuard]);
 
   return (
     <View style={styles.screen}>

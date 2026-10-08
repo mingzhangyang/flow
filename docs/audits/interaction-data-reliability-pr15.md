@@ -110,3 +110,38 @@ undo of an already absent dose; newer re-check-in after undo; failed undo
 does not leave a phantom tombstone; full-log replacement; corrupt metadata
 read/write refusal; same-name/different-day dose isolation; definition
 deletion clearing undo identities; Backup v1 excludes local undo metadata. A browser E2E also covers check-in → undo → import an old same-dose backup → reopen and reload Schedule.
+
+## High-severity review: foreground notification bypassed an unsaved check-in
+
+**Root cause:** App's notification `openRun` previously closed the active
+RuntimeSession and constructed a replacement Run without consulting the active
+Schedule screen's exit handler. Only Header Back / Android Back used its
+confirmation. A still-pending write could later fail after the retry-capable
+screen had disappeared. The same external route path could bypass an Editor's
+dirty-discard confirmation.
+
+**Architecture correction:** `src/ui/leaveGuard.ts` defines a small
+screen-owned, Promise-based leave decision. Schedule grants immediate passage
+only with no outstanding dose intent; otherwise its existing translated
+warning offers Cancel / Leave anyway. Editor uses the same boundary, preserving
+dirty-discard and blocking navigation while saving. Both register scoped
+permission functions during layout. App alone performs navigation, verifies
+the originating route is still active after any async confirmation, re-resolves
+the catalog target, and only then closes the previous session. Notifications
+for the already-open definition do not replace its session. The notification
+response callback **awaits** `openRun`, retaining delivery order when several
+taps arrive while a native dialog is open.
+
+**Failure guarantees:** Cancel keeps the old session and failed-check-in retry
+reachable. Leaving intentionally does not cancel work already accepted by the
+RuntimeSession FIFO. A missing active screen guard blocks replacement; late
+Alert callbacks and stale route identities cannot authorize another screen.
+
+**Tests:** Shared leave guard covers duplicate requests, cancel/confirm,
+save-start-after-dialog, stale route identity and dismissal cleanup. A
+notification-source integration contract covers pending write + canceled tap,
+failed write + canceled tap + successful retry, subsequent valid navigation,
+sequential taps waiting for the first confirmation and obsolete approvals.
+Native-device follow-up: exercise actual iOS/Android foreground notification
+tap and Alert dismissal; the web E2E environment has no native notification
+response adapter. No recurrence, medical, reminder or visual semantics changed.

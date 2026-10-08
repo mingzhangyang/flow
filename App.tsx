@@ -55,6 +55,7 @@ import { GenerateScreen } from './src/ui/GenerateScreen';
 import { useI18n } from './src/ui/i18n';
 import { dark, paletteFor } from './src/ui/theme';
 import { decideApplicationBackTarget } from './src/ui/applicationBack';
+import { authorizeRouteExit } from './src/ui/leaveGuard';
 
 configureExpoNotificationPresentation();
 
@@ -101,14 +102,33 @@ export default function App() {
     activeRoute.current = next;
     setScreen(next);
   }, []);
-  const scheduleBackHandler = useRef<{ sessionId: number; handler: () => void } | null>(null);
-  const registerScheduleBackHandler = useCallback((sessionId: number, handler: (() => void) | null): void => {
-    if (handler) scheduleBackHandler.current = { sessionId, handler };
-    else if (scheduleBackHandler.current?.sessionId === sessionId) scheduleBackHandler.current = null;
+  const scheduleExit = useRef<{ sessionId: number; request: () => Promise<boolean> } | null>(null);
+  const registerScheduleExit = useCallback((sessionId: number, request: (() => Promise<boolean>) | null): void => {
+    if (request) scheduleExit.current = { sessionId, request };
+    else if (scheduleExit.current?.sessionId === sessionId) scheduleExit.current = null;
   }, []);
-  const editorBackHandler = useRef<(() => void) | null>(null);
-  const registerEditorBackHandler = useCallback((handler: (() => void) | null): void => {
-    editorBackHandler.current = handler;
+  const editorExit = useRef<{ route: Screen; request: () => Promise<boolean> } | null>(null);
+  const registerEditorExit = useCallback((route: Screen, request: (() => Promise<boolean>) | null): void => {
+    if (request) editorExit.current = { route, request };
+    else if (editorExit.current?.route === route) editorExit.current = null;
+  }, []);
+
+  // All external navigation uses the origin screen's one registered guard.
+  // Absence of a guard for an active protected screen must FAIL CLOSED; a
+  // notification cannot bypass a still-mounting Schedule/Editor.
+  const authorizeLeave = useCallback((origin: Screen): Promise<boolean> => {
+    if (activeRoute.current !== origin) return Promise.resolve(false);
+    let request: () => Promise<boolean> = async () => true;
+    if (origin.name === 'run' && origin.flow.topology === 'scheduled') {
+      const current = scheduleExit.current;
+      if (current?.sessionId !== origin.session.id) return Promise.resolve(false);
+      request = current.request;
+    } else if (origin.name === 'edit') {
+      const current = editorExit.current;
+      if (current?.route !== origin) return Promise.resolve(false);
+      request = current.request;
+    }
+    return authorizeRouteExit(origin, () => activeRoute.current, request);
   }, []);
   const [catalog, setCatalog] = useState<OwnedCatalogSnapshot>(LOADING_CATALOG);
   const catalogCoordinator = useMemo(() => createCatalogCoordinator(setCatalog), []);
@@ -132,12 +152,13 @@ export default function App() {
         Keyboard.isVisible(),
       );
       if (target === 'system') return false;
-      if (target === 'editor') {
-        (editorBackHandler.current ?? home)();
-      } else if (target === 'schedule' && route.name === 'run') {
-        const registered = scheduleBackHandler.current;
-        if (registered?.sessionId === route.session.id) registered.handler();
-        else home(); // New route has no pending UI intent before its first render.
+      if (target === 'editor' || target === 'schedule') {
+        // The same async confirmation used by notification-driven replacement.
+        // Recheck route identity after the Alert settles: stale confirmations
+        // must never close or navigate a newer RuntimeSession.
+        void authorizeLeave(route).then((allowed) => {
+          if (allowed && activeRoute.current === route) home();
+        });
       } else {
         home();
       }
@@ -145,19 +166,31 @@ export default function App() {
     });
 
     return () => subscription.remove();
-  }, [home]);
+  }, [authorizeLeave, home]);
 
-  const openRun = useCallback((flowId: string, definitionKey: string): void => {
+  const openRun = useCallback(async (flowId: string, definitionKey: string): Promise<void> => {
     if (deletingRef.current) return;
+    const origin = activeRoute.current;
+    // A notification for the CURRENT run should not throw away a retryable
+    // check-in intent by needlessly creating another RuntimeSession.
+    if (origin.name === 'run' && origin.flow.id === flowId &&
+        origin.session.definitionKey === definitionKey) return;
+    // Notification delivery is already serialized by notificationResponsesCore.
+    // Await the actual UI decision before closing the old session or opening
+    // a new one, preserving retry if the user cancels.
+    if (!await authorizeLeave(origin) || deletingRef.current ||
+        activeRoute.current !== origin) return;
+    // Re-resolve AFTER confirmation: catalog ownership may change while
+    // the user decides, and an obsolete notification must not open that Flow.
     const snapshot = catalogCoordinator.current();
     if (snapshot.status !== 'ready') return;
     const entry = resolveCatalogEntryForRoute(flowId, definitionKey, snapshot.flows, examplesRef.current);
     if (!entry) return;
-    currentSession.current?.close();
     const session = runtime.open(entry.definitionKey);
+    currentSession.current?.close();
     currentSession.current = session;
     navigate({ name: 'run', flow: entry.flow, session });
-  }, [catalogCoordinator, navigate, runtime]);
+  }, [authorizeLeave, catalogCoordinator, navigate, runtime]);
 
   useEffect(() => () => currentSession.current?.close(), []);
 
@@ -303,7 +336,9 @@ export default function App() {
         examplesRef.current,
       );
       if (entry) {
-        openRun(entry.flow.id, entry.definitionKey);
+        // Await user confirmation before consuming the next queued notification.
+        // Otherwise two foreground taps could race to replace the same Run.
+        await openRun(entry.flow.id, entry.definitionKey);
       }
     });
     return () => {
@@ -353,14 +388,14 @@ export default function App() {
             flow={screen.flow}
             session={screen.session}
             notifier={notifier}
-            onRegisterExit={(handler) => registerScheduleBackHandler(screen.session.id, handler)}
+            onRegisterExit={(request) => registerScheduleExit(screen.session.id, request)}
             onEnrollReminders={() => {
               if (!screen.session.isOpen()) return;
               refreshCatalogInBackground(async () => {
                 if (screen.session.isOpen()) await enrollFlow(asyncStorageKV, screen.session.definitionKey);
               });
             }}
-            onExit={home}
+            onExit={() => { if (activeRoute.current === screen) home(); }}
           />
         ) : (
           <RunnerScreen
@@ -375,8 +410,8 @@ export default function App() {
           draft={screen.flow}
           saveFlow={commitCatalogFlow}
           onSaved={() => home()}
-          onCancel={home}
-          onBackHandlerChange={registerEditorBackHandler}
+          onCancel={() => { if (activeRoute.current === screen) home(); }}
+          onRegisterExit={(request) => registerEditorExit(screen, request)}
         />
       ) : screen.name === 'export' ? (
         <ExportScreen flow={screen.flow} sharer={systemSharer} onDone={home} />
