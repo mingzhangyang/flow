@@ -34,19 +34,20 @@ OperationScope, recurrence, notification planning, visuals or motion semantics.
 
 ## Evidence status
 
-Evidence below is recorded against PR head
-`720a9a2bfb307e135e13c0681174ae3cfd63613a`.
+Evidence below records the validated implementation head
+`8dd78d405c8dba3993814caf91f8833edb7878c5`; later edits to this audit record
+are documentation-only.
 
 | Gate | Result |
 |---|---|
-| npm run check | Passed — [check run #294](https://github.com/mingzhangyang/flow/actions/runs/37753823013), `check` job |
-| npm run test:e2e (+ PR #15 regressions) | Passed, 42/42 — [check run #294](https://github.com/mingzhangyang/flow/actions/runs/37753823013), `e2e` job |
-| 320/360/393/430 browser geometry, zh/zh-Hant/en, light/dark | Passed — [check run #294](https://github.com/mingzhangyang/flow/actions/runs/37753823013), `e2e` job |
-| Browser screenshot smoke (six screens, 320/430, three languages) | Passed, 36/36 — [check run #294](https://github.com/mingzhangyang/flow/actions/runs/37753823013), `e2e` job |
-| Screenshot artifact available | `flow-mobile-screenshots`, artifact [#11539591163](https://github.com/mingzhangyang/flow/actions/runs/37753823013/artifacts/11539591163), digest `sha256:c972bac9128e23d36759cb01a13d0d53e3d893eab67a53f53049438fc4502cb3` |
-| expo install --check / expo-doctor | Passed — [Android run](https://github.com/mingzhangyang/flow/actions/runs/37753817953), `Build standalone test APK` job |
-| Native prebuild / lintRelease / assembleRelease | Passed — [Android run](https://github.com/mingzhangyang/flow/actions/runs/37753817953), `Build standalone test APK` job |
-| APK provenance, actual signature state | Passed — source commit `720a9a2bfb307e135e13c0681174ae3cfd63613a`, v2 verified; artifact `flow-android-standalone-test-apk` [#11539129063](https://github.com/mingzhangyang/flow/actions/runs/37753817953/artifacts/11539129063) includes `source-commit.txt`, `SHA256SUMS`, and required `signature.txt` |
+| npm run check | Passed — [check run #295](https://github.com/mingzhangyang/flow/actions/runs/37759838011), `check` job |
+| npm run test:e2e (+ PR #15 regressions) | Passed, 42/42 — [check run #295](https://github.com/mingzhangyang/flow/actions/runs/37759838011), `e2e` job |
+| 320/360/393/430 browser geometry, zh/zh-Hant/en, light/dark | Passed — [check run #295](https://github.com/mingzhangyang/flow/actions/runs/37759838011), `e2e` job |
+| Browser screenshot smoke (six screens, 320/430, three languages) | Passed, 36/36 — [check run #295](https://github.com/mingzhangyang/flow/actions/runs/37759838011), `e2e` job |
+| Screenshot artifact available | `flow-mobile-screenshots`, artifact [#11542135653](https://github.com/mingzhangyang/flow/actions/runs/37759838011/artifacts/11542135653), digest `sha256:5178ab34e7d610f9e42e835f10772a44e1a71eb24d2c325582e322b3f60d64e4` |
+| expo install --check / expo-doctor | Passed — [Android run #13](https://github.com/mingzhangyang/flow/actions/runs/37759832994), `Build standalone test APK` job |
+| Native prebuild / lintRelease / assembleRelease | Passed — [Android run #13](https://github.com/mingzhangyang/flow/actions/runs/37759832994), `Build standalone test APK` job |
+| APK provenance, actual signature state | Passed — source commit `8dd78d405c8dba3993814caf91f8833edb7878c5`, v2 verified; artifact `flow-android-standalone-test-apk` [#11542855266](https://github.com/mingzhangyang/flow/actions/runs/37759832994/artifacts/11542855266) includes `source-commit.txt`, `SHA256SUMS`, and required `signature.txt` (ZIP digest `sha256:2973ab8fa0a684bff264aebf902c57b618864bade2c28cf0658e8ff335814be1`) |
 | Android/iOS real-device matrix | Unverified, no connected device |
 | Android exact alarms / Doze / OEM limitations | Unverified release risk |
 | Sequential Run optimistic save | Confirmed public release blocker — dedicated follow-up required |
