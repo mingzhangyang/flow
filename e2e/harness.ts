@@ -85,6 +85,8 @@ export interface OpenAppOptions {
   /** 视口（CSS 像素）。截图脚本用手机视口；测试用默认桌面视口。 */
   viewport?: { width: number; height: number };
   deviceScaleFactor?: number;
+  /** Accessibility preference injected before the app loads. */
+  reducedMotion?: 'reduce' | 'no-preference';
 }
 
 export interface E2E {
@@ -110,6 +112,7 @@ export async function startE2E(): Promise<E2E> {
         permissions: ['clipboard-read', 'clipboard-write'],
         ...(opts?.viewport ? { viewport: opts.viewport } : {}),
         ...(opts?.deviceScaleFactor ? { deviceScaleFactor: opts.deviceScaleFactor } : {}),
+        ...(opts?.reducedMotion ? { reducedMotion: opts.reducedMotion } : {}),
       });
       contexts.push(context);
       const page = await context.newPage();

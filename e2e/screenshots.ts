@@ -44,9 +44,8 @@ async function capture(e2e: Awaited<ReturnType<typeof startE2E>>): Promise<void>
       brand: l.brand,
       viewport: VIEWPORT,
       deviceScaleFactor: SCALE,
+      reducedMotion: 'reduce',
     });
-    // Screenshots use the real accessibility contract rather than a production-only test switch.
-    await page.emulateMedia({ reducedMotion: 'reduce' });
 
     // 1. 首页（接下来 + 库）
     await shot(page, l.dir, '1-home');
