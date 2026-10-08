@@ -198,3 +198,142 @@ test('backup restore and real-time taps share a single storage lane, preserving 
     [morning, noon],
   );
 });
+
+test('accepted undo remains authoritative over same-dose backup restore after leaving Schedule', async () => {
+  const kv = createInMemoryKV();
+  const storage = createStorage(kv);
+  const library = createLibrary(storage);
+  const session = makeSession(storage);
+  await session.changeCheckIn(record(morning));
+
+  const entered = deferred();
+  const release = deferred();
+  let pauseUndo = true;
+  // An injected storage adapter interleaves an accepted undo, session close,
+  // and import. All three must share the one definition-scoped storage lane.
+  const paused = createStorage({
+    ...kv,
+    async setItem(k, v) {
+      if (pauseUndo && k === 'checkins:v1:' + key) {
+        const decoded = JSON.parse(v) as { undone?: unknown[] };
+        if (decoded.undone?.length) {
+          pauseUndo = false;
+          entered.resolve();
+          await release.promise;
+        }
+      }
+      await kv.setItem(k, v);
+    },
+  });
+  const runtime = createDefinitionRuntime({ storage: paused, notifier: noopNotifier, now: () => 0 });
+  const active = runtime.open(key);
+  const pendingUndo = active.changeCheckIn(undo(morning));
+  await entered.promise;
+  active.close();
+  const importing = createLibrary(paused).importBackup({
+    kind: BACKUP_KIND, backupVersion: BACKUP_VERSION, exportedAt: 1,
+    flows: [], revisions: {}, checkIns: { [key]: [morning, noon] },
+  });
+  release.resolve();
+  await Promise.all([pendingUndo, importing]);
+  assert.deepEqual(await paused.loadCheckIns(key), [noon]);
+  assert.deepEqual(await library.exportBackup(2).then(parseBackup).then((b) => b?.checkIns[key]), [noon]);
+
+  // Simulate process restart: the undo is persisted, not a transient flag in
+  // the old screen or the old createStorage instance.
+  const reopened = createStorage(kv);
+  await createLibrary(reopened).importBackup({
+    kind: BACKUP_KIND, backupVersion: BACKUP_VERSION, exportedAt: 1,
+    flows: [], revisions: {}, checkIns: { [key]: [morning] },
+  });
+  assert.deepEqual(await reopened.loadCheckIns(key), [noon]);
+});
+
+test('explicit undo remains durable even when no dose is currently present', async () => {
+  const kv = createInMemoryKV();
+  const storage = createStorage(kv);
+  const session = makeSession(storage);
+  await session.changeCheckIn(undo(morning));
+  assert.deepEqual(await storage.loadCheckIns(key), []);
+  const backup: Backup = {
+    kind: BACKUP_KIND, backupVersion: BACKUP_VERSION, exportedAt: 1,
+    flows: [], revisions: {}, checkIns: { [key]: [morning] },
+  };
+  await createLibrary(storage).importBackup(backup);
+  assert.deepEqual(await storage.loadCheckIns(key), []);
+  // Tombstones remain local metadata; Backup v1 exports visible facts only.
+  assert.deepEqual(parseBackup(await createLibrary(storage).exportBackup(2))?.checkIns, {});
+});
+
+test('re-checking an undone dose intentionally replaces the undo and beats old backups', async () => {
+  const kv = createInMemoryKV();
+  const storage = createStorage(kv);
+  const session = makeSession(storage);
+  await session.changeCheckIn(record(morning));
+  await session.changeCheckIn(undo(morning));
+  const newer = checkIn('morning', morning.scheduledFor, true, 100_000);
+  assert.deepEqual(await session.changeCheckIn(record(newer)), [newer]);
+  await createLibrary(storage).importBackup({
+    kind: BACKUP_KIND, backupVersion: BACKUP_VERSION, exportedAt: 1,
+    flows: [], revisions: {}, checkIns: { [key]: [morning] },
+  });
+  assert.deepEqual(await storage.loadCheckIns(key), [newer]);
+  const raw = await kv.getItem('checkins:v1:' + key);
+  assert.ok(raw);
+  assert.deepEqual(JSON.parse(raw).undone, []);
+});
+
+test('undo write failure never leaves a phantom tombstone; retry remains durable', async () => {
+  const kv = createInMemoryKV();
+  let rejectUndo = false;
+  const storage = createStorage({
+    ...kv,
+    async setItem(k, v) {
+      if (rejectUndo && k === 'checkins:v1:' + key) throw new Error('undo commit rejected');
+      await kv.setItem(k, v);
+    },
+  });
+  const session = makeSession(storage);
+  await session.changeCheckIn(record(morning));
+  rejectUndo = true;
+  await assert.rejects(() => session.changeCheckIn(undo(morning)), /undo commit rejected/);
+  const previous = await kv.getItem('checkins:v1:' + key);
+  assert.ok(previous);
+  assert.deepEqual(JSON.parse(previous).undone, []);
+  assert.deepEqual(await storage.loadCheckIns(key), [morning]);
+  rejectUndo = false;
+  await session.changeCheckIn(undo(morning));
+  await createLibrary(storage).importBackup({
+    kind: BACKUP_KIND, backupVersion: BACKUP_VERSION, exportedAt: 1,
+    flows: [], revisions: {}, checkIns: { [key]: [morning] },
+  });
+  assert.deepEqual(await createStorage(kv).loadCheckIns(key), []);
+});
+
+test('deleting a definition clears its undo fence; a recreated identity starts fresh', async () => {
+  const kv = createInMemoryKV();
+  const storage = createStorage(kv);
+  await makeSession(storage).changeCheckIn(undo(morning));
+  assert.ok(await kv.getItem('checkins:v1:' + key));
+  await storage.deleteCheckIns(key);
+  assert.equal(await kv.getItem('checkins:v1:' + key), null);
+  await createLibrary(storage).importBackup({
+    kind: BACKUP_KIND, backupVersion: BACKUP_VERSION, exportedAt: 1,
+    flows: [], revisions: {}, checkIns: { [key]: [morning] },
+  });
+  assert.deepEqual(await storage.loadCheckIns(key), [morning]);
+});
+
+test('legacy array check-ins are upgraded after undo and protected from old backup replay', async () => {
+  const kv = createInMemoryKV();
+  await kv.setItem('checkins:v1:' + key, JSON.stringify([morning]));
+  const storage = createStorage(kv);
+  assert.deepEqual(await storage.loadCheckIns(key), [morning]);
+  await makeSession(storage).changeCheckIn(undo(morning));
+  assert.deepEqual(await storage.loadCheckIns(key), []);
+  await createLibrary(createStorage(kv)).importBackup({
+    kind: BACKUP_KIND, backupVersion: BACKUP_VERSION, exportedAt: 1,
+    flows: [], revisions: {}, checkIns: { [key]: [morning] },
+  });
+  assert.deepEqual(await createStorage(kv).loadCheckIns(key), []);
+});

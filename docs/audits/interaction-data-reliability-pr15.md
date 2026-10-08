@@ -6,7 +6,7 @@ Constitution: C0, C5, C6, C9, C10, E3, E4, E6, AI-C1
 
 - **UI** owns presentation, a visible pending/failed check-in intent, retry and exit warning. It never owns an authoritative check-in table for writes, and may consume an async result only while its route/operation is current.
 - **Application/session** owns accepted operation ordering and definition-scoped lifetime. Closing a session prevents new commands but drains accepted writes. An import already committed continues even when its screen disappears. The app shell revokes stale navigation synchronously.
-- **Storage** owns authoritative read/modify/write of check-in records in one per-definition lane shared by the runtime session, backup merge, loads, and deletion. The write resolves only on a successful KV commit.
+- **Storage** owns authoritative read/modify/write of check-in records in one per-definition lane shared by the runtime session, backup merge, loads, and deletion. The write resolves only on a successful KV commit. A durable undo identity is co-written with the visible log and honored by imports.
 - **Clock** owns calendar projection and event boundaries with explicit `now` and `TimeZone` inputs. UI only schedules necessary refreshes and foreground/wall-clock/zone-change checks. The recurrence algorithm is unchanged.
 
 ## Confirmed defects on PR #14 main
@@ -75,3 +75,35 @@ an unchanged anchored deadline, later event expiry, zone changes, foreground
 resume, deadline rescheduling, cleanup, and Strict Mode stop/start. An E2E
 fake-clock regression asserts the Home Up Next transition after a backward
 clock correction without remounting the page. No recurrence/DST rule changes.
+
+## High-severity review: backup restore resurrected a newer local undo
+
+**Confirmed root cause:** The original in-lane `mergeCheckIns(local, incoming)` knew
+only present records; removing a dose left no ordering fact. A subsequent
+backup import treated that dose as never recorded and restored a stale
+confirmation. Serialization protected concurrent writes but did not capture
+the meaning of a successful local undo.
+
+**Contract at the storage boundary:** `src/storage/checkInState.ts` stores
+visible `CheckIn[]` and explicit undo identities in one durable KV value
+per canonical definition key. `Storage.changeCheckIn` commits an immutable
+`record` or `undo` intent; `Storage.mergeBackupCheckIns` respects both
+confirmed records and undone identities. Both use the existing per-key FIFO
+read/modify/write lane and ACK only after a single write of log + undo
+metadata. New local `record` cancels the old undo identity; local bulk
+replacement cannot bypass the protection. Definition deletion erases both.
+
+**Compatibility and deliberate limit:** Legacy in-app `CheckIn[]` values in
+the existing v1 KV namespace still read correctly and are upgraded after
+their next edit. Malformed internal envelopes fail closed. Public Backup v1
+still exports *only confirmed present entries* — no additional schema keys
+or serializer changes. Tombstones are strictly local: importing an old backup
+on a completely fresh device with no local undo history can restore it,
+consistent with Backup v1's existing behavior.
+
+**Verification:** Same-dose undo followed by restore (including accepted
+undo, session close, and delayed storage write); restart and repeated restore;
+undo of an already absent dose; newer re-check-in after undo; failed undo
+does not leave a phantom tombstone; full-log replacement; corrupt metadata
+read/write refusal; same-name/different-day dose isolation; definition
+deletion clearing undo identities; Backup v1 excludes local undo metadata.

@@ -122,3 +122,9 @@ test('正式 v1 envelope 缺字段或容器 shape 错误时整体拒绝，不伪
     assert.equal(parseBackup(JSON.stringify(value)), null);
   }
 });
+
+test('backup merge remains idempotent when the incoming archive repeats the same dose', () => {
+  const entry = checkIn('morning', 1000, true, 1010);
+  assert.deepEqual(mergeCheckIns([], [entry, entry]), [entry]);
+  assert.deepEqual(mergeCheckIns([entry], [entry, entry]), [entry]);
+});

@@ -5,7 +5,11 @@ import { type Flow, type Run, type RunEvent, type RunEventType } from '../domain
 import { assertDefinitionKey } from '../domain/definitionIdentity';
 import { serializeFlow, deserializeFlow, coerceFlow } from '../domain/serialize';
 import { reduce } from '../runtime/engine';
-import { type CheckIn, isCheckIn } from '../runtime/adherence';
+import { type CheckIn } from '../runtime/adherence';
+import {
+  applyLocalCheckIn, mergeBackupCheckInState, readStoredCheckIns,
+  replaceLocalCheckIns, type CheckInChange, type StoredCheckIns,
+} from './checkInState';
 import { type KVStore } from './kv';
 import { setStringRecordValue } from './stringRecord';
 
@@ -60,9 +64,10 @@ export interface Storage {
   listRuns(): Promise<Run[]>;
   deleteRun(id: string): Promise<void>;
 
-  /** One serialized read/modify/write for each definition, shared by UI and backup restore.
-   * The resolved log is a confirmed persistent snapshot; a rejected write is never success. */
-  modifyCheckIns(definitionKey: string, change: (persisted: CheckIn[]) => CheckIn[]): Promise<CheckIn[]>;
+  /** The authoritative dose intent commits atomically with its undo tombstone. */
+  changeCheckIn(definitionKey: string, change: CheckInChange): Promise<CheckIn[]>;
+  /** Restoration merges against both the visible log and durable local undo intents. */
+  mergeBackupCheckIns(definitionKey: string, incoming: CheckIn[]): Promise<CheckIn[]>;
   /** definitionKey 是唯一主键。 */
   saveCheckIns(definitionKey: string, log: CheckIn[]): Promise<void>;
   loadCheckIns(definitionKey: string): Promise<CheckIn[]>;
@@ -104,16 +109,26 @@ export function createStorage(kv: KVStore): Storage {
     await kv.setItem(FLOW + flow.id, serializeFlow(flow));
   }
 
-  async function readCheckIns(definitionKey: string): Promise<CheckIn[]> {
+  async function readCheckInState(definitionKey: string): Promise<StoredCheckIns> {
     assertDefinitionKey(definitionKey);
-    const text = await kv.getItem(CHECKINS + definitionKey);
-    if (text === null) return [];
-    const raw = JSON.parse(text) as unknown;
-    if (!Array.isArray(raw)) throw new Error('invalid persisted check-in log');
-    // Individual malformed entries are independently unusable and may be skipped; a malformed
-    // container/JSON is a read failure and must never be reinterpreted as an empty user log.
-    return raw.filter(isCheckIn);
+    // Accept existing v1 check-in arrays, but never invent an empty log when
+    // the internal envelope/tombstone is malformed. Undo is medical-context data.
+    return readStoredCheckIns(await kv.getItem(CHECKINS + definitionKey));
   }
+
+  async function readCheckIns(definitionKey: string): Promise<CheckIn[]> {
+    return (await readCheckInState(definitionKey)).log;
+  }
+
+  const writeCheckInState = (
+    definitionKey: string,
+    change: (state: StoredCheckIns) => StoredCheckIns,
+  ): Promise<CheckIn[]> => inCheckInLane(definitionKey, async () => {
+    const next = change(await readCheckInState(definitionKey));
+    // One acknowledgement covers both a record and its undo identity.
+    await kv.setItem(CHECKINS + definitionKey, JSON.stringify(next));
+    return next.log;
+  });
 
   return {
     saveFlow,
@@ -170,15 +185,17 @@ export function createStorage(kv: KVStore): Storage {
       await kv.removeItem(RUN + id);
     },
 
-    modifyCheckIns(definitionKey, change) {
-      return inCheckInLane(definitionKey, async () => {
-        const next = change(await readCheckIns(definitionKey));
-        await kv.setItem(CHECKINS + definitionKey, JSON.stringify(next));
-        return next;
-      });
+    changeCheckIn(definitionKey, change) {
+      return writeCheckInState(definitionKey, (state) => applyLocalCheckIn(state, change));
+    },
+    mergeBackupCheckIns(definitionKey, incoming) {
+      return writeCheckInState(definitionKey, (state) => mergeBackupCheckInState(state, incoming));
     },
     saveCheckIns(definitionKey, log) {
-      return inCheckInLane(definitionKey, () => kv.setItem(CHECKINS + definitionKey, JSON.stringify(log)));
+      // Deliberate LOCAL whole-log replacement; removed visible doses leave
+      // undo identities, unlike backup import. A newer record clears its undo.
+      return writeCheckInState(definitionKey, (state) => replaceLocalCheckIns(state, log))
+        .then(() => {});
     },
     loadCheckIns(definitionKey) {
       return inCheckInLane(definitionKey, () => readCheckIns(definitionKey));

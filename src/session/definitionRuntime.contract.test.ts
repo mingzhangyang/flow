@@ -53,7 +53,7 @@ for (const stage of ['saveRun', 'changeCheckIn', 'cancel', 'schedule'] as const)
       storage: {
         ...storage,
         async saveRun(value) { await pause('saveRun'); await storage.saveRun(value); },
-        async modifyCheckIns(id, change) { await pause('changeCheckIn'); return storage.modifyCheckIns(id, change); },
+        async changeCheckIn(id, change) { await pause('changeCheckIn'); return storage.changeCheckIn(id, change); },
       },
       notifier, now: () => 1000,
     });
@@ -104,9 +104,9 @@ test('exit drains accepted FIFO saves; a reopened screen reads after those saves
   const runtime = createDefinitionRuntime({
     storage: {
       ...storage,
-      async modifyCheckIns(id, change) {
+      async changeCheckIn(id, change) {
         if (++calls === 1) { entered.resolve(); await release.promise; }
-        return storage.modifyCheckIns(id, change);
+        return storage.changeCheckIn(id, change);
       },
     }, notifier: noopNotifier, now: () => 1000,
   });
