@@ -110,8 +110,9 @@ test('Home watchdog survives a backward wall-clock jump with the same Up Next de
   await page.clock.fastForward(60_000);
   await upNext.getByText('14:00', { exact: true }).waitFor();
 
+  // At 08:01, the same deadline is still 14:00:00.001, 5h59m later.
   // The next boundary must still fire without navigating away or remounting.
-  await page.clock.fastForward(5 * 60 * 60_000 + 1);
+  await page.clock.fastForward(5 * 60 * 60_000 + 59 * 60_000 + 1);
   await upNext.getByText('22:00', { exact: true }).waitFor();
 });
 
