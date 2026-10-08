@@ -39,7 +39,10 @@ export function ImportScreen(props: {
       return;
     }
     const accepted = operation.submit(
-      () => selectedBackup ? props.importBackup(selectedBackup) : props.importFlow(json!, Date.now()),
+      async () => {
+        if (selectedBackup) await props.importBackup(selectedBackup);
+        else await props.importFlow(json!, Date.now());
+      },
       {
         success: () => props.onImported(),
         failure: (error) => setError(String(error)),

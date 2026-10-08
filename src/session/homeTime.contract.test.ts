@@ -39,14 +39,17 @@ test('crossing local midnight causes date projection to change, not a stale memo
 });
 
 test('an event entering the 24h window is scheduled for a refresh, not hidden forever', () => {
-  const onlyTomorrowEvening = daily('night', [1320]);
-  const todayMorning = Date.parse('2026-07-15T08:00:00+08:00');
-  const first = projectHomeTime([onlyTomorrowEvening], [], todayMorning, shanghai);
-  // Today's 22:00 is visible within 24h; tomorrow's 22:00 after today's event.
-  assert.equal(first.upNext?.occ.at, Date.parse('2026-07-15T22:00:00+08:00'));
-  const later = projectHomeTime([onlyTomorrowEvening], [], Date.parse('2026-07-15T22:00:00.001+08:00'), shanghai);
-  assert.equal(later.upNext, null);
-  assert.equal(later.nextRefreshAt, Date.parse('2026-07-16T00:00:00+08:00'));
+  // Friday 22:00 is outside Thursday 21:59's [now, now+24h] window.
+  const fridayNight: Flow = { ...daily('friday', [1320]), repeat: { kind: 'weekly', days: [5] } };
+  const before = projectHomeTime(
+    [fridayNight], [], Date.parse('2026-07-16T21:59:00+08:00'), shanghai,
+  );
+  assert.equal(before.upNext, null);
+  assert.equal(before.nextRefreshAt, Date.parse('2026-07-16T22:00:00+08:00'));
+  const within = projectHomeTime(
+    [fridayNight], [], before.nextRefreshAt, shanghai,
+  );
+  assert.equal(within.upNext?.occ.at, Date.parse('2026-07-17T22:00:00+08:00'));
 });
 
 test('foreground, system clock jump, and timezone change trigger refresh without ticking React', () => {
