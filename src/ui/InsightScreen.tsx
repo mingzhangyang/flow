@@ -13,6 +13,7 @@ import { diffFlows, describeChange, type Change } from '../ai/diff';
 import { useI18n } from './i18n';
 import { paletteFor, type Palette, spacing, radius } from './theme';
 import { HeaderBackButton, HeaderSideSpacer } from './mobileControls';
+import { MotionPressable } from './MotionPressable';
 
 export function InsightScreen(props: {
   flow: Flow;
@@ -95,9 +96,9 @@ export function InsightScreen(props: {
               ) : (
                 changes.map((c, i) => <Text key={i} style={styles.change}>{describeChange(c, locale)}</Text>)
               )}
-              <Pressable style={styles.restore} onPress={restore}>
+              <MotionPressable style={styles.restore} onPress={restore}>
                 <Text style={styles.restoreText}>{t.insightRestore}</Text>
-              </Pressable>
+              </MotionPressable>
             </View>
           </>
         ) : null}

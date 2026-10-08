@@ -21,7 +21,6 @@ const LOCALES = [
 ] as const;
 
 async function shot(page: Page, dir: string, name: string): Promise<void> {
-  await page.waitForTimeout(300); // 等动画收尾
   await page.screenshot({ path: path.join(OUT, dir, `${name}.png`) });
   console.log(`  ✓ ${dir}/${name}.png`);
 }
@@ -46,6 +45,8 @@ async function capture(e2e: Awaited<ReturnType<typeof startE2E>>): Promise<void>
       viewport: VIEWPORT,
       deviceScaleFactor: SCALE,
     });
+    // Screenshots use the real accessibility contract rather than a production-only test switch.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
 
     // 1. 首页（接下来 + 库）
     await shot(page, l.dir, '1-home');

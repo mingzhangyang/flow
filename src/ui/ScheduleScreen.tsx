@@ -28,6 +28,8 @@ import { useI18n } from './i18n';
 import { type Strings } from './strings';
 import { paletteFor, type Palette, spacing, radius, type, mono } from './theme';
 import { HeaderBackButton, HeaderSideSpacer, mobileControlSize } from './mobileControls';
+import { MotionPressable } from './MotionPressable';
+import { motionScale, motionSpring, useReducedMotion } from './motion';
 
 const GRACE_MINUTES = 120;
 
@@ -51,15 +53,43 @@ type BeadStyles = ReturnType<typeof createBeadStyles>;
 
 /** 时刻珠：状态即形态；打卡瞬间弹一下（克制的确认感）。 */
 function DoseBead(props: { status: DoseStatus; s: Styles; bs: BeadStyles }) {
+  const reducedMotion = useReducedMotion();
   const scale = useRef(new Animated.Value(1)).current;
   const prev = useRef(props.status);
+  const running = useRef<Animated.CompositeAnimation | null>(null);
+
   useEffect(() => {
-    if (prev.current !== 'taken' && props.status === 'taken') {
-      scale.setValue(0.4);
-      Animated.spring(scale, { toValue: 1, friction: 4, useNativeDriver: false }).start();
+    running.current?.stop();
+    running.current = null;
+
+    if (reducedMotion) {
+      scale.setValue(1);
+      prev.current = props.status;
+      return;
     }
+
+    if (prev.current !== 'taken' && props.status === 'taken') {
+      scale.setValue(motionScale.confirmationFrom);
+      const animation = Animated.spring(scale, {
+        toValue: 1,
+        ...motionSpring.confirmation,
+        useNativeDriver: true,
+        isInteraction: false,
+      });
+      running.current = animation;
+      animation.start(({ finished }) => {
+        if (finished && running.current === animation) running.current = null;
+      });
+    } else if (props.status !== 'taken') {
+      scale.setValue(1);
+    }
+
     prev.current = props.status;
-  }, [props.status, scale]);
+    return () => {
+      running.current?.stop();
+      running.current = null;
+    };
+  }, [props.status, reducedMotion, scale]);
 
   return (
     <Animated.View style={[props.s.bead, props.bs[props.status], { transform: [{ scale }] }]}>
@@ -171,9 +201,9 @@ export function ScheduleScreen(props: {
         {checkInsStatus === 'error' ? (
           <View style={styles.storageError}>
             <Text style={styles.storageErrorText}>{t.scheduleStorageUnavailable}</Text>
-            <Pressable style={styles.retryButton} onPress={() => setCheckInsAttempt((n) => n + 1)}>
+            <MotionPressable style={styles.retryButton} onPress={() => setCheckInsAttempt((n) => n + 1)}>
               <Text style={styles.retryText}>{t.retry}</Text>
-            </Pressable>
+            </MotionPressable>
           </View>
         ) : null}
 
@@ -214,17 +244,17 @@ export function ScheduleScreen(props: {
                   </Text>
                 </View>
                 {d.status === 'taken' ? (
-                  <Pressable
+                  <MotionPressable
                     accessibilityRole="button"
                     style={styles.undoButton}
                     onPress={() => undo(d)}
                   >
                     <Text style={styles.undo}>{t.undo}</Text>
-                  </Pressable>
+                  </MotionPressable>
                 ) : (
-                  <Pressable accessibilityRole="button" style={styles.take} onPress={() => take(d)}>
+                  <MotionPressable accessibilityRole="button" style={styles.take} onPress={() => take(d)}>
                     <Text style={styles.takeText}>{t.checkIn}</Text>
-                  </Pressable>
+                  </MotionPressable>
                 )}
               </View>
             </View>

@@ -12,6 +12,7 @@ import { useI18n } from './i18n';
 import { type Strings } from './strings';
 import { paletteFor, type Palette, spacing, radius } from './theme';
 import { HeaderBackButton, HeaderSideSpacer } from './mobileControls';
+import { MotionPressable } from './MotionPressable';
 
 const outcomeText = (t: Strings): Record<ShareOutcome, string> => ({
   shared: t.shareOutcomeShared,
@@ -57,16 +58,16 @@ export function ExportScreen(props: { flow: Flow; sharer: Sharer; onDone: () => 
         <Text style={styles.sectionKicker}>{t.exportPreview}</Text>
         <Text style={styles.preview}>{readable.trimEnd()}</Text>
 
-        <Pressable style={styles.primary} onPress={() => send(shareText)}>
+        <MotionPressable style={styles.primary} onPress={() => send(shareText)}>
           <Text style={styles.primaryText}>{t.exportShareFull}</Text>
-        </Pressable>
+        </MotionPressable>
         {feedback ? <Text style={styles.feedback}>{feedback}</Text> : null}
 
         <Text style={styles.sectionKicker}>{t.exportDataOnly}</Text>
         <TextInput style={styles.json} value={json} editable={false} multiline selectTextOnFocus />
-        <Pressable style={[styles.primary, styles.secondary]} onPress={() => send(json)}>
+        <MotionPressable style={[styles.primary, styles.secondary]} onPress={() => send(json)}>
           <Text style={styles.secondaryText}>{t.exportShareData}</Text>
-        </Pressable>
+        </MotionPressable>
       </ScrollView>
     </View>
   );

@@ -12,6 +12,8 @@ import { fmtDuration } from './format';
 import { useI18n } from './i18n';
 import { dark, spacing, radius, type, mono } from './theme';
 import { HeaderBackButton, HeaderSideSpacer, mobileControlSize } from './mobileControls';
+import { MotionPressable } from './MotionPressable';
+import { MotionReveal } from './MotionReveal';
 
 const RING = 268;
 
@@ -38,6 +40,8 @@ export function RunnerScreen(props: {
     timed && node.durationSec > 0 ? (node.durationSec - state.remainingSec) / node.durationSec : 0;
   const closing = timed && state.remainingSec > 0 && state.remainingSec <= 10; // 收尾时刻转暖
   const beadColor = paused ? dark.faint : closing ? dark.warm : dark.accent;
+  const progressMotionKey = `${state.status}:${state.currentIndex}:${node?.id ?? 'none'}`;
+  const stepMotionKey = `${state.status}:${state.currentIndex}:${node?.id ?? 'none'}`;
 
   if (run.status === 'loading') return <View style={styles.screen} />;
   if (run.status === 'error') {
@@ -50,9 +54,9 @@ export function RunnerScreen(props: {
         </View>
         <View style={styles.loadError}>
           <Text style={styles.loadErrorText}>{t.runStorageUnavailable}</Text>
-          <Pressable style={styles.retry} onPress={run.retry}>
+          <MotionPressable style={styles.retry} onPress={run.retry}>
             <Text style={styles.retryText}>{t.retry}</Text>
-          </Pressable>
+          </MotionPressable>
         </View>
       </View>
     );
@@ -76,9 +80,16 @@ export function RunnerScreen(props: {
                 : t.runStepOf(state.currentIndex + 1, flow.nodes.length, paused)}
           </Text>
 
-          <ProgressRing size={RING} progress={state.status === 'completed' ? 1 : progress} beadColor={beadColor}>
+          <ProgressRing
+            size={RING}
+            progress={state.status === 'completed' ? 1 : progress}
+            motionKey={progressMotionKey}
+            beadColor={beadColor}
+          >
             {state.status === 'completed' ? (
-              <Text style={styles.doneMark}>✓</Text>
+              <MotionReveal motion="confirmation" replayKey="completed">
+                <Text style={styles.doneMark}>✓</Text>
+              </MotionReveal>
             ) : state.status === 'idle' ? (
               totalSec > 0 ? (
                 <Text style={styles.clock}>{fmtDuration(totalSec)}</Text>
@@ -94,34 +105,36 @@ export function RunnerScreen(props: {
             )}
           </ProgressRing>
 
-          {state.status === 'idle' ? (
-            <>
-              <Text style={styles.stepLabel}>{flow.title}</Text>
-              {flow.description ? <Text style={styles.rationale}>{flow.description}</Text> : null}
-            </>
-          ) : state.status === 'completed' ? (
-            <Text style={styles.stepLabel}>{t.runFlowFinished}</Text>
-          ) : node ? (
-            <>
-              <Text style={styles.stepLabel}>{node.label}</Text>
-              {node.rationale ? <Text style={styles.rationale}>{node.rationale}</Text> : null}
-              {timed && state.remainingSec === 0 ? (
-                <Text style={styles.timeUp}>{t.runTimeUp}</Text>
-              ) : null}
-            </>
-          ) : null}
+          <MotionReveal motion="state" replayKey={stepMotionKey} animateOnMount={false} style={styles.stepCopy}>
+            {state.status === 'idle' ? (
+              <>
+                <Text style={styles.stepLabel}>{flow.title}</Text>
+                {flow.description ? <Text style={styles.rationale}>{flow.description}</Text> : null}
+              </>
+            ) : state.status === 'completed' ? (
+              <Text style={styles.stepLabel}>{t.runFlowFinished}</Text>
+            ) : node ? (
+              <>
+                <Text style={styles.stepLabel}>{node.label}</Text>
+                {node.rationale ? <Text style={styles.rationale}>{node.rationale}</Text> : null}
+                {timed && state.remainingSec === 0 ? (
+                  <Text style={styles.timeUp}>{t.runTimeUp}</Text>
+                ) : null}
+              </>
+            ) : null}
+          </MotionReveal>
         </View>
 
         {state.status === 'completed' ? (
-          <Pressable style={styles.primary} onPress={run.reset}>
+          <MotionPressable style={styles.primary} onPress={run.reset}>
             <Text style={styles.primaryText}>{t.runRestart}</Text>
-          </Pressable>
+          </MotionPressable>
         ) : (
-          <Pressable style={styles.primary} onPress={state.status === 'idle' ? run.start : run.complete}>
+          <MotionPressable style={styles.primary} onPress={state.status === 'idle' ? run.start : run.complete}>
             <Text style={styles.primaryText}>
               {state.status === 'idle' ? t.runStart : node?.kind === 'gate' ? t.runConfirm : t.runCompleteStep}
             </Text>
-          </Pressable>
+          </MotionPressable>
         )}
 
         {running ? (
@@ -142,7 +155,7 @@ export function RunnerScreen(props: {
 
 function GhostButton(props: { label: string; onPress: () => void; disabled?: boolean }) {
   return (
-    <Pressable
+    <MotionPressable
       accessibilityRole="button"
       accessibilityState={{ disabled: props.disabled ?? false }}
       disabled={props.disabled}
@@ -150,7 +163,7 @@ function GhostButton(props: { label: string; onPress: () => void; disabled?: boo
       onPress={props.onPress}
     >
       <Text style={[styles.ghostText, props.disabled && styles.ghostTextDisabled]}>{props.label}</Text>
-    </Pressable>
+    </MotionPressable>
   );
 }
 
@@ -184,6 +197,7 @@ const styles = StyleSheet.create({
   clockClosing: { color: dark.warm },
   centerHint: { fontSize: type.emphasis, color: dark.textMuted },
   doneMark: { fontSize: 56, fontWeight: '200', color: dark.accent },
+  stepCopy: { alignItems: 'center', minHeight: 72 },
   stepLabel: { fontSize: type.title, fontWeight: '700', color: dark.text, textAlign: 'center', marginTop: spacing.md },
   rationale: { fontSize: type.body, color: dark.textMuted, textAlign: 'center', maxWidth: 300 },
   timeUp: { fontSize: type.body - 1, color: dark.accent },
