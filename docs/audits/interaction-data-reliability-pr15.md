@@ -93,13 +93,16 @@ read/modify/write lane and ACK only after a single write of log + undo
 metadata. New local `record` cancels the old undo identity; local bulk
 replacement cannot bypass the protection. Definition deletion erases both.
 
-**Compatibility and deliberate limit:** Legacy in-app `CheckIn[]` values in
-the existing v1 KV namespace still read correctly and are upgraded after
-their next edit. Malformed internal envelopes fail closed. Public Backup v1
-still exports *only confirmed present entries* — no additional schema keys
-or serializer changes. Tombstones are strictly local: importing an old backup
-on a completely fresh device with no local undo history can restore it,
-consistent with Backup v1's existing behavior.
+**First-public-v1 representation:** The KV namespace `checkins:v1:` accepts
+one internal envelope shape, `{ v: 1, log: CheckIn[], undone: CheckInIdentity[] }`.
+Pre-release raw arrays are rejected without mutation (no migration, fallback
+or second supported on-disk shape), consistent with the unreleased app's
+single-format contract. Malformed envelopes fail closed. The distinct public
+Backup v1 shape is unchanged and still exports *only confirmed present
+entries* — no internal undo identities or schema additions. Tombstones are
+strictly local: importing an old backup on a completely fresh device with no
+local undo history can restore it, consistent with Backup v1's existing
+behavior.
 
 **Verification:** Same-dose undo followed by restore (including accepted
 undo, session close, and delayed storage write); restart and repeated restore;

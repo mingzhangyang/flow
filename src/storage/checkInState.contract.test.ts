@@ -40,11 +40,13 @@ test('new local re-check-in clears tombstone and wins against older restored dat
   assert.deepEqual(mergeBackupCheckInState(current, [oldDose]).log, [newerDose]);
 });
 
-test('legacy check-in arrays load unchanged and upgrade when next intent is persisted', () => {
-  const previous = readStoredCheckIns(JSON.stringify([oldDose, { nodeId: 1 }]));
-  assert.deepEqual(previous, { v: 1, log: [oldDose], undone: [] });
-  const undone = applyLocalCheckIn(previous, undo);
-  assert.deepEqual(readStoredCheckIns(JSON.stringify(undone)), undone);
+test('first-public-v1 has a single envelope representation, not a pre-release raw array', () => {
+  const state = applyLocalCheckIn(blank(), { kind: 'record', entry: oldDose });
+  assert.deepEqual(readStoredCheckIns(JSON.stringify(state)), state);
+  assert.throws(() => readStoredCheckIns(JSON.stringify([oldDose])), /invalid persisted check-in log/);
+  assert.throws(() => readStoredCheckIns('[]'), /invalid persisted check-in log/);
+  // Missing key alone represents never-recorded (presence is not validity).
+  assert.deepEqual(readStoredCheckIns(null), { v: 1, log: [], undone: [] });
 });
 
 test('whole-log local replacement records removals and clears tombstones on later re-entry', () => {
@@ -58,7 +60,7 @@ test('whole-log local replacement records removals and clears tombstones on late
 
 test('malformed stored undo envelope fails closed instead of erasing user intent', () => {
   const invalid = [
-    '{}', '{',
+    '{}', '{', '[]', JSON.stringify([oldDose]),
     JSON.stringify({ v: 1, log: [], undone: null }),
     JSON.stringify({ v: 2, log: [], undone: [] }),
     JSON.stringify({ v: 1, log: [], undone: [{ nodeId: 1, scheduledFor: 0 }] }),

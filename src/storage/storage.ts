@@ -111,8 +111,8 @@ export function createStorage(kv: KVStore): Storage {
 
   async function readCheckInState(definitionKey: string): Promise<StoredCheckIns> {
     assertDefinitionKey(definitionKey);
-    // Accept existing v1 check-in arrays, but never invent an empty log when
-    // the internal envelope/tombstone is malformed. Undo is medical-context data.
+    // The sole public-v1 on-disk shape is the envelope. Reject pre-release
+    // array data and malformed undo metadata rather than rewriting it away.
     return readStoredCheckIns(await kv.getItem(CHECKINS + definitionKey));
   }
 

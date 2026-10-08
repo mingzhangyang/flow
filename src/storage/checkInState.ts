@@ -39,11 +39,11 @@ export function readStoredCheckIns(text: string | null): StoredCheckIns {
   if (text === null) return { v: 1, log: [], undone: [] };
   const raw: unknown = JSON.parse(text);
 
-  // Earlier values in this same v1 namespace contained the visible log only.
-  // Honor them without treating a malformed container as an empty log.
-  if (Array.isArray(raw)) return { v: 1, log: raw.filter(isCheckIn), undone: [] };
-
-  if (typeof raw !== 'object' || raw === null) throw new Error('invalid persisted check-in log');
+  // First-public-v1 has exactly one on-disk shape. Pre-release raw arrays
+  // are invalid stored data, not a migration input or an empty log.
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new Error('invalid persisted check-in log');
+  }
   const state = raw as Partial<StoredCheckIns>;
   if (state.v !== 1 || !Array.isArray(state.log) || !Array.isArray(state.undone) ||
       !state.undone.every(isIdentity)) {

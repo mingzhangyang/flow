@@ -324,16 +324,16 @@ test('deleting a definition clears its undo fence; a recreated identity starts f
   assert.deepEqual(await storage.loadCheckIns(key), [morning]);
 });
 
-test('legacy array check-ins are upgraded after undo and protected from old backup replay', async () => {
+test('first-public-v1 rejects raw check-in arrays without erasing them during undo or backup restore', async () => {
   const kv = createInMemoryKV();
-  await kv.setItem('checkins:v1:' + key, JSON.stringify([morning]));
+  const oldShape = JSON.stringify([morning]);
+  await kv.setItem('checkins:v1:' + key, oldShape);
   const storage = createStorage(kv);
-  assert.deepEqual(await storage.loadCheckIns(key), [morning]);
-  await makeSession(storage).changeCheckIn(undo(morning));
-  assert.deepEqual(await storage.loadCheckIns(key), []);
-  await createLibrary(createStorage(kv)).importBackup({
+  await assert.rejects(() => storage.loadCheckIns(key), /invalid persisted check-in log/);
+  await assert.rejects(() => makeSession(storage).changeCheckIn(undo(morning)), /invalid persisted check-in log/);
+  await assert.rejects(() => createLibrary(storage).importBackup({
     kind: BACKUP_KIND, backupVersion: BACKUP_VERSION, exportedAt: 1,
     flows: [], revisions: {}, checkIns: { [key]: [morning] },
-  });
-  assert.deepEqual(await createStorage(kv).loadCheckIns(key), []);
+  }), /invalid persisted check-in log/);
+  assert.equal(await kv.getItem('checkins:v1:' + key), oldShape);
 });
