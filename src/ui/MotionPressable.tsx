@@ -26,12 +26,14 @@ export type MotionPressableProps = PressableProps & {
 function styleWithPressScale(
   style: StyleProp<ViewStyle>,
   scale: Animated.Value,
-): Animated.WithAnimatedValue<ViewStyle> {
+): StyleProp<ViewStyle> {
   const flattened = StyleSheet.flatten(style) ?? {};
   return {
     ...flattened,
-    transform: [...(flattened.transform ?? []), { scale }],
-  } as Animated.WithAnimatedValue<ViewStyle>;
+    // AnimatedPressable accepts Animated.Value at runtime, while Pressable's
+    // style callback type still describes the non-animated ViewStyle shape.
+    transform: [...(flattened.transform ?? []), { scale: scale as unknown as number }],
+  };
 }
 
 /**
