@@ -234,7 +234,9 @@ export function ScheduleScreen(props: {
     kind: 'undo', nodeId: d.nodeId, scheduledFor: d.scheduledFor,
   });
   const requestExit = (): void => {
-    if (writeStatus === 'idle') {
+    // Refs change synchronously on tap; a hardware Back in the same tick
+    // must not skip the warning before React has committed writeStatus.
+    if (!pendingIntent.current && !inFlight.current) {
       props.onExit();
       return;
     }

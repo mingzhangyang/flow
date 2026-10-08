@@ -255,12 +255,12 @@ test('备份恢复在后续写入失败后可安全重试，不重复生成 Flow
   let failCheckIns = true;
   const faulty: Storage = {
     ...base,
-    async saveCheckIns(definitionKey, log) {
+    async modifyCheckIns(definitionKey, change) {
       if (failCheckIns) {
         failCheckIns = false;
         throw new Error('check-in write failed');
       }
-      await base.saveCheckIns(definitionKey, log);
+      return base.modifyCheckIns(definitionKey, change);
     },
   };
   const lib = createLibrary(faulty);

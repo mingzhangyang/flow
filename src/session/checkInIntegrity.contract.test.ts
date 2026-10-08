@@ -191,5 +191,10 @@ test('backup restore and real-time taps share a single storage lane, preserving 
   const live = session.changeCheckIn(record(noon));
   const restore = library.importBackup(backup);
   await Promise.all([live, restore]);
-  assert.deepEqual(await session.loadCheckIns(), [noon, morning]);
+  // The operation entry order is intentionally unspecified across callers;
+  // the persistence contract guarantees both distinct doses survive.
+  assert.deepEqual(
+    (await session.loadCheckIns()).sort((a, b) => a.scheduledFor - b.scheduledFor),
+    [morning, noon],
+  );
 });

@@ -79,7 +79,10 @@ export function createStorage(kv: KVStore): Storage {
   // so an import/backup cannot bypass RuntimeSession's queue and overwrite a newer dose.
   const checkInLanes = new Map<string, Promise<void>>();
   const inCheckInLane = <T>(key: string, work: () => Promise<T>): Promise<T> => {
-    assertDefinitionKey(key);
+    // The asynchronous Storage API must reject (not throw synchronously) for
+    // invalid definition identities, preserving callers' failure contracts.
+    try { assertDefinitionKey(key); }
+    catch (error) { return Promise.reject(error); }
     const result = (checkInLanes.get(key) ?? Promise.resolve()).then(work);
     const settled = result.then(() => {}, () => {});
     checkInLanes.set(key, settled);
