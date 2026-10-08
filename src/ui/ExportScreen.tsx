@@ -3,7 +3,7 @@
 // 数据面：开放格式 JSON（E5，可拥有 C6）。署名进入 provenance（E6 来源标注）。
 
 import { useMemo, useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Platform, useColorScheme } from 'react-native';
+import { View, Text, TextInput, ScrollView, StyleSheet, Platform, useColorScheme } from 'react-native';
 import { type Flow } from '../domain/types';
 import { serializeFlow } from '../domain/serialize';
 import { buildShareText, buildSharePayload, dataDivider } from '../sharing/share';
@@ -12,6 +12,7 @@ import { useI18n } from './i18n';
 import { type Strings } from './strings';
 import { paletteFor, type Palette, spacing, radius } from './theme';
 import { HeaderBackButton, HeaderSideSpacer } from './mobileControls';
+import { MotionPressable } from './MotionPressable';
 
 const outcomeText = (t: Strings): Record<ShareOutcome, string> => ({
   shared: t.shareOutcomeShared,
@@ -57,16 +58,16 @@ export function ExportScreen(props: { flow: Flow; sharer: Sharer; onDone: () => 
         <Text style={styles.sectionKicker}>{t.exportPreview}</Text>
         <Text style={styles.preview}>{readable.trimEnd()}</Text>
 
-        <Pressable style={styles.primary} onPress={() => send(shareText)}>
+        <MotionPressable style={styles.primary} onPress={() => send(shareText)}>
           <Text style={styles.primaryText}>{t.exportShareFull}</Text>
-        </Pressable>
+        </MotionPressable>
         {feedback ? <Text style={styles.feedback}>{feedback}</Text> : null}
 
         <Text style={styles.sectionKicker}>{t.exportDataOnly}</Text>
         <TextInput style={styles.json} value={json} editable={false} multiline selectTextOnFocus />
-        <Pressable style={[styles.primary, styles.secondary]} onPress={() => send(json)}>
+        <MotionPressable style={[styles.primary, styles.secondary]} onPress={() => send(json)}>
           <Text style={styles.secondaryText}>{t.exportShareData}</Text>
-        </Pressable>
+        </MotionPressable>
       </ScrollView>
     </View>
   );

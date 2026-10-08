@@ -1,5 +1,6 @@
 // Shared mobile interaction geometry only: no navigation semantics or visual theme policy.
-import { Pressable, StyleSheet, Text, View, type ColorValue } from 'react-native';
+import { StyleSheet, Text, View, type ColorValue } from 'react-native';
+import { MotionPressable } from './MotionPressable';
 
 export const mobileControlSize = {
   compact: 44,
@@ -15,7 +16,7 @@ export function HeaderBackButton(props: {
 }) {
   const disabled = props.disabled ?? false;
   return (
-    <Pressable
+    <MotionPressable
       accessibilityRole="button"
       accessibilityLabel={props.accessibilityLabel}
       accessibilityState={{ disabled }}
@@ -24,7 +25,7 @@ export function HeaderBackButton(props: {
       style={[styles.headerSide, disabled && styles.disabled]}
     >
       <Text style={[styles.backIcon, { color: props.color }]}>‹</Text>
-    </Pressable>
+    </MotionPressable>
   );
 }
 

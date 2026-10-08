@@ -21,7 +21,6 @@ const LOCALES = [
 ] as const;
 
 async function shot(page: Page, dir: string, name: string): Promise<void> {
-  await page.waitForTimeout(300); // 等动画收尾
   await page.screenshot({ path: path.join(OUT, dir, `${name}.png`) });
   console.log(`  ✓ ${dir}/${name}.png`);
 }
@@ -45,9 +44,13 @@ async function capture(e2e: Awaited<ReturnType<typeof startE2E>>): Promise<void>
       brand: l.brand,
       viewport: VIEWPORT,
       deviceScaleFactor: SCALE,
+      reducedMotion: 'reduce',
     });
 
     // 1. 首页（接下来 + 库）
+    // Reduced motion removes animation timing, not the async catalog load.
+    // Wait for a real catalog item so the first frame is data-ready and deterministic.
+    await page.getByText(l.coffee, { exact: true }).first().waitFor({ timeout: 30_000 });
     await shot(page, l.dir, '1-home');
 
     // 2. 运行中（沉浸计时：浸泡步骤）

@@ -2,13 +2,14 @@
 // 备份自动识别（parseBackup），恢复时绝不覆盖本机数据（C6）。
 
 import { useState, useMemo } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
+import { View, Text, TextInput, ScrollView, StyleSheet, useColorScheme } from 'react-native';
 import { type Flow } from '../domain/types';
 import { parseBackup, type Backup } from '../storage/backup';
 import { extractFlowJson } from '../sharing/share';
 import { useI18n } from './i18n';
 import { paletteFor, type Palette, spacing, radius } from './theme';
 import { HeaderBackButton, HeaderSideSpacer } from './mobileControls';
+import { MotionPressable } from './MotionPressable';
 
 export function ImportScreen(props: {
   importFlow: (text: string, now: number) => Promise<Flow>;
@@ -65,9 +66,14 @@ export function ImportScreen(props: {
         />
         {backup ? <Text style={styles.backupNote}>{t.importBackupDetected(backup.flows.length)}</Text> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Pressable style={[styles.primary, !text && styles.primaryOff]} onPress={text ? doImport : undefined}>
+        <MotionPressable
+          style={[styles.primary, !text && styles.primaryOff]}
+          disabled={!text}
+          accessibilityState={{ disabled: !text }}
+          onPress={doImport}
+        >
           <Text style={styles.primaryText}>{t.importConfirm}</Text>
-        </Pressable>
+        </MotionPressable>
       </ScrollView>
     </View>
   );

@@ -14,6 +14,7 @@ import { timeZoneForFlow } from '../runtime/ianaTimeZone';
 import { fmtTimeOfDay } from './format';
 import { useI18n } from './i18n';
 import { paletteFor, flowIdentityFor, type Palette, dark, spacing, radius, type, mono } from './theme';
+import { MotionPressable } from './MotionPressable';
 
 function SeqGlyph(props: { color: string }) {
   return (
@@ -109,7 +110,7 @@ export function HomeScreen(props: {
     return (
     <View key={flow.id} style={[styles.card, { backgroundColor: tone.soft }]}>
       <View style={[styles.stripe, { backgroundColor: tone.accent }]} />
-      <Pressable onPress={() => run(flow, own)}>
+      <MotionPressable motion="card" onPress={() => run(flow, own)}>
         <View style={styles.cardTop}>
           <Text style={styles.cardTitle}>{flow.title}</Text>
           <View style={styles.badge}>
@@ -123,7 +124,7 @@ export function HomeScreen(props: {
         </View>
         {flow.description ? <Text style={styles.cardDesc}>{flow.description}</Text> : null}
         <Text style={styles.cardMeta}>{t.cardMeta(flow.nodes.length, flow.topology)}</Text>
-      </Pressable>
+      </MotionPressable>
       <View style={styles.rowActions}>
         <Pressable onPress={() => props.onInsight(flow, own ? 'owned' : 'example')}><Text style={styles.link}>{t.linkInsight}</Text></Pressable>
         {own ? (
@@ -151,14 +152,14 @@ export function HomeScreen(props: {
         {props.catalog.status === 'error' ? (
           <View style={styles.catalogError}>
             <Text style={styles.catalogErrorText}>{t.catalogUnavailable}</Text>
-            <Pressable style={styles.retryButton} onPress={() => props.onRetry()}>
+            <MotionPressable style={styles.retryButton} onPress={() => props.onRetry()}>
               <Text style={styles.retryText}>{t.retry}</Text>
-            </Pressable>
+            </MotionPressable>
           </View>
         ) : null}
 
         {upNext ? (
-          <Pressable style={styles.next} onPress={() => run(upNext.flow, upNext.own)}>
+          <MotionPressable motion="card" style={styles.next} onPress={() => run(upNext.flow, upNext.own)}>
             <Text style={styles.nextTime}>{fmtTimeOfDay(timeOfDay(upNext.occ.at, systemTimeZone))}</Text>
             <View style={styles.nextBody}>
               <Text style={styles.nextKicker}>{t.upNext}</Text>
@@ -166,27 +167,27 @@ export function HomeScreen(props: {
               <Text style={styles.nextFlow} numberOfLines={1}>{upNext.flow.title}</Text>
             </View>
             <Text style={styles.nextGo}>›</Text>
-          </Pressable>
+          </MotionPressable>
         ) : null}
 
         {catalogReady ? (
           <>
             <View style={styles.actions}>
-              <Pressable style={styles.action} onPress={() => props.onNew('sequential')}>
+              <MotionPressable style={styles.action} onPress={() => props.onNew('sequential')}>
                 <Text style={styles.actionText}>{t.newSequential}</Text>
-              </Pressable>
-              <Pressable style={styles.action} onPress={() => props.onNew('scheduled')}>
+              </MotionPressable>
+              <MotionPressable style={styles.action} onPress={() => props.onNew('scheduled')}>
                 <Text style={styles.actionText}>{t.newScheduled}</Text>
-              </Pressable>
-              <Pressable style={[styles.action, styles.actionGhost]} onPress={props.onGenerate}>
+              </MotionPressable>
+              <MotionPressable style={[styles.action, styles.actionGhost]} onPress={props.onGenerate}>
                 <Text style={styles.actionGhostText}>{t.aiGenerate}</Text>
-              </Pressable>
-              <Pressable style={[styles.action, styles.actionGhost]} onPress={props.onImport}>
+              </MotionPressable>
+              <MotionPressable style={[styles.action, styles.actionGhost]} onPress={props.onImport}>
                 <Text style={styles.actionGhostText}>{t.importAction}</Text>
-              </Pressable>
-              <Pressable style={[styles.action, styles.actionGhost]} onPress={backup}>
+              </MotionPressable>
+              <MotionPressable style={[styles.action, styles.actionGhost]} onPress={backup}>
                 <Text style={styles.actionGhostText}>{t.backupAction}</Text>
-              </Pressable>
+              </MotionPressable>
             </View>
             {backupNote ? <Text style={styles.backupNote}>{backupNote}</Text> : null}
 

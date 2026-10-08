@@ -11,7 +11,6 @@ import {
   Text,
   TextInput,
   type TextInputProps,
-  Pressable,
   ScrollView,
   StyleSheet,
   useColorScheme,
@@ -27,6 +26,8 @@ import { useI18n } from './i18n';
 import { type Strings } from './strings';
 import { paletteFor, type Palette, spacing, radius } from './theme';
 import { HeaderBackButton, HeaderSideSpacer, mobileControlSize } from './mobileControls';
+import { MotionPressable } from './MotionPressable';
+import { MotionReveal } from './MotionReveal';
 import {
   editorDurationInputKey,
   editorEveryNDaysInputKey,
@@ -143,6 +144,7 @@ export function EditorScreen(props: EditorScreenProps) {
   const { flow, inputBuffers } = authoringState;
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [recentlyAddedNodeId, setRecentlyAddedNodeId] = useState<string | null>(null);
   const savingRef = useRef(false);
   const isScheduled = flow.topology === 'scheduled';
   const resolvedDraft = useMemo(
@@ -218,13 +220,17 @@ export function EditorScreen(props: EditorScreenProps) {
   };
 
   const add = (): void => {
-    const base = { id: newNodeId(), label: '' };
+    const id = newNodeId();
+    const base = { id, label: '' };
+    setRecentlyAddedNodeId(id);
     setFlow((f) => addNode(f, makeNode(isScheduled ? 'scheduled' : 'timed', base)));
   };
 
   const addWait = (): void => {
     if (isScheduled) return;
-    setFlow((f) => addNode(f, createQuickWaitNode(newNodeId(), t.editorWaitLabel)));
+    const id = newNodeId();
+    setRecentlyAddedNodeId(id);
+    setFlow((f) => addNode(f, createQuickWaitNode(id, t.editorWaitLabel)));
   };
 
   // 切换重复方式时的初值：每周默认勾今天的星期，隔 N 天默认隔天、从今天起算。
@@ -334,7 +340,7 @@ export function EditorScreen(props: EditorScreenProps) {
                   {repeatKinds(t).map((r) => {
                     const on = (flow.repeat ?? { kind: 'once' }).kind === r.kind;
                     return (
-                      <Pressable
+                      <MotionPressable
                         key={r.kind}
                         accessibilityRole="button"
                         accessibilityState={{ selected: on, disabled: saving }}
@@ -346,7 +352,7 @@ export function EditorScreen(props: EditorScreenProps) {
                         }}
                       >
                         <Text style={[styles.kindText, on && styles.kindTextOn]}>{r.label}</Text>
-                      </Pressable>
+                      </MotionPressable>
                     );
                   })}
                 </View>
@@ -357,7 +363,7 @@ export function EditorScreen(props: EditorScreenProps) {
                     {t.weekdayNames.map((name, d) => {
                       const on = flow.repeat?.kind === 'weekly' && flow.repeat.days.includes(d);
                       return (
-                        <Pressable
+                        <MotionPressable
                           key={name}
                           accessibilityRole="button"
                           accessibilityState={{ selected: on, disabled: saving }}
@@ -368,7 +374,7 @@ export function EditorScreen(props: EditorScreenProps) {
                           }
                         >
                           <Text style={[styles.kindText, on && styles.kindTextOn]}>{name}</Text>
-                        </Pressable>
+                        </MotionPressable>
                       );
                     })}
                   </View>
@@ -395,7 +401,13 @@ export function EditorScreen(props: EditorScreenProps) {
 
         <Text style={styles.sectionKicker}>{isScheduled ? t.editorSectionScheduled : t.editorSectionSteps}</Text>
         {flow.nodes.map((node, i) => (
-          <View key={node.id} style={styles.nodeCard}>
+          <MotionReveal
+            key={node.id}
+            motion="insertion"
+            active={recentlyAddedNodeId === node.id}
+            animateOnMount={recentlyAddedNodeId === node.id}
+          >
+          <View style={styles.nodeCard}>
             <View style={styles.nodeTop}>
               <Text style={styles.nodeIndex}>{i + 1}</Text>
               <EditorTextInput
@@ -424,7 +436,7 @@ export function EditorScreen(props: EditorScreenProps) {
             {!isScheduled ? (
               <View style={styles.chipRow}>
                 {seqKinds(t).map((k) => (
-                  <Pressable
+                  <MotionPressable
                     key={k.kind}
                     accessibilityRole="button"
                     accessibilityState={{ selected: node.kind === k.kind, disabled: saving }}
@@ -433,7 +445,7 @@ export function EditorScreen(props: EditorScreenProps) {
                     onPress={() => changeKind(node.id, k.kind)}
                   >
                     <Text style={[styles.kindText, node.kind === k.kind && styles.kindTextOn]}>{k.label}</Text>
-                  </Pressable>
+                  </MotionPressable>
                 ))}
               </View>
             ) : null}
@@ -449,7 +461,7 @@ export function EditorScreen(props: EditorScreenProps) {
                         inputBuffers[editorDurationInputKey(node.id)],
                       ) === preset.durationSec;
                     return (
-                      <Pressable
+                      <MotionPressable
                         key={preset.durationSec}
                         accessibilityRole="button"
                         accessibilityLabel={preset.label}
@@ -469,7 +481,7 @@ export function EditorScreen(props: EditorScreenProps) {
                         >
                           {selected ? `✓ ${preset.label}` : preset.label}
                         </Text>
-                      </Pressable>
+                      </MotionPressable>
                     );
                   })}
                 </View>
@@ -497,7 +509,7 @@ export function EditorScreen(props: EditorScreenProps) {
             />
 
             <View style={styles.nodeActions}>
-              <Pressable
+              <MotionPressable
                 accessibilityRole="button"
                 accessibilityLabel={t.editorMoveUp}
                 accessibilityState={{ disabled: i === 0 || saving }}
@@ -506,8 +518,8 @@ export function EditorScreen(props: EditorScreenProps) {
                 onPress={() => setFlow((f) => moveNode(f, node.id, -1))}
               >
                 <Text style={styles.nodeActionText}>↑</Text>
-              </Pressable>
-              <Pressable
+              </MotionPressable>
+              <MotionPressable
                 accessibilityRole="button"
                 accessibilityLabel={t.editorMoveDown}
                 accessibilityState={{ disabled: i === flow.nodes.length - 1 || saving }}
@@ -519,8 +531,8 @@ export function EditorScreen(props: EditorScreenProps) {
                 onPress={() => setFlow((f) => moveNode(f, node.id, 1))}
               >
                 <Text style={styles.nodeActionText}>↓</Text>
-              </Pressable>
-              <Pressable
+              </MotionPressable>
+              <MotionPressable
                 accessibilityRole="button"
                 accessibilityLabel={t.editorDeleteNode}
                 accessibilityState={{ disabled: saving }}
@@ -533,29 +545,30 @@ export function EditorScreen(props: EditorScreenProps) {
                 onPress={() => setFlow((f) => removeNode(f, node.id))}
               >
                 <Text style={[styles.nodeActionText, styles.remove]}>{t.editorDeleteNode}</Text>
-              </Pressable>
+              </MotionPressable>
             </View>
           </View>
+          </MotionReveal>
         ))}
 
         <View style={styles.addActions}>
-          <Pressable
+          <MotionPressable
             accessibilityRole="button"
             disabled={saving}
             style={[styles.addBtn, styles.addAction]}
             onPress={add}
           >
             <Text style={styles.addText}>{isScheduled ? t.editorAddEvent : t.editorAddStep}</Text>
-          </Pressable>
+          </MotionPressable>
           {!isScheduled ? (
-            <Pressable
+            <MotionPressable
               accessibilityRole="button"
               disabled={saving}
               style={[styles.addBtn, styles.addAction, styles.quickWaitBtn]}
               onPress={addWait}
             >
               <Text style={styles.addText}>{t.editorAddWait}</Text>
-            </Pressable>
+            </MotionPressable>
           ) : null}
         </View>
 
@@ -569,14 +582,14 @@ export function EditorScreen(props: EditorScreenProps) {
         contentContainerStyle={styles.footerAvoiderContent}
       >
         <View style={styles.footer}>
-          <Pressable
+          <MotionPressable
             accessibilityRole="button"
             disabled={saving}
             onPress={save}
             style={[styles.saveButton, saving && styles.saveButtonDisabled]}
           >
             <Text style={styles.saveButtonText}>{saving ? t.editorSaving : t.save}</Text>
-          </Pressable>
+          </MotionPressable>
         </View>
       </KeyboardAvoidingView>
     </View>

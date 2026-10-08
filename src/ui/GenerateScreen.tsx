@@ -3,7 +3,7 @@
 // 供应商可切换：Anthropic（Claude）或任何 OpenAI 兼容端点；配置与密钥只存本机（C6）。
 
 import { useEffect, useState, useMemo } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
+import { View, Text, TextInput, ScrollView, StyleSheet, useColorScheme } from 'react-native';
 import { type Flow } from '../domain/types';
 import { type SecretStore } from '../storage/kv';
 import { generateFlow } from '../ai/generate';
@@ -21,6 +21,7 @@ import { systemTimeZone } from '../runtime/systemTimeZone';
 import { useI18n } from './i18n';
 import { paletteFor, type Palette, spacing, radius } from './theme';
 import { HeaderBackButton, HeaderSideSpacer } from './mobileControls';
+import { MotionPressable } from './MotionPressable';
 
 const platformFetch: FetchLike = (url, init) =>
   fetch(url, init).then((r) => ({ ok: r.ok, status: r.status, text: () => r.text() }));
@@ -119,7 +120,7 @@ export function GenerateScreen(props: {
         <Text style={styles.sectionKicker}>{t.generateModelSettings}</Text>
         <View style={styles.row}>
           {(['anthropic', 'openai-compatible'] as const).map((p) => (
-            <Pressable
+            <MotionPressable
               key={p}
               style={[styles.chip, provider === p && styles.chipOn]}
               onPress={() => switchProvider(p)}
@@ -127,7 +128,7 @@ export function GenerateScreen(props: {
               <Text style={[styles.chipText, provider === p && styles.chipTextOn]}>
                 {p === 'anthropic' ? 'Claude' : t.generateProviderOpenAI}
               </Text>
-            </Pressable>
+            </MotionPressable>
           ))}
         </View>
 
@@ -145,9 +146,9 @@ export function GenerateScreen(props: {
             />
             <View style={styles.rowWrap}>
               {OPENAI_COMPATIBLE_PRESETS.map((preset) => (
-                <Pressable key={preset.label} style={styles.presetChip} onPress={() => setBaseUrl(preset.baseUrl)}>
+                <MotionPressable key={preset.label} style={styles.presetChip} onPress={() => setBaseUrl(preset.baseUrl)}>
                   <Text style={styles.presetText}>{preset.label}</Text>
-                </Pressable>
+                </MotionPressable>
               ))}
             </View>
           </>
@@ -177,13 +178,15 @@ export function GenerateScreen(props: {
         />
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Pressable
+        <MotionPressable
           style={[styles.primary, (!ready || busy) && styles.primaryOff]}
+          disabled={!ready || busy}
+          accessibilityState={{ disabled: !ready || busy }}
           onPress={doGenerate}
           testID="gen-submit"
         >
           <Text style={styles.primaryText}>{busy ? t.generateBusy : t.generateSubmit}</Text>
-        </Pressable>
+        </MotionPressable>
         <Text style={styles.footnote}>{t.generateFootnote}</Text>
       </ScrollView>
     </View>
