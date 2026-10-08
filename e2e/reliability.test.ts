@@ -3,6 +3,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startE2E, expectText, type E2E } from './harness';
+import { catalogDefinitionKey } from '../src/session/flowCatalog';
 
 let e2e: E2E;
 before(async () => { e2e = await startE2E(); });
@@ -35,6 +36,37 @@ test('failed check-in never displays as taken; retry commits and survives reload
   await page.getByText('准时', { exact: true }).waitFor({ timeout: 30_000 });
   await page.getByText('每日服药提醒', { exact: true }).first().click();
   await expectText(page, '已服 · 09:00');
+});
+
+test('Schedule undo remains removed after restoring an older backup containing that same dose', async () => {
+  const page = await e2e.openApp();
+  await page.getByText('每日服药提醒', { exact: true }).first().click();
+  await expectText(page, '可服用');
+  await page.getByText('打卡', { exact: true }).first().click();
+  await expectText(page, '已服 · 09:00');
+  await page.getByText('撤销', { exact: true }).first().click();
+  await expectText(page, '可服用');
+  await page.getByRole('button', { name: '‹ 返回' }).click();
+
+  const oldDose = {
+    nodeId: 'morning', scheduledFor: Date.parse('2026-07-15T08:00:00+08:00'),
+    taken: true, at: Date.parse('2026-07-15T09:00:00+08:00'),
+  };
+  const key = catalogDefinitionKey('example.medication', 'example');
+  await page.getByText('导入', { exact: true }).click();
+  await page.locator('textarea').fill(JSON.stringify({
+    kind: 'zhunshi-backup', backupVersion: 1, exportedAt: 1,
+    flows: [], revisions: {}, checkIns: { [key]: [oldDose] },
+  }));
+  await page.getByText('确认导入', { exact: true }).click();
+  await page.getByText('每日服药提醒', { exact: true }).first().waitFor();
+  await page.getByText('每日服药提醒', { exact: true }).first().click();
+  await expectText(page, '可服用');
+  assert.equal(await page.getByText('已服 · 09:00', { exact: true }).count(), 0);
+  await page.reload();
+  await page.getByText('每日服药提醒', { exact: true }).first().click();
+  await expectText(page, '可服用');
+  assert.equal(await page.getByText('已服 · 09:00', { exact: true }).count(), 0);
 });
 
 test('AI Generate old successful response after Back cannot navigate to Editor', async () => {

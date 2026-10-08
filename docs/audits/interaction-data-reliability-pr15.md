@@ -106,4 +106,4 @@ undo, session close, and delayed storage write); restart and repeated restore;
 undo of an already absent dose; newer re-check-in after undo; failed undo
 does not leave a phantom tombstone; full-log replacement; corrupt metadata
 read/write refusal; same-name/different-day dose isolation; definition
-deletion clearing undo identities; Backup v1 excludes local undo metadata.
+deletion clearing undo identities; Backup v1 excludes local undo metadata. A browser E2E also covers check-in → undo → import an old same-dose backup → reopen and reload Schedule.
