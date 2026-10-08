@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import {
-  View, Text, ScrollView, Pressable, StyleSheet, Animated, AppState, Linking, Alert, useColorScheme,
+  View, Text, ScrollView, StyleSheet, Animated, AppState, Linking, Alert, useColorScheme,
 } from 'react-native';
 import { type Flow } from '../domain/types';
 import { type Notifier, type ReminderAvailability } from '../notifications/notifier';
@@ -269,10 +269,11 @@ export function ScheduleScreen(props: {
 
       <ScrollView contentContainerStyle={styles.content}>
         {notifStatus === 'denied' ? (
-          <Pressable style={styles.notifBanner} onPress={() => { Linking.openSettings().catch(() => {}); }}>
+          <MotionPressable accessibilityRole="button" accessibilityLabel={t.scheduleNotifSettings}
+            style={styles.notifBanner} onPress={() => { Linking.openSettings().catch(() => {}); }}>
             <Text style={styles.notifBannerText}>{t.scheduleNotifDenied}</Text>
             <Text style={styles.notifBannerLink}>{t.scheduleNotifSettings}</Text>
-          </Pressable>
+          </MotionPressable>
         ) : notifStatus === 'unsupported' ? (
           <Text style={styles.notifWeb}>{t.scheduleNotifWeb}</Text>
         ) : null}
@@ -332,31 +333,35 @@ export function ScheduleScreen(props: {
                     <View style={styles.axisLineBottom} />
                   ) : null}
                 </View>
-                <View style={styles.body}>
-                  <Text style={[styles.label, d.status === 'taken' && styles.labelTaken]}>{d.label}</Text>
-                  <Text style={[styles.status, { color: statusColors(c)[d.status] }]}>
-                    {STATUS_LABEL[d.status]}
-                    {d.status === 'taken' && d.takenAt !== null ? ` · ${fmtTimeOfDay(timeOfDay(d.takenAt, tz))}` : ''}
-                  </Text>
+                <View style={styles.details}>
+                  <View style={styles.body}>
+                    <Text style={[styles.label, d.status === 'taken' && styles.labelTaken]}>{d.label}</Text>
+                    <Text style={[styles.status, { color: statusColors(c)[d.status] }]}>
+                      {STATUS_LABEL[d.status]}
+                      {d.status === 'taken' && d.takenAt !== null ? ` · ${fmtTimeOfDay(timeOfDay(d.takenAt, tz))}` : ''}
+                    </Text>
+                  </View>
+                  <View style={styles.actionSlot}>
+                    {d.status === 'taken' ? (
+                      <MotionPressable
+                        accessibilityRole="button"
+                        style={styles.undoButton}
+                        disabled={writeStatus !== 'idle'}
+                        accessibilityState={{ disabled: writeStatus !== 'idle' }}
+                        onPress={() => undo(d)}
+                      >
+                        <Text style={styles.undo}>{t.undo}</Text>
+                      </MotionPressable>
+                    ) : (
+                      <MotionPressable accessibilityRole="button" style={styles.take}
+                        disabled={writeStatus !== 'idle'}
+                        accessibilityState={{ disabled: writeStatus !== 'idle' }}
+                        onPress={() => take(d)}>
+                        <Text style={styles.takeText}>{t.checkIn}</Text>
+                      </MotionPressable>
+                    )}
+                  </View>
                 </View>
-                {d.status === 'taken' ? (
-                  <MotionPressable
-                    accessibilityRole="button"
-                    style={styles.undoButton}
-                    disabled={writeStatus !== 'idle'}
-                    accessibilityState={{ disabled: writeStatus !== 'idle' }}
-                    onPress={() => undo(d)}
-                  >
-                    <Text style={styles.undo}>{t.undo}</Text>
-                  </MotionPressable>
-                ) : (
-                  <MotionPressable accessibilityRole="button" style={styles.take}
-                    disabled={writeStatus !== 'idle'}
-                    accessibilityState={{ disabled: writeStatus !== 'idle' }}
-                    onPress={() => take(d)}>
-                    <Text style={styles.takeText}>{t.checkIn}</Text>
-                  </MotionPressable>
-                )}
               </View>
             </View>
           ))}
@@ -405,7 +410,7 @@ const createStyles = (c: Palette) => StyleSheet.create({
     flex: 1, minWidth: 0, textAlign: 'center',
     fontSize: type.emphasis - 1, fontWeight: '600', color: c.text,
   },
-  content: { padding: spacing.md, gap: spacing.sm },
+  content: { flexGrow: 1, padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xl },
   notifBanner: {
     backgroundColor: c.warningSoft, borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth, borderColor: c.warning,
@@ -435,7 +440,7 @@ const createStyles = (c: Palette) => StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md },
   time: {
     fontSize: type.emphasis, fontFamily: mono.medium, color: c.text,
-    fontVariant: ['tabular-nums'], width: 56,
+    fontVariant: ['tabular-nums'], minWidth: 56, flexShrink: 0,
   },
   timeTaken: { color: c.textMuted },
   axis: { width: BEAD, alignItems: 'center', alignSelf: 'stretch', justifyContent: 'center' },
@@ -449,7 +454,14 @@ const createStyles = (c: Palette) => StyleSheet.create({
   },
   bead: { width: BEAD, height: BEAD, borderRadius: BEAD / 2, alignItems: 'center', justifyContent: 'center' },
   beadCheck: { color: c.onPrimary, fontSize: 12, fontWeight: '800' },
-  body: { flex: 1 },
+  // Keep the dose text readable at 320dp: the action moves to the next line
+  // inside the details column instead of squeezing medicine names to ~35px.
+  details: {
+    flex: 1, minWidth: 0, flexDirection: 'row', flexWrap: 'wrap',
+    alignItems: 'center', columnGap: spacing.xs, rowGap: spacing.xs,
+  },
+  body: { flexGrow: 1, flexShrink: 1, minWidth: 120 },
+  actionSlot: { flexShrink: 0, marginLeft: 'auto' },
   label: { fontSize: type.body, color: c.text },
   labelTaken: { color: c.textMuted, textDecorationLine: 'line-through' },
   status: { fontSize: type.caption + 1, marginTop: 2 },

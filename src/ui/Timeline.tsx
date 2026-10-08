@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
   },
   dotNum: { fontSize: 12, fontWeight: '600' },
   check: { fontSize: 14, fontWeight: '700' },
-  body: { flex: 1 },
+  body: { flex: 1, minWidth: 0 },
 });
 
 const createAppTone = (c: Palette) => StyleSheet.create({

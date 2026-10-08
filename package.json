@@ -38,6 +38,7 @@
     "build:web": "expo export --platform web",
     "test:e2e": "npm run build:web && node --import tsx --test --test-concurrency=1 'e2e/*.test.ts'",
     "shots": "npm run build:web && node --import tsx e2e/screenshots.ts",
+    "shots:smoke": "node --import tsx e2e/screenshots.ts --smoke",
     "check": "node scripts/check-versions.mjs && npm run typecheck && npm run typecheck:app && npm run lint && npm test",
     "check:ai": "node --import tsx scripts/ai-smoke.mjs"
   },

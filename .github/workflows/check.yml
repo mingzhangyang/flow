@@ -5,6 +5,7 @@ name: check
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 concurrency:
@@ -32,4 +33,22 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Chromium's Linux image otherwise renders zh/zh-Hant as missing-glyph boxes;
+      # screenshots need readable CJK fonts to be useful as visual evidence.
+      - name: Install CJK screenshot fonts
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+          fc-cache -f
       - run: npm run test:e2e
+      # The static web build already exists from test:e2e: no duplicate export.
+      - name: Mobile screenshot smoke
+        run: npm run shots:smoke
+      - name: Upload screenshot artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flow-mobile-screenshots
+          path: shots/smoke/
+          if-no-files-found: warn
+          retention-days: 7

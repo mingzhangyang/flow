@@ -1,80 +1,117 @@
-// 商店截图草稿：复用 e2e harness，在手机视口（430×932 @3x ≈ iPhone 6.7"）截取
-// 三种语言的核心界面。产出到 shots/<locale>/（不入库）——正式商店截图仍需真机，
-// 但构图、文案与状态在这里先定稿。用法：npm run shots
-//
-// 与 e2e 同一确定性：假时钟 2026-07-15 09:00、时区 Asia/Shanghai——每次截图内容一致。
-
+// Deterministic browser screenshot smoke: fixed clock, explicit locale/zone and reduced motion.
+// Web screenshots are layout evidence only, not native release screenshots.
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import type { Page } from 'playwright-core';
 import { startE2E } from './harness';
+import { assertMobileGeometry } from './mobileGeometry';
 
-const OUT = fileURLToPath(new URL('../shots', import.meta.url));
-const VIEWPORT = { width: 430, height: 932 };
-const SCALE = 3;
+const ROOT = fileURLToPath(new URL('../shots', import.meta.url));
+const SMOKE = process.argv.includes('--smoke');
+const SCREENS = SMOKE
+  ? [{ width: 320, height: 740 }, { width: 430, height: 932 }]
+  : [{ width: 430, height: 932 }];
 
 const LOCALES = [
-  { tag: 'zh-CN', dir: 'zh', brand: '准时', coffee: '法压咖啡', med: '每日服药提醒', start: '开始', done: '完成本步', checkIn: '打卡', insight: '解读' },
-  { tag: 'zh-TW', dir: 'zh-Hant', brand: '準時', coffee: '法壓咖啡', med: '每日服藥提醒', start: '開始', done: '完成本步', checkIn: '打卡', insight: '解讀' },
-  { tag: 'en-US', dir: 'en', brand: 'Zhunshi', coffee: 'French press coffee', med: 'Daily medication reminders', start: 'Start', done: 'Complete step', checkIn: 'Check in', insight: 'Insight' },
+  { tag: 'zh-CN', dir: 'zh', brand: '准时', coffee: '法压咖啡', steep: '浸泡',
+    med: '每日服药提醒', start: '开始', done: '完成本步', checkIn: '打卡',
+    taken: '已服 · 09:00', insight: '解读', insightTitle: 'AI 助手',
+    add: '＋ 顺序', name: '流程名称', generate: '✨ AI 生成',
+    provider: 'OpenAI 兼容', back: '返回' },
+  { tag: 'zh-TW', dir: 'zh-Hant', brand: '準時', coffee: '法壓咖啡', steep: '浸泡',
+    med: '每日服藥提醒', start: '開始', done: '完成本步', checkIn: '打卡',
+    taken: '已服 · 09:00', insight: '解讀', insightTitle: 'AI 助手',
+    add: '＋ 順序', name: '流程名稱', generate: '✨ AI 生成',
+    provider: 'OpenAI 相容', back: '返回' },
+  { tag: 'en-US', dir: 'en', brand: 'Zhunshi', coffee: 'French press coffee', steep: 'Steep',
+    med: 'Daily medication reminders', start: 'Start', done: 'Complete step', checkIn: 'Check in',
+    taken: 'Taken · 09:00', insight: 'Insight', insightTitle: 'AI Assistant',
+    add: '＋ Sequence', name: 'Flow name', generate: '✨ AI draft',
+    provider: 'OpenAI-compatible', back: 'Back' },
 ] as const;
 
-async function shot(page: Page, dir: string, name: string): Promise<void> {
-  await page.screenshot({ path: path.join(OUT, dir, `${name}.png`) });
-  console.log(`  ✓ ${dir}/${name}.png`);
+async function screenshot(page: Page, folder: string, name: string): Promise<void> {
+  const directory = path.join(ROOT, folder);
+  await mkdir(directory, { recursive: true });
+  await page.screenshot({ path: path.join(directory, name + '.png'), animations: 'disabled' });
+  console.log('captured ' + folder + '/' + name);
+  // Keep the diagnostic frame even when geometry validation fails. CI uploads
+  // the `shots/` directory on failure, so the assertion must run afterwards.
+  await assertMobileGeometry(page, folder + '/' + name);
+}
+
+async function capture(
+  page: Page,
+  folder: string,
+  l: (typeof LOCALES)[number],
+): Promise<void> {
+  // The catalog must be committed, not merely a visible splash/header.
+  await page.getByText(l.coffee, { exact: true }).first().waitFor({ timeout: 30000 });
+  await screenshot(page, folder, '1-home');
+
+  // Runner: wait for an actual stepped Run, never screenshot a loading shell.
+  await page.getByText(l.coffee, { exact: true }).first().click();
+  await page.getByText(l.start, { exact: true }).click();
+  await page.getByText(l.done, { exact: true }).click();
+  await page.getByText(l.steep, { exact: true }).first().waitFor();
+  await page.clock.fastForward(20000);
+  // The clock label proves the Run has projected the new step and elapsed time;
+  // a 'Steep' timeline label alone is not proof of runner readiness.
+  await page.getByText(/^03:4[01]$/, { exact: true }).first().waitFor();
+  await screenshot(page, folder, '2-runner');
+  await page.getByRole('button', { name: '‹ ' + l.back }).click();
+
+  // Check-in must be DURABLE before the schedule screenshot (PR #15 contract).
+  await page.getByText(l.med, { exact: true }).first().click();
+  await page.getByText(l.checkIn, { exact: true }).first().click();
+  await page.getByText(l.taken, { exact: true }).first().waitFor();
+  await screenshot(page, folder, '3-schedule');
+  await page.getByRole('button', { name: '‹ ' + l.back }).click();
+
+  await page.getByText(l.insight, { exact: true }).first().click();
+  await page.getByText(l.insightTitle, { exact: true }).first().waitFor();
+  await screenshot(page, folder, '4-insight');
+  await page.getByRole('button', { name: '‹ ' + l.back }).click();
+
+  await page.getByText(l.add, { exact: true }).first().click();
+  await page.getByPlaceholder(l.name, { exact: true }).waitFor();
+  await screenshot(page, folder, '5-editor');
+  await page.getByRole('button', { name: '‹ ' + l.back }).click();
+
+  await page.getByText(l.generate, { exact: true }).first().click();
+  await page.getByRole('button', { name: l.provider }).click();
+  // A preset must be on screen before capturing the provider layout.
+  await page.getByText('DeepSeek', { exact: true }).first().waitFor();
+  await screenshot(page, folder, '6-generate');
 }
 
 async function main(): Promise<void> {
   const e2e = await startE2E();
   try {
-    await capture(e2e);
-    console.log(`\n完成：${OUT}`);
+    for (const l of LOCALES) {
+      for (const viewport of SCREENS) {
+        const folder = SMOKE ? 'smoke/' + l.dir + '/w' + viewport.width : l.dir;
+        const page = await e2e.openApp({
+          locale: l.tag, brand: l.brand, viewport,
+          deviceScaleFactor: SMOKE ? 1 : 3,
+          reducedMotion: 'reduce',
+          colorScheme: 'light',
+        });
+        try {
+          await capture(page, folder, l);
+        } finally {
+          await page.close();
+        }
+      }
+    }
+    console.log('Screenshots ready: ' + ROOT);
   } finally {
     await e2e.close();
   }
 }
 
-async function capture(e2e: Awaited<ReturnType<typeof startE2E>>): Promise<void> {
-  for (const l of LOCALES) {
-    console.log(`▸ ${l.dir}`);
-    await mkdir(path.join(OUT, l.dir), { recursive: true });
-    const page = await e2e.openApp({
-      locale: l.tag,
-      brand: l.brand,
-      viewport: VIEWPORT,
-      deviceScaleFactor: SCALE,
-      reducedMotion: 'reduce',
-    });
-
-    // 1. 首页（接下来 + 库）
-    // Reduced motion removes animation timing, not the async catalog load.
-    // Wait for a real catalog item so the first frame is data-ready and deterministic.
-    await page.getByText(l.coffee, { exact: true }).first().waitFor({ timeout: 30_000 });
-    await shot(page, l.dir, '1-home');
-
-    // 2. 运行中（沉浸计时：浸泡步骤）
-    await page.getByText(l.coffee, { exact: true }).first().click();
-    await page.getByText(l.start, { exact: true }).click();
-    await page.getByText(l.done, { exact: true }).click();
-    await page.clock.fastForward(20_000);
-    await shot(page, l.dir, '2-runner');
-    await page.getByText('‹', { exact: false }).first().click();
-
-    // 3. 日程（打一剂卡后的今日清单）
-    await page.getByText(l.med, { exact: true }).first().click();
-    await page.getByText(l.checkIn, { exact: true }).first().click();
-    await shot(page, l.dir, '3-schedule');
-    await page.getByText('‹', { exact: false }).first().click();
-
-    // 4. AI 解读（解读 + 洞察）
-    await page.getByText(l.insight, { exact: true }).first().click();
-    await shot(page, l.dir, '4-insight');
-    await page.close();
-  }
-}
-
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
 });

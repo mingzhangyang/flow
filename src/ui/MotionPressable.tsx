@@ -128,6 +128,8 @@ export function MotionPressable({
 
   return (
     <AnimatedPressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled: Boolean(disabled) }}
       {...props}
       disabled={disabled}
       onPressIn={handlePressIn}

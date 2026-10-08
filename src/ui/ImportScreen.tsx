@@ -2,14 +2,14 @@
 // 备份自动识别（parseBackup），恢复时绝不覆盖本机数据（C6）。
 
 import { useEffect, useState, useMemo } from 'react';
-import { View, Text, TextInput, ScrollView, StyleSheet, useColorScheme } from 'react-native';
+import { View, Text, TextInput, ScrollView, StyleSheet, Platform, useColorScheme } from 'react-native';
 import { type Flow } from '../domain/types';
 import { parseBackup, type Backup } from '../storage/backup';
 import { extractFlowJson } from '../sharing/share';
 import { createOperationScope } from '../session/operationScope';
 import { useI18n } from './i18n';
 import { paletteFor, type Palette, spacing, radius } from './theme';
-import { HeaderBackButton, HeaderSideSpacer } from './mobileControls';
+import { HeaderBackButton, HeaderSideSpacer, mobileHitTarget } from './mobileControls';
 import { MotionPressable } from './MotionPressable';
 
 export function ImportScreen(props: {
@@ -63,7 +63,9 @@ export function ImportScreen(props: {
         <Text style={styles.title} numberOfLines={1}>{t.importTitle}</Text>
         <HeaderSideSpacer />
       </View>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
         <Text style={styles.hint}>{t.importHint}</Text>
         <TextInput
           style={styles.input}
@@ -79,8 +81,8 @@ export function ImportScreen(props: {
         {backup ? <Text style={styles.backupNote}>{t.importBackupDetected(backup.flows.length)}</Text> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <MotionPressable
-          style={[styles.primary, (!text || busy) && styles.primaryOff]}
-          disabled={!text || busy}
+          style={[mobileHitTarget.standard, styles.primary, (!text || busy) && styles.primaryOff]}
+          accessibilityRole="button" disabled={!text || busy}
           accessibilityState={{ disabled: !text || busy }}
           onPress={doImport}
         >
@@ -98,7 +100,7 @@ const createStyles = (c: Palette) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
   title: { flex: 1, minWidth: 0, textAlign: 'center', fontSize: 16, fontWeight: '600', color: c.text },
-  content: { padding: spacing.md, gap: spacing.md },
+  content: { flexGrow: 1, padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
   hint: { fontSize: 14, color: c.textMuted },
   input: {
     backgroundColor: c.inputSurface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border,

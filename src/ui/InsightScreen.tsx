@@ -13,7 +13,7 @@ import { analyze, type Finding } from '../ai/analyze';
 import { diffFlows, describeChange, type Change } from '../ai/diff';
 import { useI18n } from './i18n';
 import { paletteFor, type Palette, spacing, radius } from './theme';
-import { HeaderBackButton, HeaderSideSpacer } from './mobileControls';
+import { HeaderBackButton, HeaderSideSpacer, mobileHitTarget } from './mobileControls';
 import { MotionPressable } from './MotionPressable';
 
 export function InsightScreen(props: {
@@ -110,7 +110,8 @@ export function InsightScreen(props: {
               ) : (
                 changes.map((c, i) => <Text key={i} style={styles.change}>{describeChange(c, locale)}</Text>)
               )}
-              <MotionPressable style={styles.restore} disabled={restoring} onPress={restore}>
+              <MotionPressable accessibilityRole="button" accessibilityState={{ disabled: restoring }}
+                style={[mobileHitTarget.compact, styles.restore]} disabled={restoring} onPress={restore}>
                 <Text style={styles.restoreText}>{t.insightRestore}</Text>
               </MotionPressable>
             </View>
@@ -131,7 +132,7 @@ const createStyles = (c: Palette) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
   title: { flex: 1, minWidth: 0, textAlign: 'center', fontSize: 16, fontWeight: '600', color: c.text },
-  content: { padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xl },
+  content: { flexGrow: 1, padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xl },
   sectionKicker: { fontSize: 13, color: c.textFaint, letterSpacing: 2, marginLeft: spacing.xs, marginTop: spacing.sm },
   card: {
     backgroundColor: c.surfaceRaised, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth, borderColor: c.border,
