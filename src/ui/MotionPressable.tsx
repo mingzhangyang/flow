@@ -72,13 +72,6 @@ export function MotionPressable({
   const reducedMotion = useReducedMotion();
   const scale = useRef(new Animated.Value(1)).current;
   const running = useRef<Animated.CompositeAnimation | null>(null);
-  // String transforms need JS string interpolation. Style callbacks are also
-  // conservatively JS-driven because their transform representation may change
-  // with pressed/hover/focus state. Keep the driver choice stable per mount.
-  const useNativeDriver = useRef(
-    typeof style !== 'function' &&
-      typeof (StyleSheet.flatten(style)?.transform) !== 'string',
-  ).current;
 
   const stop = (): void => {
     running.current?.stop();
@@ -95,7 +88,12 @@ export function MotionPressable({
       toValue,
       duration,
       easing: motionEasing.press,
-      useNativeDriver,
+      // Pressable accepts both array and string transforms, and callback styles
+      // may switch representation over the component lifetime. Keep this short
+      // 90–140 ms feedback on one stable JS driver rather than switching an
+      // Animated.Value between native and JS drivers. Progress/reveal/confirmation
+      // motion remains native-driven where the transform shape is fixed.
+      useNativeDriver: false,
       isInteraction: false,
     });
     running.current = animation;
