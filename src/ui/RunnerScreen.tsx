@@ -11,7 +11,7 @@ import { ProgressRing } from './ProgressRing';
 import { fmtDuration } from './format';
 import { useI18n } from './i18n';
 import { dark, spacing, radius, type, mono } from './theme';
-import { HeaderBackButton, HeaderSideSpacer, mobileControlSize } from './mobileControls';
+import { HeaderBackButton, HeaderSideSpacer, mobileControlSize, mobileHitTarget } from './mobileControls';
 import { MotionPressable } from './MotionPressable';
 import { MotionReveal } from './MotionReveal';
 
@@ -126,11 +126,11 @@ export function RunnerScreen(props: {
         </View>
 
         {state.status === 'completed' ? (
-          <MotionPressable style={styles.primary} onPress={run.reset}>
+          <MotionPressable accessibilityRole="button" style={[mobileHitTarget.standard, styles.primary]} onPress={run.reset}>
             <Text style={styles.primaryText}>{t.runRestart}</Text>
           </MotionPressable>
         ) : (
-          <MotionPressable style={styles.primary} onPress={state.status === 'idle' ? run.start : run.complete}>
+          <MotionPressable accessibilityRole="button" style={[mobileHitTarget.standard, styles.primary]} onPress={state.status === 'idle' ? run.start : run.complete}>
             <Text style={styles.primaryText}>
               {state.status === 'idle' ? t.runStart : node?.kind === 'gate' ? t.runConfirm : t.runCompleteStep}
             </Text>
@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
     flex: 1, minWidth: 0, textAlign: 'center',
     fontSize: type.emphasis - 1, fontWeight: '600', color: dark.textMuted,
   },
-  content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
+  content: { flexGrow: 1, padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
   loadError: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.xl },
   loadErrorText: { color: dark.textMuted, fontSize: type.body, textAlign: 'center' },
   retry: {
@@ -205,7 +205,7 @@ const styles = StyleSheet.create({
     backgroundColor: dark.accent, borderRadius: radius.pill, paddingVertical: spacing.md, alignItems: 'center',
   },
   primaryText: { color: dark.bg, fontSize: type.emphasis + 1, fontWeight: '700' },
-  controls: { flexDirection: 'row', justifyContent: 'center', gap: spacing.xl, paddingVertical: spacing.xs },
+  controls: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: spacing.md, paddingVertical: spacing.xs },
   ghost: {
     minHeight: mobileControlSize.compact, minWidth: mobileControlSize.compact,
     alignItems: 'center', justifyContent: 'center',

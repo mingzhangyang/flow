@@ -72,3 +72,55 @@ GitHub 的 Preview APK 工作流只允许手动触发，避免每次 push 消耗
      同步更新本文与 `docs/store-listing.md`、`docs/privacy-policy.md` 里的 URL。
 - [ ] 商店文案与截图（见 `docs/store-listing.md`；截图草稿 `npm run shots`）
 - [ ] 健康类内容申报 + AI 第三方数据共享申报（申报口径同见 store-listing）
+
+
+## PR #16 — Mobile UX and native verification
+
+The check workflow runs the browser mobile screenshot smoke after E2E, **reusing**
+its web export (no second build). Images at 320dp and 430dp in three languages
+are uploaded as the flow-mobile-screenshots GitHub Actions artifact. The ordinary
+npm run shots command still produces 430dp high-resolution drafts. These are web
+layouts, **not** native Android/iOS app screenshots.
+
+The android-apk-smoke workflow performs Expo compatibility/doctor checks,
+clean Android prebuild, release lint, assembleRelease and APK artifact
+verification **without changing generated Android XML**. The prior
+CFBundleDisplayName sed cleanup has been removed: an iOS metadata key leaking
+into Android resources must fail the build and be fixed in Expo config.
+
+After successful build, open the workflow run -> Artifacts -> download
+flow-android-standalone-test-apk. **GitHub downloads a ZIP, not an APK**:
+extract flow-android-standalone-test.apk before installing. The ZIP includes
+source-commit.txt with the exact build commit, SHA256SUMS and optional
+signature.txt. A Gradle test APK (possibly debug signed) is not a distributable
+EAS-signed preview. The EAS Android Preview APK workflow remains **manual**,
+reuses the existing keystore with --freeze-credentials, and must never create
+or replace signing credentials automatically.
+
+### Release blockers and native device matrix
+
+Sequential Run persistence is a **release blocker** until PR #17 resolves
+the optimistic saveRun(...).catch(() => {}) in usePersistentRun.ts with a durable
+Run-event contract, write failure feedback/recovery and replay verification.
+A passed Android build is permission to begin device testing, **not** a store
+release decision.
+
+Exact Android reminders, Doze, OEM battery optimization, process kill and
+reboot notifications are also unresolved release risks. Native verification
+must remain explicitly unchecked until a connected device is exercised.
+
+| Area | Android | iOS |
+|---|---|---|
+| System 3-button/gesture Back, dirty discard and pending check-in warning | [ ] | [ ] navigation |
+| Native keyboard inset, bottom Save and long-list scrolling | [ ] | [ ] |
+| Light/dark, larger text (1.3x+), TalkBack / VoiceOver | [ ] | [ ] |
+| Reduced Motion runtime switch, pause/resume/skip | [ ] | [ ] |
+| Foreground/background, force-kill, persistence recovery | [ ] | [ ] |
+| Notification permission denial, settings return, tap navigation | [ ] | [ ] |
+| Doze, exact alarm, process kill and reboot reminder delivery | [ ] | [ ] |
+| OEM long-background reminder behavior | [ ] | N/A |
+| Timezone change with anchored Flow | [ ] | [ ] |
+| SecureStore Keystore/Keychain transient failure handling | [ ] | [ ] |
+
+Web E2E and screenshot smoke do not exercise Android system Back, native
+keyboard, screen readers, Dynamic Type, Doze or native notification delivery.

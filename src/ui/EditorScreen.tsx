@@ -662,7 +662,7 @@ const createStyles = (c: Palette) => StyleSheet.create({
   },
   nodeTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   nodeIndex: { fontSize: 13, color: c.textMuted, width: 18 },
-  nodeLabel: { flex: 1, fontSize: 16, lineHeight: 22, color: c.text, paddingHorizontal: 0 },
+  nodeLabel: { flex: 1, minWidth: 0, fontSize: 16, lineHeight: 22, color: c.text, paddingHorizontal: 0 },
   chipRow: { width: '100%', flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   kindBtn: {
     minWidth: mobileControlSize.compact, minHeight: mobileControlSize.compact,

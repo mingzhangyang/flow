@@ -3,7 +3,7 @@
 // 供应商可切换：Anthropic（Claude）或任何 OpenAI 兼容端点；配置与密钥只存本机（C6）。
 
 import { useEffect, useState, useMemo } from 'react';
-import { View, Text, TextInput, ScrollView, StyleSheet, useColorScheme } from 'react-native';
+import { View, Text, TextInput, ScrollView, StyleSheet, Platform, useColorScheme } from 'react-native';
 import { type Flow } from '../domain/types';
 import { generateFlow } from '../ai/generate';
 import { createOperationScope } from '../session/operationScope';
@@ -20,7 +20,7 @@ import { localDayIndex } from '../runtime/clock';
 import { systemTimeZone } from '../runtime/systemTimeZone';
 import { useI18n } from './i18n';
 import { paletteFor, type Palette, spacing, radius } from './theme';
-import { HeaderBackButton, HeaderSideSpacer } from './mobileControls';
+import { HeaderBackButton, HeaderSideSpacer, mobileControlSize, mobileHitTarget } from './mobileControls';
 import { MotionPressable } from './MotionPressable';
 
 const platformFetch: FetchLike = (url, init) =>
@@ -121,7 +121,9 @@ export function GenerateScreen(props: {
         <Text style={styles.title} numberOfLines={1}>{t.generateTitle}</Text>
         <HeaderSideSpacer />
       </View>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
         <Text style={styles.hint}>{t.generateHint}</Text>
         <TextInput
           style={styles.input}
@@ -138,7 +140,9 @@ export function GenerateScreen(props: {
           {(['anthropic', 'openai-compatible'] as const).map((p) => (
             <MotionPressable
               key={p}
-              style={[styles.chip, provider === p && styles.chipOn]}
+              style={[mobileHitTarget.compact, styles.chip, provider === p && styles.chipOn]}
+              accessibilityRole="button" accessibilityLabel={p === 'anthropic' ? 'Claude' : t.generateProviderOpenAI}
+              accessibilityState={{ selected: provider === p }}
               onPress={() => switchProvider(p)}
             >
               <Text style={[styles.chipText, provider === p && styles.chipTextOn]}>
@@ -162,7 +166,10 @@ export function GenerateScreen(props: {
             />
             <View style={styles.rowWrap}>
               {OPENAI_COMPATIBLE_PRESETS.map((preset) => (
-                <MotionPressable key={preset.label} style={styles.presetChip} onPress={() => { operation.invalidateLatest(); setBaseUrl(preset.baseUrl); setError(null); }}>
+                <MotionPressable key={preset.label} style={[mobileHitTarget.compact, styles.presetChip]}
+                  accessibilityRole="button" accessibilityLabel={preset.label}
+                  accessibilityState={{ selected: baseUrl === preset.baseUrl }}
+                  onPress={() => { operation.invalidateLatest(); setBaseUrl(preset.baseUrl); setError(null); }}>
                   <Text style={styles.presetText}>{preset.label}</Text>
                 </MotionPressable>
               ))}
@@ -195,7 +202,8 @@ export function GenerateScreen(props: {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <MotionPressable
-          style={[styles.primary, (!ready || busy) && styles.primaryOff]}
+          style={[mobileHitTarget.standard, styles.primary, (!ready || busy) && styles.primaryOff]}
+          accessibilityRole="button"
           disabled={!ready || busy}
           accessibilityState={{ disabled: !ready || busy }}
           onPress={doGenerate}
@@ -216,14 +224,14 @@ const createStyles = (c: Palette) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
   title: { flex: 1, minWidth: 0, textAlign: 'center', fontSize: 16, fontWeight: '600', color: c.text },
-  content: { padding: spacing.md, gap: spacing.sm },
+  content: { flexGrow: 1, padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xl },
   hint: { fontSize: 14, color: c.textMuted },
   input: {
     backgroundColor: c.inputSurface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
     padding: spacing.md, fontSize: 15, color: c.text, minHeight: 110, textAlignVertical: 'top',
   },
   sectionKicker: { fontSize: 13, color: c.textFaint, letterSpacing: 2, marginTop: spacing.sm },
-  row: { flexDirection: 'row', gap: spacing.sm },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   rowWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   chip: {
     borderRadius: radius.pill, borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceSubtle,
@@ -239,6 +247,7 @@ const createStyles = (c: Palette) => StyleSheet.create({
   presetText: { fontSize: 12, color: c.secondary },
   label: { fontSize: 13, color: c.textMuted, marginTop: spacing.xs },
   field: {
+    minHeight: mobileControlSize.compact,
     backgroundColor: c.inputSurface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm, fontSize: 14, color: c.text,
   },

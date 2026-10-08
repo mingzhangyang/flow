@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - build/android-apk-smoke
+      # PR #16 scoped one-time native validation; no EAS auto-build.
+      - fix/mobile-ux-release-verification
   workflow_dispatch:
 
 permissions:
@@ -35,19 +37,22 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Expo release preflight
+        run: |
+          npx expo install --check
+          npx expo-doctor@latest
+
       - name: Generate Android project
         run: npx expo prebuild --platform android --clean --no-install
 
-      - name: Remove iOS-only metadata leaked into Android resources
+      # Validate clean Expo generation; never hide a leaked iOS key using sed.
+      - name: Assert native Android resource contract
         shell: bash
         run: |
           set -euo pipefail
-          for file in android/app/src/main/res/values-b+*/strings.xml; do
-            [ -f "$file" ] || continue
-            sed -i '/name="CFBundleDisplayName"/d' "$file"
-          done
-          if grep -R 'name="CFBundleDisplayName"' android/app/src/main/res/values-b+* 2>/dev/null; then
-            echo "CFBundleDisplayName still present in Android localized resources"
+          grep -q 'name="app_name"' android/app/src/main/res/values/strings.xml
+          if grep -R 'name="CFBundleDisplayName"' android/app/src/main/res/values*; then
+            echo "::error::iOS-only metadata leaked into Android. Fix Expo source config."
             exit 1
           fi
 
@@ -59,10 +64,32 @@ jobs:
         working-directory: android
         run: ./gradlew assembleRelease --no-daemon --stacktrace
 
+      - name: Record APK source and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p apk-artifact
+          cp android/app/build/outputs/apk/release/app-release.apk apk-artifact/flow-android-standalone-test.apk
+          test -s apk-artifact/flow-android-standalone-test.apk
+          printf '%s\n' "$GITHUB_SHA" > apk-artifact/source-commit.txt
+          (cd apk-artifact && sha256sum flow-android-standalone-test.apk > SHA256SUMS)
+          SIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner 2>/dev/null | sort -V | tail -n 1 || true)"
+          if [ -n "$SIGNER" ]; then
+            if "$SIGNER" verify --print-certs apk-artifact/flow-android-standalone-test.apk > apk-artifact/signature.txt 2>&1; then
+              echo "Verified APK signature; this is not proof of EAS release signing." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "APK signature not verified; check signature.txt." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            echo "No apksigner available: signature unverified." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "Source SHA: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "Artifact: flow-android-standalone-test-apk (download ZIP and extract APK)" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: flow-android-standalone-test-apk
-          path: android/app/build/outputs/apk/release/app-release.apk
+          path: apk-artifact/
           if-no-files-found: error
           retention-days: 7

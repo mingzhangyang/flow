@@ -11,7 +11,7 @@ import { type Sharer, type ShareOutcome } from '../sharing/sharer';
 import { useI18n } from './i18n';
 import { type Strings } from './strings';
 import { paletteFor, type Palette, spacing, radius } from './theme';
-import { HeaderBackButton, HeaderSideSpacer } from './mobileControls';
+import { HeaderBackButton, HeaderSideSpacer, mobileHitTarget } from './mobileControls';
 import { MotionPressable } from './MotionPressable';
 
 const outcomeText = (t: Strings): Record<ShareOutcome, string> => ({
@@ -45,7 +45,9 @@ export function ExportScreen(props: { flow: Flow; sharer: Sharer; onDone: () => 
         <Text style={styles.title} numberOfLines={1}>{t.exportTitle}</Text>
         <HeaderSideSpacer />
       </View>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}>
         <Text style={styles.hint}>{t.exportHint}</Text>
         <TextInput
           style={styles.field}
@@ -58,14 +60,14 @@ export function ExportScreen(props: { flow: Flow; sharer: Sharer; onDone: () => 
         <Text style={styles.sectionKicker}>{t.exportPreview}</Text>
         <Text style={styles.preview}>{readable.trimEnd()}</Text>
 
-        <MotionPressable style={styles.primary} onPress={() => send(shareText)}>
+        <MotionPressable accessibilityRole="button" style={[mobileHitTarget.standard, styles.primary]} onPress={() => send(shareText)}>
           <Text style={styles.primaryText}>{t.exportShareFull}</Text>
         </MotionPressable>
         {feedback ? <Text style={styles.feedback}>{feedback}</Text> : null}
 
         <Text style={styles.sectionKicker}>{t.exportDataOnly}</Text>
         <TextInput style={styles.json} value={json} editable={false} multiline selectTextOnFocus />
-        <MotionPressable style={[styles.primary, styles.secondary]} onPress={() => send(json)}>
+        <MotionPressable accessibilityRole="button" style={[mobileHitTarget.standard, styles.primary, styles.secondary]} onPress={() => send(json)}>
           <Text style={styles.secondaryText}>{t.exportShareData}</Text>
         </MotionPressable>
       </ScrollView>
@@ -80,9 +82,10 @@ const createStyles = (c: Palette) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
   title: { flex: 1, minWidth: 0, textAlign: 'center', fontSize: 16, fontWeight: '600', color: c.text },
-  content: { padding: spacing.md, gap: spacing.md },
+  content: { flexGrow: 1, padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
   hint: { fontSize: 14, color: c.textMuted },
   field: {
+    minHeight: mobileHitTarget.compact.minHeight,
     backgroundColor: c.inputSurface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border,
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm, fontSize: 14, color: c.text,
   },

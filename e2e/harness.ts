@@ -87,6 +87,8 @@ export interface OpenAppOptions {
   deviceScaleFactor?: number;
   /** Accessibility preference injected before the app loads. */
   reducedMotion?: 'reduce' | 'no-preference';
+  /** Browser presentation stress; does not substitute native appearance testing. */
+  colorScheme?: 'light' | 'dark';
   /** Simulated platform faults / test-only adapters, injected before app module loads. */
   initScripts?: string[];
 }
@@ -115,6 +117,7 @@ export async function startE2E(): Promise<E2E> {
         ...(opts?.viewport ? { viewport: opts.viewport } : {}),
         ...(opts?.deviceScaleFactor ? { deviceScaleFactor: opts.deviceScaleFactor } : {}),
         ...(opts?.reducedMotion ? { reducedMotion: opts.reducedMotion } : {}),
+        ...(opts?.colorScheme ? { colorScheme: opts.colorScheme } : {}),
       });
       contexts.push(context);
       for (const script of opts?.initScripts ?? []) await context.addInitScript({ content: script });

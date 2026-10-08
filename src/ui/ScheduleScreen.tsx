@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import {
-  View, Text, ScrollView, Pressable, StyleSheet, Animated, AppState, Linking, Alert, useColorScheme,
+  View, Text, ScrollView, StyleSheet, Animated, AppState, Linking, Alert, useColorScheme,
 } from 'react-native';
 import { type Flow } from '../domain/types';
 import { type Notifier, type ReminderAvailability } from '../notifications/notifier';
@@ -269,10 +269,11 @@ export function ScheduleScreen(props: {
 
       <ScrollView contentContainerStyle={styles.content}>
         {notifStatus === 'denied' ? (
-          <Pressable style={styles.notifBanner} onPress={() => { Linking.openSettings().catch(() => {}); }}>
+          <MotionPressable accessibilityRole="button" accessibilityLabel={t.scheduleNotifSettings}
+            style={styles.notifBanner} onPress={() => { Linking.openSettings().catch(() => {}); }}>
             <Text style={styles.notifBannerText}>{t.scheduleNotifDenied}</Text>
             <Text style={styles.notifBannerLink}>{t.scheduleNotifSettings}</Text>
-          </Pressable>
+          </MotionPressable>
         ) : notifStatus === 'unsupported' ? (
           <Text style={styles.notifWeb}>{t.scheduleNotifWeb}</Text>
         ) : null}
@@ -405,7 +406,7 @@ const createStyles = (c: Palette) => StyleSheet.create({
     flex: 1, minWidth: 0, textAlign: 'center',
     fontSize: type.emphasis - 1, fontWeight: '600', color: c.text,
   },
-  content: { padding: spacing.md, gap: spacing.sm },
+  content: { flexGrow: 1, padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.xl },
   notifBanner: {
     backgroundColor: c.warningSoft, borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth, borderColor: c.warning,
@@ -435,7 +436,7 @@ const createStyles = (c: Palette) => StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md },
   time: {
     fontSize: type.emphasis, fontFamily: mono.medium, color: c.text,
-    fontVariant: ['tabular-nums'], width: 56,
+    fontVariant: ['tabular-nums'], minWidth: 56, flexShrink: 0,
   },
   timeTaken: { color: c.textMuted },
   axis: { width: BEAD, alignItems: 'center', alignSelf: 'stretch', justifyContent: 'center' },
@@ -449,7 +450,7 @@ const createStyles = (c: Palette) => StyleSheet.create({
   },
   bead: { width: BEAD, height: BEAD, borderRadius: BEAD / 2, alignItems: 'center', justifyContent: 'center' },
   beadCheck: { color: c.onPrimary, fontSize: 12, fontWeight: '800' },
-  body: { flex: 1 },
+  body: { flex: 1, minWidth: 0 },
   label: { fontSize: type.body, color: c.text },
   labelTaken: { color: c.textMuted, textDecorationLine: 'line-through' },
   status: { fontSize: type.caption + 1, marginTop: 2 },

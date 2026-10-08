@@ -2,7 +2,7 @@
 // 卡片带由 id 派生的低饱和色线与拓扑图形徽章，库一多也有节奏而不吵。
 
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, AppState, useColorScheme } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, AppState, useColorScheme } from 'react-native';
 import { type Flow, type Topology } from '../domain/types';
 import { type Library } from '../session/library';
 import { createOperationScope } from '../session/operationScope';
@@ -17,6 +17,7 @@ import { fmtTimeOfDay } from './format';
 import { useI18n } from './i18n';
 import { paletteFor, flowIdentityFor, type Palette, dark, spacing, radius, type, mono } from './theme';
 import { MotionPressable } from './MotionPressable';
+import { MobileTextAction, mobileHitTarget } from './mobileControls';
 
 function SeqGlyph(props: { color: string }) {
   return (
@@ -155,7 +156,8 @@ export function HomeScreen(props: {
     return (
     <View key={flow.id} style={[styles.card, { backgroundColor: tone.soft }]}>
       <View style={[styles.stripe, { backgroundColor: tone.accent }]} />
-      <MotionPressable motion="card" disabled={props.deleting} onPress={() => run(flow, own)}>
+      <MotionPressable motion="card" accessibilityRole="button" accessibilityLabel={flow.title}
+        accessibilityState={{ disabled: props.deleting }} disabled={props.deleting} onPress={() => run(flow, own)}>
         <View style={styles.cardTop}>
           <Text style={styles.cardTitle}>{flow.title}</Text>
           <View style={styles.badge}>
@@ -171,14 +173,12 @@ export function HomeScreen(props: {
         <Text style={styles.cardMeta}>{t.cardMeta(flow.nodes.length, flow.topology)}</Text>
       </MotionPressable>
       <View style={styles.rowActions}>
-        <Pressable disabled={props.deleting} onPress={() => props.onInsight(flow, own ? 'owned' : 'example')}><Text style={styles.link}>{t.linkInsight}</Text></Pressable>
+        <MobileTextAction label={t.linkInsight} accessibilityLabel={`${t.linkInsight}: ${flow.title}`} textStyle={styles.link} disabled={props.deleting} onPress={() => props.onInsight(flow, own ? 'owned' : 'example')} />
         {own ? (
           <>
-            <Pressable disabled={props.deleting} onPress={() => props.onEdit(flow)}><Text style={styles.link}>{t.linkEdit}</Text></Pressable>
-            <Pressable disabled={props.deleting} onPress={() => props.onExport(flow)}><Text style={styles.link}>{t.linkShare}</Text></Pressable>
-            <Pressable disabled={busy || props.deleting} onPress={() => del(flow)}>
-              <Text style={[styles.link, styles.danger]}>{t.delete}</Text>
-            </Pressable>
+            <MobileTextAction label={t.linkEdit} accessibilityLabel={`${t.linkEdit}: ${flow.title}`} textStyle={styles.link} disabled={props.deleting} onPress={() => props.onEdit(flow)} />
+            <MobileTextAction label={t.linkShare} accessibilityLabel={`${t.linkShare}: ${flow.title}`} textStyle={styles.link} disabled={props.deleting} onPress={() => props.onExport(flow)} />
+            <MobileTextAction label={t.delete} accessibilityLabel={`${t.delete}: ${flow.title}`} textStyle={[styles.link, styles.danger]} disabled={busy || props.deleting} onPress={() => del(flow)} />
           </>
         ) : null}
       </View>
@@ -199,7 +199,7 @@ export function HomeScreen(props: {
         {deleteIssue ? (
           <View style={styles.catalogError}>
             <Text style={styles.catalogErrorText}>{t.deleteFailed}: {deleteIssue.message}</Text>
-            <MotionPressable style={styles.retryButton} disabled={busy} onPress={() => del(deleteIssue.flow)}>
+            <MotionPressable accessibilityRole="button" accessibilityLabel={t.retry} style={[mobileHitTarget.compact, styles.retryButton]} disabled={busy} onPress={() => del(deleteIssue.flow)}>
               <Text style={styles.retryText}>{t.retry}</Text>
             </MotionPressable>
           </View>
@@ -207,14 +207,14 @@ export function HomeScreen(props: {
         {props.catalog.status === 'error' ? (
           <View style={styles.catalogError}>
             <Text style={styles.catalogErrorText}>{t.catalogUnavailable}</Text>
-            <MotionPressable style={styles.retryButton} disabled={props.deleting} onPress={() => props.onRetry()}>
+            <MotionPressable accessibilityRole="button" accessibilityLabel={t.retry} style={[mobileHitTarget.compact, styles.retryButton]} disabled={props.deleting} onPress={() => props.onRetry()}>
               <Text style={styles.retryText}>{t.retry}</Text>
             </MotionPressable>
           </View>
         ) : null}
 
         {upNext ? (
-          <MotionPressable motion="card" style={styles.next} testID="home-up-next"
+          <MotionPressable motion="card" accessibilityRole="button" accessibilityLabel={`${t.upNext}: ${upNext.occ.label}`} style={styles.next} testID="home-up-next"
             disabled={props.deleting}
             onPress={() => run(upNext.flow, upNext.own)}>
             <Text style={styles.nextTime}>{fmtTimeOfDay(timeOfDay(upNext.occ.at, timeZoneForFlow(upNext.flow, systemTimeZone)))}</Text>
@@ -276,11 +276,11 @@ const createStyles = (c: Palette) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: c.canvas },
   header: {
     paddingHorizontal: spacing.lg, paddingTop: spacing.xl, paddingBottom: spacing.md,
-    flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between',
+    flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', gap: spacing.xs,
   },
-  brand: { fontSize: type.display, fontWeight: '800', color: c.primary, letterSpacing: 4 },
-  date: { fontSize: type.body - 1, color: c.textMuted, fontVariant: ['tabular-nums'] },
-  content: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
+  brand: { flexShrink: 1, fontSize: type.display, fontWeight: '800', color: c.primary, letterSpacing: 4 },
+  date: { flexShrink: 1, fontSize: type.body - 1, color: c.textMuted, fontVariant: ['tabular-nums'] },
+  content: { flexGrow: 1, padding: spacing.md, gap: spacing.md, paddingBottom: spacing.xl },
 
   next: {
     backgroundColor: dark.bg, borderRadius: radius.lg,
@@ -292,7 +292,7 @@ const createStyles = (c: Palette) => StyleSheet.create({
     fontSize: type.display, fontFamily: mono.thin, color: dark.text,
     fontVariant: ['tabular-nums'], letterSpacing: 1,
   },
-  nextBody: { flex: 1 },
+  nextBody: { flex: 1, minWidth: 0 },
   nextKicker: { fontSize: type.caption, color: dark.accent, letterSpacing: 2 },
   nextLabel: { fontSize: type.emphasis, fontWeight: '600', color: dark.text, marginTop: 2 },
   nextFlow: { fontSize: type.caption + 1, color: dark.textMuted, marginTop: 1 },
@@ -312,6 +312,7 @@ const createStyles = (c: Palette) => StyleSheet.create({
   },
   retryText: { color: c.primary, fontSize: 14, fontWeight: '600' },
   action: {
+    minHeight: mobileHitTarget.standard.minHeight, justifyContent: 'center',
     backgroundColor: c.primary, borderRadius: radius.pill,
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
   },
@@ -328,15 +329,15 @@ const createStyles = (c: Palette) => StyleSheet.create({
     padding: spacing.lg, gap: spacing.xs, overflow: 'hidden',
   },
   stripe: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, opacity: 0.8 },
-  cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  cardTitle: { fontSize: type.title - 2, fontWeight: '700', color: c.text },
+  cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
+  cardTitle: { flex: 1, minWidth: 0, fontSize: type.title - 2, fontWeight: '700', color: c.text },
   badge: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   badgeText: { fontSize: type.caption, color: c.textMuted },
   cardDesc: { fontSize: type.body - 1, color: c.textMuted },
   cardMeta: { fontSize: type.caption + 1, color: c.textMuted, marginTop: spacing.xs },
   rowActions: {
-    flexDirection: 'row', gap: spacing.lg, marginTop: spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border, paddingTop: spacing.sm,
+    flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.xs, marginTop: spacing.xs,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.border, paddingTop: spacing.xs,
   },
   link: { fontSize: 14, color: c.primary, fontWeight: '600' },
   danger: { color: c.danger },
