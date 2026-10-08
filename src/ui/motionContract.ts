@@ -76,6 +76,8 @@ export function composePressTransform<T, S>(
   callerTransform: string | readonly T[] | undefined,
   scale: S,
 ): string | Array<T | { scale: S }> {
-  if (typeof callerTransform === 'string') return callerTransform;
+  if (typeof callerTransform === 'string') {
+    return `${callerTransform} scale(${String(scale)})`;
+  }
   return [...(callerTransform ?? []), { scale }];
 }

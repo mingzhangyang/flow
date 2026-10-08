@@ -29,6 +29,21 @@ function styleWithPressScale(
   scale: Animated.Value,
 ): StyleProp<ViewStyle> {
   const flattened = StyleSheet.flatten(style) ?? {};
+
+  if (typeof flattened.transform === 'string') {
+    const transform = scale.interpolate({
+      inputRange: [0, 1],
+      outputRange: [
+        composePressTransform(flattened.transform, 0) as string,
+        composePressTransform(flattened.transform, 1) as string,
+      ],
+    });
+    return {
+      ...flattened,
+      transform: transform as unknown as ViewStyle['transform'],
+    };
+  }
+
   return {
     ...flattened,
     // AnimatedPressable accepts Animated.Value at runtime, while Pressable's
@@ -57,6 +72,13 @@ export function MotionPressable({
   const reducedMotion = useReducedMotion();
   const scale = useRef(new Animated.Value(1)).current;
   const running = useRef<Animated.CompositeAnimation | null>(null);
+  // String transforms need JS string interpolation. Style callbacks are also
+  // conservatively JS-driven because their transform representation may change
+  // with pressed/hover/focus state. Keep the driver choice stable per mount.
+  const useNativeDriver = useRef(
+    typeof style !== 'function' &&
+      typeof (StyleSheet.flatten(style)?.transform) !== 'string',
+  ).current;
 
   const stop = (): void => {
     running.current?.stop();
@@ -73,7 +95,7 @@ export function MotionPressable({
       toValue,
       duration,
       easing: motionEasing.press,
-      useNativeDriver: true,
+      useNativeDriver,
       isInteraction: false,
     });
     running.current = animation;

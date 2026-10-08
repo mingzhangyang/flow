@@ -33,6 +33,9 @@ test('press transform preserves transforms produced by a style callback', () => 
   ]);
 });
 
-test('press transform preserves RN string transforms rather than replacing them', () => {
-  assert.equal(composePressTransform('rotate(8deg)', 0.975), 'rotate(8deg)');
+test('press transform composes RN string transforms with press scale', () => {
+  assert.equal(
+    composePressTransform('rotate(8deg)', 0.975),
+    'rotate(8deg) scale(0.975)',
+  );
 });
