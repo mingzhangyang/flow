@@ -1,5 +1,6 @@
 // Layout regression is deterministic web evidence, not Android/iOS rendering proof.
 import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
 import { startE2E, type E2E } from './harness';
 import { assertMobileGeometry } from './mobileGeometry';
 
@@ -37,6 +38,13 @@ for (const width of [320, 360, 393, 430]) {
           await page.getByText(locale.med, { exact: true }).first().click();
           await page.getByText(locale.med, { exact: true }).first().waitFor();
           await assertMobileGeometry(page, 'Schedule');
+          if (width === 320 && locale.tag === 'en-US') {
+            // Overflow-only tests miss extreme word-by-word wrapping.
+            // The label itself must retain meaningful reading width alongside actions.
+            const medicine = await page.getByText('After lunch: metformin', { exact: true }).boundingBox();
+            assert.ok(medicine && medicine.width >= 100,
+              'Schedule medicine name squeezed below readable width at 320dp');
+          }
           await page.getByRole('button', { name: '‹ ' + locale.back }).click();
 
           await page.getByText(locale.gen, { exact: true }).first().click();

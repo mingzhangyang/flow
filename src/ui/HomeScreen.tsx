@@ -221,8 +221,8 @@ export function HomeScreen(props: {
             <Text style={styles.nextTime}>{fmtTimeOfDay(timeOfDay(upNext.occ.at, timeZoneForFlow(upNext.flow, systemTimeZone)))}</Text>
             <View style={styles.nextBody}>
               <Text style={styles.nextKicker}>{t.upNext}</Text>
-              <Text style={styles.nextLabel} numberOfLines={1}>{upNext.occ.label}</Text>
-              <Text style={styles.nextFlow} numberOfLines={1}>{upNext.flow.title}</Text>
+              <Text style={styles.nextLabel}>{upNext.occ.label}</Text>
+              <Text style={styles.nextFlow}>{upNext.flow.title}</Text>
             </View>
             <Text style={styles.nextGo}>›</Text>
           </MotionPressable>
@@ -286,14 +286,14 @@ const createStyles = (c: Palette) => StyleSheet.create({
   next: {
     backgroundColor: dark.bg, borderRadius: radius.lg,
     borderWidth: StyleSheet.hairlineWidth, borderColor: dark.border,
-    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
+    flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm,
     paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
   },
   nextTime: {
     fontSize: type.display, fontFamily: mono.thin, color: dark.text,
     fontVariant: ['tabular-nums'], letterSpacing: 1,
   },
-  nextBody: { flex: 1, minWidth: 0 },
+  nextBody: { flexGrow: 1, flexShrink: 1, flexBasis: 140, minWidth: 140 },
   nextKicker: { fontSize: type.caption, color: dark.accent, letterSpacing: 2 },
   nextLabel: { fontSize: type.emphasis, fontWeight: '600', color: dark.text, marginTop: 2 },
   nextFlow: { fontSize: type.caption + 1, color: dark.textMuted, marginTop: 1 },

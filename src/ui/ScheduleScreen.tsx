@@ -333,31 +333,35 @@ export function ScheduleScreen(props: {
                     <View style={styles.axisLineBottom} />
                   ) : null}
                 </View>
-                <View style={styles.body}>
-                  <Text style={[styles.label, d.status === 'taken' && styles.labelTaken]}>{d.label}</Text>
-                  <Text style={[styles.status, { color: statusColors(c)[d.status] }]}>
-                    {STATUS_LABEL[d.status]}
-                    {d.status === 'taken' && d.takenAt !== null ? ` · ${fmtTimeOfDay(timeOfDay(d.takenAt, tz))}` : ''}
-                  </Text>
+                <View style={styles.details}>
+                  <View style={styles.body}>
+                    <Text style={[styles.label, d.status === 'taken' && styles.labelTaken]}>{d.label}</Text>
+                    <Text style={[styles.status, { color: statusColors(c)[d.status] }]}>
+                      {STATUS_LABEL[d.status]}
+                      {d.status === 'taken' && d.takenAt !== null ? ` · ${fmtTimeOfDay(timeOfDay(d.takenAt, tz))}` : ''}
+                    </Text>
+                  </View>
+                  <View style={styles.actionSlot}>
+                    {d.status === 'taken' ? (
+                      <MotionPressable
+                        accessibilityRole="button"
+                        style={styles.undoButton}
+                        disabled={writeStatus !== 'idle'}
+                        accessibilityState={{ disabled: writeStatus !== 'idle' }}
+                        onPress={() => undo(d)}
+                      >
+                        <Text style={styles.undo}>{t.undo}</Text>
+                      </MotionPressable>
+                    ) : (
+                      <MotionPressable accessibilityRole="button" style={styles.take}
+                        disabled={writeStatus !== 'idle'}
+                        accessibilityState={{ disabled: writeStatus !== 'idle' }}
+                        onPress={() => take(d)}>
+                        <Text style={styles.takeText}>{t.checkIn}</Text>
+                      </MotionPressable>
+                    )}
+                  </View>
                 </View>
-                {d.status === 'taken' ? (
-                  <MotionPressable
-                    accessibilityRole="button"
-                    style={styles.undoButton}
-                    disabled={writeStatus !== 'idle'}
-                    accessibilityState={{ disabled: writeStatus !== 'idle' }}
-                    onPress={() => undo(d)}
-                  >
-                    <Text style={styles.undo}>{t.undo}</Text>
-                  </MotionPressable>
-                ) : (
-                  <MotionPressable accessibilityRole="button" style={styles.take}
-                    disabled={writeStatus !== 'idle'}
-                    accessibilityState={{ disabled: writeStatus !== 'idle' }}
-                    onPress={() => take(d)}>
-                    <Text style={styles.takeText}>{t.checkIn}</Text>
-                  </MotionPressable>
-                )}
               </View>
             </View>
           ))}
@@ -450,7 +454,14 @@ const createStyles = (c: Palette) => StyleSheet.create({
   },
   bead: { width: BEAD, height: BEAD, borderRadius: BEAD / 2, alignItems: 'center', justifyContent: 'center' },
   beadCheck: { color: c.onPrimary, fontSize: 12, fontWeight: '800' },
-  body: { flex: 1, minWidth: 0 },
+  // Keep the dose text readable at 320dp: the action moves to the next line
+  // inside the details column instead of squeezing medicine names to ~35px.
+  details: {
+    flex: 1, minWidth: 0, flexDirection: 'row', flexWrap: 'wrap',
+    alignItems: 'center', columnGap: spacing.xs, rowGap: spacing.xs,
+  },
+  body: { flexGrow: 1, flexShrink: 1, minWidth: 120 },
+  actionSlot: { flexShrink: 0, marginLeft: 'auto' },
   label: { fontSize: type.body, color: c.text },
   labelTaken: { color: c.textMuted, textDecorationLine: 'line-through' },
   status: { fontSize: type.caption + 1, marginTop: 2 },
