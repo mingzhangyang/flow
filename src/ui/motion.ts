@@ -36,7 +36,8 @@ function ensureReducedMotionSource(): void {
         if (!observedRuntimeChange) publishReducedMotion(enabled);
       })
       .catch(() => {
-        if (!observedRuntimeChange) publishReducedMotion(false);
+        // Fail closed: if the platform preference is unavailable, keep the
+        // conservative reduced-motion snapshot (or a later runtime event).
       });
   }
 }
