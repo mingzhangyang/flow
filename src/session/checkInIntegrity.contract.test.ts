@@ -8,7 +8,7 @@ import { createDefinitionRuntime } from './definitionRuntime';
 import { definitionKey } from '../domain/definitionIdentity';
 import { checkIn } from '../runtime/adherence';
 import { noopNotifier } from '../notifications/notifier';
-import { BACKUP_KIND, BACKUP_VERSION, parseBackup } from '../storage/backup';
+import { BACKUP_KIND, BACKUP_VERSION, parseBackup, type Backup } from '../storage/backup';
 
 const key = definitionKey({ flowId: 'med', source: 'owned' });
 const morning = checkIn('morning', 10_000, true, 20_000);
@@ -184,7 +184,7 @@ test('backup restore and real-time taps share a single storage lane, preserving 
   const storage = createStorage(createInMemoryKV());
   const library = createLibrary(storage);
   const session = makeSession(storage);
-  const backup = {
+  const backup: Backup = {
     kind: BACKUP_KIND, backupVersion: BACKUP_VERSION, exportedAt: 1,
     flows: [], revisions: {}, checkIns: { [key]: [morning] },
   };

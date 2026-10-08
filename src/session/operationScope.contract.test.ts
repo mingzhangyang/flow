@@ -24,6 +24,7 @@ test('Generate: successful mock model result is consumed once, duplicate press r
           title: 'Coffee', topology: 'sequential',
           nodes: [{ kind: 'instant', label: 'Pour water' }],
         }),
+        model: 'test-model',
       }),
     }, 'make coffee', { id: 'flow-1', locale: 'en' });
   }, {
