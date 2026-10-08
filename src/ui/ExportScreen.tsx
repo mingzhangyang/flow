@@ -3,7 +3,7 @@
 // 数据面：开放格式 JSON（E5，可拥有 C6）。署名进入 provenance（E6 来源标注）。
 
 import { useMemo, useState } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, Platform, useColorScheme } from 'react-native';
+import { View, Text, TextInput, ScrollView, StyleSheet, Platform, useColorScheme } from 'react-native';
 import { type Flow } from '../domain/types';
 import { serializeFlow } from '../domain/serialize';
 import { buildShareText, buildSharePayload, dataDivider } from '../sharing/share';

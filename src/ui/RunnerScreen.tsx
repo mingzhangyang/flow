@@ -2,7 +2,7 @@
 // 沉浸式深墨绿场景：进入运行即切换到深色，环 + 珠（应用图标的形状语言）承载进度，
 // 极细大字倒计时是画面的主角。运行状态、持久化（C6）与通知（C5）收在 usePersistentRun。
 
-import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { type Flow } from '../domain/types';
 import { type RuntimeSession } from '../session/definitionRuntime';
 import { usePersistentRun } from './usePersistentRun';

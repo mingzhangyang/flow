@@ -11,7 +11,6 @@ import {
   Text,
   TextInput,
   type TextInputProps,
-  Pressable,
   ScrollView,
   StyleSheet,
   useColorScheme,

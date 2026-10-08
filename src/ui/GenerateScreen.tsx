@@ -3,7 +3,7 @@
 // 供应商可切换：Anthropic（Claude）或任何 OpenAI 兼容端点；配置与密钥只存本机（C6）。
 
 import { useEffect, useState, useMemo } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
+import { View, Text, TextInput, ScrollView, StyleSheet, useColorScheme } from 'react-native';
 import { type Flow } from '../domain/types';
 import { type SecretStore } from '../storage/kv';
 import { generateFlow } from '../ai/generate';

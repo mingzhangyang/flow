@@ -2,7 +2,7 @@
 // 备份自动识别（parseBackup），恢复时绝不覆盖本机数据（C6）。
 
 import { useState, useMemo } from 'react';
-import { View, Text, TextInput, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
+import { View, Text, TextInput, ScrollView, StyleSheet, useColorScheme } from 'react-native';
 import { type Flow } from '../domain/types';
 import { parseBackup, type Backup } from '../storage/backup';
 import { extractFlowJson } from '../sharing/share';
