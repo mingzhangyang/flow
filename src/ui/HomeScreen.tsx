@@ -105,8 +105,7 @@ export function HomeScreen(props: {
     }
   };
 
-  const [now, setNow] = useState(() => Date.now());
-  const today = new Date(now);
+  const [clockSample, setClockSample] = useState(() => Date.now());
   const visibleExamples = useMemo(
     () => catalogReady ? examplesVisibleAlongsideOwned(props.examples, mine) : [],
     [catalogReady, props.examples, mine],
@@ -118,10 +117,18 @@ export function HomeScreen(props: {
   };
 
   // 接下来：所有可见日程型 flow 的最近一次提醒（我的优先，无则看未被同 id 用户 Flow 遮蔽的示例）
-  const projection = useMemo(
-    () => projectHomeTime(catalogReady ? mine : [], catalogReady ? visibleExamples : [], now, systemTimeZone),
-    [catalogReady, mine, visibleExamples, now],
-  );
+  // Clock samples invalidate the memo only at meaningful boundaries. Catalog
+  // and example changes are independent invalidations: sample current time
+  // here rather than reusing a possibly hours-old clock-triggered timestamp.
+  // Header and Up Next share this one snapshot, without an extra React update.
+  const projection = useMemo(() => {
+    const at = Date.now();
+    return {
+      ...projectHomeTime(catalogReady ? mine : [], catalogReady ? visibleExamples : [], at, systemTimeZone),
+      at,
+    };
+  }, [catalogReady, mine, visibleExamples, clockSample]);
+  const today = new Date(projection.at);
   const upNext = projection.upNext;
 
   // Clock sampling is a persistent UI adapter, not a side effect of whether
@@ -132,7 +139,7 @@ export function HomeScreen(props: {
     zoneId: () => Intl.DateTimeFormat().resolvedOptions().timeZone,
     schedule: (callback: () => void, delay: number) => setTimeout(callback, delay),
     cancel: (timer: ReturnType<typeof setTimeout>) => clearTimeout(timer),
-    refresh: (actual: number) => setNow(actual),
+    refresh: (actual: number) => setClockSample(actual),
   }), []);
 
   useEffect(() => {
