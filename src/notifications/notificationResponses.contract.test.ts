@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { definitionKey } from '../domain/definitionIdentity';
-import { createLeaveGuard, authorizeRouteExit } from '../ui/leaveGuard';
+import { createLeaveGuard, authorizeRouteExit, createRouteExitRegistry } from '../ui/leaveGuard';
 import { createDefinitionRuntime } from '../session/definitionRuntime';
 import { createStorage } from '../storage/storage';
 import { createInMemoryKV } from '../storage/kv';
@@ -397,4 +397,57 @@ test('an old native confirmation cannot navigate after another route has taken o
   decide(true);
   await flush();
   assert.deepEqual(opened, []);
+});
+
+
+test('two confirmed notification taps wait until newly opened scheduled Run registers its leave guard', async () => {
+  const fake = fakeFacade();
+  const source = createNotificationResponseSource(fake.api);
+  type Route = { name: 'run'; sessionId: number };
+  const registry = createRouteExitRegistry<Route>();
+  const original: Route = { name: 'run', sessionId: 1 };
+  let active = original;
+  let nextId = 2;
+  const prompts: Array<(approved: boolean) => void> = [];
+  const guard = () => createLeaveGuard({
+    disposition: () => 'confirm',
+    prompt: (decide) => prompts.push(decide),
+  });
+  registry.set(original, guard().request);
+  const opened: string[] = [];
+
+  const stop = source.start(async (target) => {
+    const origin = active;
+    const leave = registry.get(origin);
+    if (!leave || !await authorizeRouteExit(origin, () => active, leave)) return;
+    const next: Route = { name: 'run', sessionId: nextId++ };
+    // The same registration handshake used by App.openRun: the native
+    // notification queue must not release a second tap until layout mounts.
+    const mounted = registry.waitFor(next);
+    registry.invalidate(origin);
+    active = next;
+    opened.push(target.flowId);
+    await mounted;
+  });
+  await flush();
+
+  fake.emit(response('first-tap', routeData('a')));
+  fake.emit(response('second-tap', routeData('b')));
+  await flush();
+  assert.equal(prompts.length, 1);
+  (prompts.shift() as (approved: boolean) => void)(true);
+  await flush();
+  await flush();
+  assert.deepEqual(opened, ['a']);
+  assert.equal(prompts.length, 0, 'second tap must still await new screen registration');
+
+  registry.set(active, guard().request);
+  await flush();
+  await flush();
+  assert.equal(prompts.length, 1);
+  (prompts.shift() as (approved: boolean) => void)(true);
+  await flush();
+  assert.deepEqual(opened, ['a', 'b']);
+  registry.close(); // Release second target's outstanding mount wait on teardown.
+  stop();
 });

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createLeaveGuard, authorizeRouteExit, type LeaveDisposition } from './leaveGuard';
+import { createLeaveGuard, createRouteExitRegistry, authorizeRouteExit, type LeaveDisposition } from './leaveGuard';
 
 function confirmHarness(initial: LeaveDisposition) {
   let disposition = initial;
@@ -121,4 +121,53 @@ test('saving starts after a dirty alert opens: later approval cannot interrupt c
   pending.status('block');
   pending.decide(true);
   assert.equal(await requested, false);
+});
+
+test('route exit registration handshake waits for the next screen layout effect', async () => {
+  const registry = createRouteExitRegistry<{ sessionId: number }>();
+  const first = { sessionId: 1 };
+  const second = { sessionId: 2 };
+  const firstGuard = async () => true;
+  registry.set(first, firstGuard);
+  assert.equal(registry.get(first), firstGuard);
+
+  let settled = false;
+  const ready = registry.waitFor(second).then((value) => { settled = true; return value; });
+  await Promise.resolve();
+  assert.equal(settled, false, 'notification queue cannot run ahead of mounting Schedule');
+
+  registry.invalidate(first);
+  assert.equal(registry.get(first), null);
+  assert.equal(settled, false);
+  registry.set(second, async () => true);
+  assert.equal(await ready, true);
+  assert.equal(settled, true);
+
+  // Unmounting while awaiting registration must release queued responses.
+  const third = { sessionId: 3 };
+  const abandoned = registry.waitFor(third);
+  registry.invalidate(third);
+  assert.equal(await abandoned, false);
+  registry.close();
+  assert.equal(registry.get(second), null);
+  assert.equal(await registry.waitFor({ sessionId: 4 }), false);
+});
+
+test('cleanup/re-registration for the SAME route never incorrectly approves a waiting navigation', async () => {
+  const registry = createRouteExitRegistry<object>();
+  const route = {};
+  let called = 0;
+  const pending = registry.waitFor(route);
+  registry.set(route, async () => { called++; return false; });
+  assert.equal(await pending, true);
+  registry.set(route, null);
+  assert.equal(registry.get(route), null);
+  const next = registry.waitFor(route);
+  registry.set(route, async () => { called++; return false; });
+  assert.equal(await next, true);
+  const guard = registry.get(route);
+  assert.ok(guard);
+  assert.equal(await guard(), false);
+  assert.equal(called, 1);
+  registry.close();
 });

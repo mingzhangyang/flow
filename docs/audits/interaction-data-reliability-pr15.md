@@ -130,7 +130,11 @@ the originating route is still active after any async confirmation, re-resolves
 the catalog target, and only then closes the previous session. Notifications
 for the already-open definition do not replace its session. The notification
 response callback **awaits** `openRun`, retaining delivery order when several
-taps arrive while a native dialog is open.
+taps arrive while a native dialog is open. App's route-keyed exit registry
+also waits until the next scheduled page registers its guard during layout;
+consecutive notification taps cannot see an unmounted new Run and silently
+consume the second response. Old route invalidation or app unmount releases
+any outstanding registration wait.
 
 **Failure guarantees:** Cancel keeps the old session and failed-check-in retry
 reachable. Leaving intentionally does not cancel work already accepted by the
@@ -141,7 +145,7 @@ Alert callbacks and stale route identities cannot authorize another screen.
 save-start-after-dialog, stale route identity and dismissal cleanup. A
 notification-source integration contract covers pending write + canceled tap,
 failed write + canceled tap + successful retry, subsequent valid navigation,
-sequential taps waiting for the first confirmation and obsolete approvals.
+sequential taps waiting for the first confirmation, two approved taps across a new screen's mount handshake, and obsolete approvals.
 Native-device follow-up: exercise actual iOS/Android foreground notification
 tap and Alert dismissal; the web E2E environment has no native notification
 response adapter. No recurrence, medical, reminder or visual semantics changed.

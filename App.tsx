@@ -55,7 +55,7 @@ import { GenerateScreen } from './src/ui/GenerateScreen';
 import { useI18n } from './src/ui/i18n';
 import { dark, paletteFor } from './src/ui/theme';
 import { decideApplicationBackTarget } from './src/ui/applicationBack';
-import { authorizeRouteExit } from './src/ui/leaveGuard';
+import { authorizeRouteExit, createRouteExitRegistry } from './src/ui/leaveGuard';
 
 configureExpoNotificationPresentation();
 
@@ -93,43 +93,31 @@ export default function App() {
   // Delayed AI/import completions cannot navigate after Back, including a return
   // to another instance of the same screen name.
   const activeRoute = useRef<Screen>(screen);
+  const routeExits = useMemo(() => createRouteExitRegistry<Screen>(), []);
+  useEffect(() => () => routeExits.close(), [routeExits]);
   // Deletion spans catalog, runtime retirement and notification cleanup. Hold a
   // synchronous app-level navigation fence across the entire accepted mutation.
   const deletingRef = useRef(false);
   const [deleting, setDeleting] = useState(false);
   const navigate = useCallback((next: Screen): void => {
     if (deletingRef.current) return;
+    const previous = activeRoute.current;
     activeRoute.current = next;
+    if (previous !== next) routeExits.invalidate(previous);
     setScreen(next);
-  }, []);
-  const scheduleExit = useRef<{ sessionId: number; request: () => Promise<boolean> } | null>(null);
-  const registerScheduleExit = useCallback((sessionId: number, request: (() => Promise<boolean>) | null): void => {
-    if (request) scheduleExit.current = { sessionId, request };
-    else if (scheduleExit.current?.sessionId === sessionId) scheduleExit.current = null;
-  }, []);
-  const editorExit = useRef<{ route: Screen; request: () => Promise<boolean> } | null>(null);
-  const registerEditorExit = useCallback((route: Screen, request: (() => Promise<boolean>) | null): void => {
-    if (request) editorExit.current = { route, request };
-    else if (editorExit.current?.route === route) editorExit.current = null;
-  }, []);
+  }, [routeExits]);
 
-  // All external navigation uses the origin screen's one registered guard.
-  // Absence of a guard for an active protected screen must FAIL CLOSED; a
-  // notification cannot bypass a still-mounting Schedule/Editor.
+  // All external navigation uses the current screen's ONE registered guard.
+  // A protected screen with no mounted guard fails closed, never silently
+  // bypassing pending/failed writes or Editor dirty-discard.
   const authorizeLeave = useCallback((origin: Screen): Promise<boolean> => {
     if (activeRoute.current !== origin) return Promise.resolve(false);
-    let request: () => Promise<boolean> = async () => true;
-    if (origin.name === 'run' && origin.flow.topology === 'scheduled') {
-      const current = scheduleExit.current;
-      if (current?.sessionId !== origin.session.id) return Promise.resolve(false);
-      request = current.request;
-    } else if (origin.name === 'edit') {
-      const current = editorExit.current;
-      if (current?.route !== origin) return Promise.resolve(false);
-      request = current.request;
-    }
+    const protectedRoute = origin.name === 'edit' ||
+      (origin.name === 'run' && origin.flow.topology === 'scheduled');
+    const request = protectedRoute ? routeExits.get(origin) : async () => true;
+    if (!request) return Promise.resolve(false);
     return authorizeRouteExit(origin, () => activeRoute.current, request);
-  }, []);
+  }, [routeExits]);
   const [catalog, setCatalog] = useState<OwnedCatalogSnapshot>(LOADING_CATALOG);
   const catalogCoordinator = useMemo(() => createCatalogCoordinator(setCatalog), []);
 
@@ -189,8 +177,16 @@ export default function App() {
     const session = runtime.open(entry.definitionKey);
     currentSession.current?.close();
     currentSession.current = session;
-    navigate({ name: 'run', flow: entry.flow, session });
-  }, [authorizeLeave, catalogCoordinator, navigate, runtime]);
+    const next: Screen = { name: 'run', flow: entry.flow, session };
+    // The notification response source processes taps serially. Do not release
+    // its next queued tap until this new scheduled screen has registered its
+    // leave guard in useLayoutEffect; no second tap can fall through a mounting
+    // gap or be silently consumed without navigation.
+    const mounted = entry.flow.topology === 'scheduled'
+      ? routeExits.waitFor(next) : Promise.resolve(true);
+    navigate(next);
+    await mounted;
+  }, [authorizeLeave, catalogCoordinator, navigate, routeExits, runtime]);
 
   useEffect(() => () => currentSession.current?.close(), []);
 
@@ -388,7 +384,7 @@ export default function App() {
             flow={screen.flow}
             session={screen.session}
             notifier={notifier}
-            onRegisterExit={(request) => registerScheduleExit(screen.session.id, request)}
+            onRegisterExit={(request) => routeExits.set(screen, request)}
             onEnrollReminders={() => {
               if (!screen.session.isOpen()) return;
               refreshCatalogInBackground(async () => {
@@ -411,7 +407,7 @@ export default function App() {
           saveFlow={commitCatalogFlow}
           onSaved={() => home()}
           onCancel={() => { if (activeRoute.current === screen) home(); }}
-          onRegisterExit={(request) => registerEditorExit(screen, request)}
+          onRegisterExit={(request) => routeExits.set(screen, request)}
         />
       ) : screen.name === 'export' ? (
         <ExportScreen flow={screen.flow} sharer={systemSharer} onDone={home} />

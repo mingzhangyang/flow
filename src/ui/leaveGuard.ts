@@ -66,3 +66,59 @@ export async function authorizeRouteExit<Route>(
     return false;
   }
 }
+
+
+/**
+ * App-owned binding of live route identity to a screen's leave permission.
+ * Registration is signalled by a layout effect; notification delivery awaits
+ * it before handling another queued tap. No polling or timeout is needed.
+ */
+export interface RouteExitRegistry<Route extends object> {
+  get(route: Route): (() => Promise<boolean>) | null;
+  set(route: Route, request: (() => Promise<boolean>) | null): void;
+  waitFor(route: Route): Promise<boolean>;
+  invalidate(route: Route): void;
+  close(): void;
+}
+
+export function createRouteExitRegistry<Route extends object>(): RouteExitRegistry<Route> {
+  const handlers = new Map<Route, () => Promise<boolean>>();
+  const waiting = new Map<Route, Array<(ready: boolean) => void>>();
+  let closed = false;
+  const release = (route: Route, ready: boolean): void => {
+    const callbacks = waiting.get(route) ?? [];
+    waiting.delete(route);
+    callbacks.forEach((resolve) => resolve(ready));
+  };
+  return {
+    get: (route) => closed ? null : (handlers.get(route) ?? null),
+    set(route, request) {
+      if (closed) return;
+      if (request) {
+        handlers.set(route, request);
+        release(route, true);
+      } else {
+        // A rerender may temporarily unregister/re-register this route.
+        handlers.delete(route);
+      }
+    },
+    waitFor(route) {
+      if (closed) return Promise.resolve(false);
+      if (handlers.has(route)) return Promise.resolve(true);
+      return new Promise<boolean>((resolve) => {
+        const callbacks = waiting.get(route) ?? [];
+        callbacks.push(resolve);
+        waiting.set(route, callbacks);
+      });
+    },
+    invalidate(route) {
+      handlers.delete(route);
+      release(route, false);
+    },
+    close() {
+      closed = true;
+      handlers.clear();
+      for (const route of waiting.keys()) release(route, false);
+    },
+  };
+}
