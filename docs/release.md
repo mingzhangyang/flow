@@ -91,11 +91,14 @@ into Android resources must fail the build and be fixed in Expo config.
 After successful build, open the workflow run -> Artifacts -> download
 flow-android-standalone-test-apk. **GitHub downloads a ZIP, not an APK**:
 extract flow-android-standalone-test.apk before installing. The ZIP includes
-source-commit.txt with the exact build commit, SHA256SUMS and optional
-signature.txt. A Gradle test APK (possibly debug signed) is not a distributable
-EAS-signed preview. The EAS Android Preview APK workflow remains **manual**,
-reuses the existing keystore with --freeze-credentials, and must never create
-or replace signing credentials automatically.
+source-commit.txt with the exact build commit, SHA256SUMS and required
+signature.txt containing the successful `apksigner` verification output. The
+workflow fails before upload if `apksigner` is unavailable, verification fails,
+or APK Signature Scheme v2 is not reported as true. A Gradle test APK (possibly
+debug signed) is not a distributable EAS-signed preview. The EAS Android Preview
+APK workflow remains **manual**, reuses the existing keystore with
+--freeze-credentials, and must never create or replace signing credentials
+automatically.
 
 ### Release blockers and native device matrix
 

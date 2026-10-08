@@ -34,16 +34,19 @@ OperationScope, recurrence, notification planning, visuals or motion semantics.
 
 ## Evidence status
 
+Evidence below is recorded against PR head
+`720a9a2bfb307e135e13c0681174ae3cfd63613a`.
+
 | Gate | Result |
 |---|---|
-| npm run check | Awaiting current PR CI |
-| npm run test:e2e (+ PR #15 regressions) | Awaiting current PR CI |
-| 320/360/393/430 browser geometry, zh/zh-Hant/en, light/dark | Awaiting CI |
-| Browser screenshot smoke (six screens, 320/430, three languages) | Awaiting CI |
-| Screenshot artifact available | Awaiting CI |
-| expo install --check / expo-doctor | Awaiting Android workflow |
-| Native prebuild / lintRelease / assembleRelease | Awaiting Android workflow |
-| APK provenance, actual signature state | Awaiting Android workflow |
+| npm run check | Passed — [check run #294](https://github.com/mingzhangyang/flow/actions/runs/37753823013), `check` job |
+| npm run test:e2e (+ PR #15 regressions) | Passed, 42/42 — [check run #294](https://github.com/mingzhangyang/flow/actions/runs/37753823013), `e2e` job |
+| 320/360/393/430 browser geometry, zh/zh-Hant/en, light/dark | Passed — [check run #294](https://github.com/mingzhangyang/flow/actions/runs/37753823013), `e2e` job |
+| Browser screenshot smoke (six screens, 320/430, three languages) | Passed, 36/36 — [check run #294](https://github.com/mingzhangyang/flow/actions/runs/37753823013), `e2e` job |
+| Screenshot artifact available | `flow-mobile-screenshots`, artifact [#11539591163](https://github.com/mingzhangyang/flow/actions/runs/37753823013/artifacts/11539591163), digest `sha256:c972bac9128e23d36759cb01a13d0d53e3d893eab67a53f53049438fc4502cb3` |
+| expo install --check / expo-doctor | Passed — [Android run](https://github.com/mingzhangyang/flow/actions/runs/37753817953), `Build standalone test APK` job |
+| Native prebuild / lintRelease / assembleRelease | Passed — [Android run](https://github.com/mingzhangyang/flow/actions/runs/37753817953), `Build standalone test APK` job |
+| APK provenance, actual signature state | Passed — source commit `720a9a2bfb307e135e13c0681174ae3cfd63613a`, v2 verified; artifact `flow-android-standalone-test-apk` [#11539129063](https://github.com/mingzhangyang/flow/actions/runs/37753817953/artifacts/11539129063) includes `source-commit.txt`, `SHA256SUMS`, and required `signature.txt` |
 | Android/iOS real-device matrix | Unverified, no connected device |
 | Android exact alarms / Doze / OEM limitations | Unverified release risk |
 | Sequential Run optimistic save | Confirmed public release blocker — dedicated follow-up required |
