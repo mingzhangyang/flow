@@ -54,6 +54,9 @@ async function capture(
   await page.getByText(l.done, { exact: true }).click();
   await page.getByText(l.steep, { exact: true }).first().waitFor();
   await page.clock.fastForward(20000);
+  // The clock label proves the Run has projected the new step and elapsed time;
+  // a 'Steep' timeline label alone is not proof of runner readiness.
+  await page.getByText(/^03:4[01]$/, { exact: true }).first().waitFor();
   await screenshot(page, folder, '2-runner');
   await page.getByRole('button', { name: '‹ ' + l.back }).click();
 

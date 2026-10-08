@@ -21,7 +21,7 @@ test('owned Home card has four non-overlapping 44dp secondary actions and isolat
     await assertMobileGeometry(page, 'Home with owned toolbar');
 
     const actions = ['解读', '编辑', '分享', '删除'];
-    const boxes = [];
+    const boxes: Array<{ x: number; y: number; width: number; height: number }> = [];
     for (const action of actions) {
       const button = page.getByRole('button', { name: action + ': Owned mobile card' });
       const box = await button.boundingBox();
@@ -31,7 +31,8 @@ test('owned Home card has four non-overlapping 44dp secondary actions and isolat
     }
     for (let i = 0; i < boxes.length; i++) {
       for (let k = i + 1; k < boxes.length; k++) {
-        const a = boxes[i]!, b = boxes[k]!;
+        const a: { x: number; y: number; width: number; height: number } = boxes[i]!;
+        const b: { x: number; y: number; width: number; height: number } = boxes[k]!;
         const overlapW = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
         const overlapH = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
         assert.ok(overlapW <= 0.5 || overlapH <= 0.5, 'secondary hit areas overlap');

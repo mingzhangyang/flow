@@ -2,15 +2,23 @@
 import assert from 'node:assert/strict';
 import type { Page } from 'playwright-core';
 
+interface MobileGeometry {
+  viewport: number;
+  documentWidth: number;
+  undersized: string[];
+}
+
 export async function assertMobileGeometry(page: Page, scene: string): Promise<void> {
-  const result = await page.evaluate(() => {
+  // Pass browser code as a string: Node-only contract tests intentionally have
+  // no DOM lib, while this callback executes exclusively in the Playwright page.
+  const result = await page.evaluate(`(() => {
     const viewport = document.documentElement.clientWidth;
     const documentWidth = Math.max(
       document.documentElement.scrollWidth,
       document.body?.scrollWidth ?? 0,
     );
-    const undersized: string[] = [];
-    const buttons = [...document.querySelectorAll<HTMLElement>('[role="button"]')];
+    const undersized = [];
+    const buttons = [...document.querySelectorAll('[role="button"]')];
     for (const button of buttons) {
       const style = getComputedStyle(button);
       if (style.display === 'none' || style.visibility === 'hidden') continue;
@@ -27,7 +35,7 @@ export async function assertMobileGeometry(page: Page, scene: string): Promise<v
       }
     }
     return { viewport, documentWidth, undersized };
-  });
+  })()`) as MobileGeometry;
   assert.ok(
     result.documentWidth <= result.viewport + 1,
     scene + ': horizontal document overflow ' + result.documentWidth + ' > ' + result.viewport,

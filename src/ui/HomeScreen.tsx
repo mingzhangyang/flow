@@ -157,7 +157,8 @@ export function HomeScreen(props: {
     <View key={flow.id} style={[styles.card, { backgroundColor: tone.soft }]}>
       <View style={[styles.stripe, { backgroundColor: tone.accent }]} />
       <MotionPressable motion="card" accessibilityRole="button" accessibilityLabel={flow.title}
-        accessibilityState={{ disabled: props.deleting }} disabled={props.deleting} onPress={() => run(flow, own)}>
+        accessibilityState={{ disabled: props.deleting }} style={styles.cardMain}
+        disabled={props.deleting} onPress={() => run(flow, own)}>
         <View style={styles.cardTop}>
           <Text style={styles.cardTitle}>{flow.title}</Text>
           <View style={styles.badge}>
@@ -214,7 +215,7 @@ export function HomeScreen(props: {
         ) : null}
 
         {upNext ? (
-          <MotionPressable motion="card" accessibilityRole="button" accessibilityLabel={`${t.upNext}: ${upNext.occ.label}`} style={styles.next} testID="home-up-next"
+          <MotionPressable motion="card" accessibilityRole="button" accessibilityLabel={`${t.upNext}: ${fmtTimeOfDay(timeOfDay(upNext.occ.at, timeZoneForFlow(upNext.flow, systemTimeZone)))} · ${upNext.occ.label} · ${upNext.flow.title}`} style={styles.next} testID="home-up-next"
             disabled={props.deleting}
             onPress={() => run(upNext.flow, upNext.own)}>
             <Text style={styles.nextTime}>{fmtTimeOfDay(timeOfDay(upNext.occ.at, timeZoneForFlow(upNext.flow, systemTimeZone)))}</Text>
@@ -329,6 +330,7 @@ const createStyles = (c: Palette) => StyleSheet.create({
     padding: spacing.lg, gap: spacing.xs, overflow: 'hidden',
   },
   stripe: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, opacity: 0.8 },
+  cardMain: { minHeight: mobileHitTarget.standard.minHeight, justifyContent: 'center' },
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   cardTitle: { flex: 1, minWidth: 0, fontSize: type.title - 2, fontWeight: '700', color: c.text },
   badge: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },

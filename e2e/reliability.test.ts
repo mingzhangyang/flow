@@ -157,7 +157,7 @@ test('Import double-click does not commit the same flow twice', async () => {
   }));
   await page.getByText('确认导入', { exact: true }).dblclick();
   await expectText(page, 'Imported once');
-  await page.getByText('Imported once', { exact: true }).click();
+  await page.getByRole('button', { name: 'Imported once' }).click();
   await expectText(page, /开始|随时开始/);
   await page.getByRole('button', { name: '‹ 返回' }).click();
   await expectText(page, 'v1');
