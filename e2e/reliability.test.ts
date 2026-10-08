@@ -157,7 +157,14 @@ test('Import double-click does not commit the same flow twice', async () => {
   }));
   await page.getByText('确认导入', { exact: true }).dblclick();
   await expectText(page, 'Imported once');
-  await page.getByRole('button', { name: 'Imported once' }).click();
+  // A browser dblclick dispatches a second pointer activation after the first
+  // accepted submit may already have navigated Home. If it hits the underlying
+  // card, the result is already in Runner; either route must still have ONE
+  // durable imported version. Do not depend on title text uniqueness between
+  // Runner's header and its stage.
+  if (await page.getByText('开始', { exact: true }).count() === 0) {
+    await page.getByText('Imported once', { exact: true }).first().click();
+  }
   await expectText(page, /开始|随时开始/);
   await page.getByRole('button', { name: '‹ 返回' }).click();
   await expectText(page, 'v1');
