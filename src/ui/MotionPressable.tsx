@@ -9,6 +9,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import {
+  composePressTransform,
   motionDuration,
   motionEasing,
   motionSpecFor,
@@ -28,18 +29,14 @@ function styleWithPressScale(
   scale: Animated.Value,
 ): StyleProp<ViewStyle> {
   const flattened = StyleSheet.flatten(style) ?? {};
-  const callerTransform = flattened.transform;
-
-  // RN 0.86 also permits a string transform form. It cannot be safely merged
-  // with an Animated.Value transform array, so preserve it exactly rather than
-  // destroying caller styling. Array transforms keep the tactile scale.
-  if (typeof callerTransform === 'string') return flattened;
-
   return {
     ...flattened,
     // AnimatedPressable accepts Animated.Value at runtime, while Pressable's
     // style callback type still describes the non-animated ViewStyle shape.
-    transform: [...(callerTransform ?? []), { scale: scale as unknown as number }],
+    transform: composePressTransform(
+      flattened.transform,
+      scale as unknown as number,
+    ) as ViewStyle['transform'],
   };
 }
 

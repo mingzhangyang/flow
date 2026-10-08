@@ -70,3 +70,12 @@ export function shouldAnimateReveal(input: {
     ((input.firstRender && input.animateOnMount) || input.replayChanged)
   );
 }
+
+
+export function composePressTransform<T, S>(
+  callerTransform: string | readonly T[] | undefined,
+  scale: S,
+): string | Array<T | { scale: S }> {
+  if (typeof callerTransform === 'string') return callerTransform;
+  return [...(callerTransform ?? []), { scale }];
+}
