@@ -56,3 +56,17 @@ export function motionSpecFor(reduceMotion: boolean, semantic: SemanticMotion): 
   if (!reduceMotion) return fullMotion[semantic];
   return { duration: motionDuration.instant, scale: 1, opacity: 1, translateY: 0 };
 }
+
+export function shouldAnimateReveal(input: {
+  active: boolean;
+  reducedMotion: boolean;
+  firstRender: boolean;
+  animateOnMount: boolean;
+  replayChanged: boolean;
+}): boolean {
+  return (
+    input.active &&
+    !input.reducedMotion &&
+    ((input.firstRender && input.animateOnMount) || input.replayChanged)
+  );
+}

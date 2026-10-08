@@ -2,8 +2,11 @@ import { useEffect, useRef } from 'react';
 import {
   Animated,
   Pressable,
+  StyleSheet,
   type GestureResponderEvent,
   type PressableProps,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
 import {
   motionDuration,
@@ -20,10 +23,22 @@ export type MotionPressableProps = PressableProps & {
   motion?: PressMotion;
 };
 
+function styleWithPressScale(
+  style: StyleProp<ViewStyle>,
+  scale: Animated.Value,
+): Animated.WithAnimatedValue<ViewStyle> {
+  const flattened = StyleSheet.flatten(style) ?? {};
+  return {
+    ...flattened,
+    transform: [...(flattened.transform ?? []), { scale }],
+  } as Animated.WithAnimatedValue<ViewStyle>;
+}
+
 /**
  * Shared tactile press feedback. It preserves the Pressable contract and only
  * projects interaction state into a visual transform; layout/touch geometry is
- * unchanged.
+ * unchanged. Existing caller transforms are composed with the motion scale,
+ * never replaced.
  */
 export function MotionPressable({
   motion = 'compact',
@@ -93,8 +108,8 @@ export function MotionPressable({
       onPressOut={handlePressOut}
       style={
         typeof style === 'function'
-          ? (state) => [style(state), { transform: [{ scale }] }]
-          : [style, { transform: [{ scale }] }]
+          ? (state) => styleWithPressScale(style(state), scale)
+          : styleWithPressScale(style, scale)
       }
     />
   );
