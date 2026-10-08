@@ -5,7 +5,11 @@ import { type Flow, type Run, type RunEvent, type RunEventType } from '../domain
 import { assertDefinitionKey } from '../domain/definitionIdentity';
 import { serializeFlow, deserializeFlow, coerceFlow } from '../domain/serialize';
 import { reduce } from '../runtime/engine';
-import { type CheckIn, isCheckIn } from '../runtime/adherence';
+import { type CheckIn } from '../runtime/adherence';
+import {
+  applyLocalCheckIn, mergeBackupCheckInState, readStoredCheckIns,
+  replaceLocalCheckIns, type CheckInChange, type StoredCheckIns,
+} from './checkInState';
 import { type KVStore } from './kv';
 import { setStringRecordValue } from './stringRecord';
 
@@ -60,6 +64,10 @@ export interface Storage {
   listRuns(): Promise<Run[]>;
   deleteRun(id: string): Promise<void>;
 
+  /** The authoritative dose intent commits atomically with its undo tombstone. */
+  changeCheckIn(definitionKey: string, change: CheckInChange): Promise<CheckIn[]>;
+  /** Restoration merges against both the visible log and durable local undo intents. */
+  mergeBackupCheckIns(definitionKey: string, incoming: CheckIn[]): Promise<CheckIn[]>;
   /** definitionKey 是唯一主键。 */
   saveCheckIns(definitionKey: string, log: CheckIn[]): Promise<void>;
   loadCheckIns(definitionKey: string): Promise<CheckIn[]>;
@@ -72,6 +80,23 @@ export interface Storage {
 }
 
 export function createStorage(kv: KVStore): Storage {
+  // KVStore has no compare-and-swap. Serialize every check-in read/write/delete for a key
+  // so an import/backup cannot bypass RuntimeSession's queue and overwrite a newer dose.
+  const checkInLanes = new Map<string, Promise<void>>();
+  const inCheckInLane = <T>(key: string, work: () => Promise<T>): Promise<T> => {
+    // The asynchronous Storage API must reject (not throw synchronously) for
+    // invalid definition identities, preserving callers' failure contracts.
+    try { assertDefinitionKey(key); }
+    catch (error) { return Promise.reject(error); }
+    const result = (checkInLanes.get(key) ?? Promise.resolve()).then(work);
+    const settled = result.then(() => {}, () => {});
+    checkInLanes.set(key, settled);
+    void settled.then(() => {
+      if (checkInLanes.get(key) === settled) checkInLanes.delete(key);
+    });
+    return result;
+  };
+
   async function loadFlow(id: string): Promise<Flow | null> {
     const text = await kv.getItem(FLOW + id);
     if (text === null) return null;
@@ -84,16 +109,26 @@ export function createStorage(kv: KVStore): Storage {
     await kv.setItem(FLOW + flow.id, serializeFlow(flow));
   }
 
-  async function loadCheckIns(definitionKey: string): Promise<CheckIn[]> {
+  async function readCheckInState(definitionKey: string): Promise<StoredCheckIns> {
     assertDefinitionKey(definitionKey);
-    const text = await kv.getItem(CHECKINS + definitionKey);
-    if (text === null) return [];
-    const raw = JSON.parse(text) as unknown;
-    if (!Array.isArray(raw)) throw new Error('invalid persisted check-in log');
-    // Individual malformed entries are independently unusable and may be skipped; a malformed
-    // container/JSON is a read failure and must never be reinterpreted as an empty user log.
-    return raw.filter(isCheckIn);
+    // The sole public-v1 on-disk shape is the envelope. Reject pre-release
+    // array data and malformed undo metadata rather than rewriting it away.
+    return readStoredCheckIns(await kv.getItem(CHECKINS + definitionKey));
   }
+
+  async function readCheckIns(definitionKey: string): Promise<CheckIn[]> {
+    return (await readCheckInState(definitionKey)).log;
+  }
+
+  const writeCheckInState = (
+    definitionKey: string,
+    change: (state: StoredCheckIns) => StoredCheckIns,
+  ): Promise<CheckIn[]> => inCheckInLane(definitionKey, async () => {
+    const next = change(await readCheckInState(definitionKey));
+    // One acknowledgement covers both a record and its undo identity.
+    await kv.setItem(CHECKINS + definitionKey, JSON.stringify(next));
+    return next.log;
+  });
 
   return {
     saveFlow,
@@ -150,14 +185,23 @@ export function createStorage(kv: KVStore): Storage {
       await kv.removeItem(RUN + id);
     },
 
-    async saveCheckIns(definitionKey, log) {
-      assertDefinitionKey(definitionKey);
-      await kv.setItem(CHECKINS + definitionKey, JSON.stringify(log));
+    changeCheckIn(definitionKey, change) {
+      return writeCheckInState(definitionKey, (state) => applyLocalCheckIn(state, change));
     },
-    loadCheckIns,
-    async deleteCheckIns(definitionKey) {
-      assertDefinitionKey(definitionKey);
-      await kv.removeItem(CHECKINS + definitionKey);
+    mergeBackupCheckIns(definitionKey, incoming) {
+      return writeCheckInState(definitionKey, (state) => mergeBackupCheckInState(state, incoming));
+    },
+    saveCheckIns(definitionKey, log) {
+      // Deliberate LOCAL whole-log replacement; removed visible doses leave
+      // undo identities, unlike backup import. A newer record clears its undo.
+      return writeCheckInState(definitionKey, (state) => replaceLocalCheckIns(state, log))
+        .then(() => {});
+    },
+    loadCheckIns(definitionKey) {
+      return inCheckInLane(definitionKey, () => readCheckIns(definitionKey));
+    },
+    deleteCheckIns(definitionKey) {
+      return inCheckInLane(definitionKey, () => kv.removeItem(CHECKINS + definitionKey));
     },
     async listAllCheckIns() {
       const keys = (await kv.keys()).filter((k) => k.startsWith(CHECKINS));
@@ -165,7 +209,7 @@ export function createStorage(kv: KVStore): Storage {
       for (const key of keys) {
         const definitionKey = key.slice(CHECKINS.length);
         assertDefinitionKey(definitionKey);
-        const log = await loadCheckIns(definitionKey);
+        const log = await inCheckInLane(definitionKey, () => readCheckIns(definitionKey));
         if (log.length > 0) setStringRecordValue(all, definitionKey, log);
       }
       return all;

@@ -109,7 +109,7 @@ export function parseBackup(text: string): Backup | null {
 export function mergeCheckIns(local: CheckIn[], incoming: CheckIn[]): CheckIn[] {
   const merged = [...local];
   for (const entry of incoming) {
-    if (!local.some((c) => c.nodeId === entry.nodeId && c.scheduledFor === entry.scheduledFor)) {
+    if (!merged.some((c) => c.nodeId === entry.nodeId && c.scheduledFor === entry.scheduledFor)) {
       merged.push(entry);
     }
   }

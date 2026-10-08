@@ -1,7 +1,7 @@
 // Flow 编辑器。编辑“可以复杂”——这里可增删步骤、改类型、填 rationale（“为什么”，C2）。
 // 保存时经 library 提交为新修订（版本递增、旧版本入历史）。
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Keyboard,
@@ -28,6 +28,7 @@ import { paletteFor, type Palette, spacing, radius } from './theme';
 import { HeaderBackButton, HeaderSideSpacer, mobileControlSize } from './mobileControls';
 import { MotionPressable } from './MotionPressable';
 import { MotionReveal } from './MotionReveal';
+import { createLeaveGuard } from './leaveGuard';
 import {
   editorDurationInputKey,
   editorEveryNDaysInputKey,
@@ -130,7 +131,8 @@ interface EditorScreenProps {
   saveFlow: (flow: Flow) => Promise<Flow>;
   onSaved: (flow: Flow) => void;
   onCancel: () => void;
-  onBackHandlerChange?: (handler: (() => void) | null) => void;
+  /** App-owned navigation consults this gate for Back and notification routes. */
+  onRegisterExit?: (request: (() => Promise<boolean>) | null) => void;
 }
 
 export function EditorScreen(props: EditorScreenProps) {
@@ -185,30 +187,41 @@ export function EditorScreen(props: EditorScreenProps) {
     setAuthoringState((current) => applyEditorDurationPreset(current, nodeId, durationSec));
   }, []);
 
-  const requestExit = useCallback((): void => {
-    // Once a commit starts, navigation is temporarily owned by the save flow.
-    // This prevents Back/discard from racing the eventual onSaved transition.
-    if (savingRef.current) return;
-
-    if (!isDirty) {
-      props.onCancel();
-      return;
-    }
-
-    Alert.alert(
-      t.editorDiscardTitle,
-      t.editorDiscardMessage,
-      [
-        { text: t.editorContinueEditing, style: 'cancel' },
-        { text: t.editorDiscardChanges, style: 'destructive', onPress: props.onCancel },
-      ],
-    );
-  }, [isDirty, props.onCancel, t]);
-
+  // A single screen-owned guard provides the existing dirty-discard confirmation
+  // to Header Back, Android Back, and foreground notification navigation.
+  const dirtyRef = useRef(isDirty);
+  dirtyRef.current = isDirty;
+  const promptLeave = useRef<(done: (approved: boolean) => void) => void>(() => {});
+  promptLeave.current = (done) => Alert.alert(
+    t.editorDiscardTitle, t.editorDiscardMessage,
+    [
+      { text: t.editorContinueEditing, style: 'cancel', onPress: () => done(false) },
+      { text: t.editorDiscardChanges, style: 'destructive', onPress: () => done(true) },
+    ],
+    { cancelable: true, onDismiss: () => done(false) },
+  );
+  const leaveGuard = useMemo(() => createLeaveGuard({
+    disposition: () => savingRef.current ? 'block' : dirtyRef.current ? 'confirm' : 'allow',
+    prompt: (done) => promptLeave.current(done),
+  }), []);
+  const alive = useRef(true);
   useEffect(() => {
-    props.onBackHandlerChange?.(requestExit);
-    return () => props.onBackHandlerChange?.(null);
-  }, [props.onBackHandlerChange, requestExit]);
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      leaveGuard.cancel();
+    };
+  }, [leaveGuard]);
+  const requestExit = useCallback((): void => {
+    void leaveGuard.request().then((approved) => {
+      if (approved && alive.current) props.onCancel();
+    });
+  }, [leaveGuard, props.onCancel]);
+
+  useLayoutEffect(() => {
+    props.onRegisterExit?.(leaveGuard.request);
+    return () => props.onRegisterExit?.(null);
+  }, [leaveGuard, props.onRegisterExit]);
 
   const patch = (id: string, p: Partial<FlowNode>): void => setFlow((f) => updateNode(f, id, p));
   const changeKind = (id: string, kind: NodeKind): void => {

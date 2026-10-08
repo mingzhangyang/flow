@@ -7,6 +7,31 @@ import type { ModelProviderConfig } from './providers';
 
 const KEY = 'ai-model-config';
 
+export interface ModelConfigSession {
+  load(): Promise<ModelProviderConfig | null>;
+  save(config: ModelProviderConfig): Promise<void>;
+}
+
+/**
+ * Application-owned queue: initial SecureStore read/legacy migration must finish
+ * before any newly entered settings can be persisted. Closing an individual
+ * Generate screen cannot cancel an accepted migration or reorder its successor.
+ */
+export function createModelConfigSession(
+  store: SecretStore, legacy?: SecretStore,
+): ModelConfigSession {
+  let tail: Promise<void> = Promise.resolve();
+  const enqueue = <T>(work: () => Promise<T>): Promise<T> => {
+    const result = tail.then(work);
+    tail = result.then(() => {}, () => {});
+    return result;
+  };
+  return {
+    load: () => enqueue(() => loadModelConfig(store, legacy)),
+    save: (config) => enqueue(() => saveModelConfig(store, config)),
+  };
+}
+
 export async function saveModelConfig(store: SecretStore, config: ModelProviderConfig): Promise<void> {
   await store.setItem(KEY, JSON.stringify(config));
 }

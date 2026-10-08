@@ -127,16 +127,55 @@ test('打卡容器损坏 fail closed；坏条目可单独丢弃', async () => {
   const kv = createInMemoryKV();
   const s = createStorage(kv);
   const brokenKey = catalogDefinitionKey('x', 'owned');
-  const notArrayKey = catalogDefinitionKey('not-array', 'owned');
+  const malformedEnvelopeKey = catalogDefinitionKey('malformed-envelope', 'owned');
+  const preReleaseArrayKey = catalogDefinitionKey('pre-release-array', 'owned');
   const goodKey = catalogDefinitionKey('y', 'owned');
   await kv.setItem('checkins:v1:' + brokenKey, '{not json');
   await assert.rejects(() => s.loadCheckIns(brokenKey));
-  await kv.setItem('checkins:v1:' + notArrayKey, '{}');
-  await assert.rejects(() => s.loadCheckIns(notArrayKey));
-
+  await kv.setItem('checkins:v1:' + malformedEnvelopeKey, '{}');
+  await assert.rejects(() => s.loadCheckIns(malformedEnvelopeKey));
   const good = { nodeId: 'a', scheduledFor: 1, taken: true, at: 2 };
-  await kv.setItem('checkins:v1:' + goodKey, JSON.stringify([good, { nodeId: 42 }, null]));
+  const rawArray = JSON.stringify([good]);
+  await kv.setItem('checkins:v1:' + preReleaseArrayKey, rawArray);
+  await assert.rejects(() => s.loadCheckIns(preReleaseArrayKey), /invalid persisted check-in log/);
+  // Reject the pre-release shape without trying to "fix" or replace the record.
+  await assert.rejects(() => s.changeCheckIn(preReleaseArrayKey, { kind: 'undo', nodeId: 'a', scheduledFor: 1 }));
+  await assert.rejects(() => s.mergeBackupCheckIns(preReleaseArrayKey, [good]));
+  assert.equal(await kv.getItem('checkins:v1:' + preReleaseArrayKey), rawArray);
+
+  await kv.setItem('checkins:v1:' + goodKey, JSON.stringify({
+    v: 1, log: [good, { nodeId: 42 }, null], undone: [],
+  }));
   assert.deepEqual(await s.loadCheckIns(goodKey), [good]);
+});
+
+test('damaged undo envelope is a read/write/restore/export error, not an empty check-in log', async () => {
+  const kv = createInMemoryKV();
+  const storage = createStorage(kv);
+  const key = catalogDefinitionKey('medical', 'owned');
+  const original = JSON.stringify({
+    v: 1, log: [], undone: [{ nodeId: 19, scheduledFor: 1000 }],
+  });
+  await kv.setItem('checkins:v1:' + key, original);
+  const dose = { nodeId: 'morning', scheduledFor: 1000, taken: true, at: 1001 };
+  await assert.rejects(() => storage.loadCheckIns(key));
+  await assert.rejects(() => storage.changeCheckIn(key, { kind: 'record', entry: dose }));
+  await assert.rejects(() => storage.mergeBackupCheckIns(key, [dose]));
+  await assert.rejects(() => storage.listAllCheckIns());
+  assert.equal(await kv.getItem('checkins:v1:' + key), original);
+});
+
+test('local bulk replace cannot clear an undo fence through a stale empty snapshot', async () => {
+  const kv = createInMemoryKV();
+  const storage = createStorage(kv);
+  const key = catalogDefinitionKey('medical', 'owned');
+  const dose = { nodeId: 'morning', scheduledFor: 1000, taken: true, at: 1001 };
+  await storage.saveCheckIns(key, [dose]);
+  await storage.saveCheckIns(key, []);
+  assert.deepEqual(await storage.mergeBackupCheckIns(key, [dose]), []);
+  const updated = { ...dose, at: 1002 };
+  await storage.saveCheckIns(key, [updated]);
+  assert.deepEqual(await storage.mergeBackupCheckIns(key, [dose]), [updated]);
 });
 
 test('历史修订容器损坏 fail closed；坏快照跳过、其余保留', async () => {

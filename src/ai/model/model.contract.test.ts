@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 
 import { createInMemoryKV } from '../../storage/kv';
 import { createModelPort, type ModelProviderConfig } from './providers';
-import { loadModelConfig, saveModelConfig } from './settings';
+import { loadModelConfig, saveModelConfig, createModelConfigSession } from './settings';
 import type { FetchLike } from './port';
 
 /** 记录请求并返回固定响应的假 fetch。 */
@@ -155,4 +155,49 @@ test('模型配置：从旧位置一次性搬迁到安全存储', async () => {
   // 安全存储已有配置时优先，不再看旧位置
   await legacy.setItem('ai-model-config', JSON.stringify({ ...openaiCfg, model: 'other' }));
   assert.deepEqual(await loadModelConfig(secure, legacy), openaiCfg);
+});
+
+test('model-config session serializes migration before user-edited save across screens', async () => {
+  const secure = createInMemoryKV();
+  const legacy = createInMemoryKV();
+  await saveModelConfig(legacy, anthropicCfg);
+  let release!: () => void;
+  let entered!: () => void;
+  const waiting = new Promise<void>((done) => { release = done; });
+  const started = new Promise<void>((done) => { entered = done; });
+  const slowLegacy = {
+    ...legacy,
+    async getItem(key: string) {
+      entered();
+      await waiting;
+      return legacy.getItem(key);
+    },
+  };
+  const session = createModelConfigSession(secure, slowLegacy);
+  const firstLoad = session.load();
+  await started;
+  // User submits new settings before old migration completes, and navigates
+  // away. The accepted save must still prevail over the migration.
+  const newSettings = session.save(openaiCfg);
+  release();
+  assert.deepEqual(await firstLoad, anthropicCfg);
+  await newSettings;
+  assert.deepEqual(await loadModelConfig(secure), openaiCfg);
+  assert.equal(await legacy.getItem('ai-model-config'), null);
+});
+
+test('model-config session continues a newer save after initial SecureStore read fails', async () => {
+  const secure = createInMemoryKV();
+  let fail = true;
+  const flakySecure = {
+    ...secure,
+    async getItem(key: string) {
+      if (fail) { fail = false; throw new Error('locked keychain'); }
+      return secure.getItem(key);
+    },
+  };
+  const session = createModelConfigSession(flakySecure);
+  await assert.rejects(() => session.load(), /locked keychain/);
+  await session.save(openaiCfg);
+  assert.deepEqual(await session.load(), openaiCfg);
 });

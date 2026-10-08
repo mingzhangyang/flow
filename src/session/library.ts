@@ -4,7 +4,7 @@ import { type Flow } from '../domain/types';
 import { type Instant } from '../runtime/clock';
 import { deserializeFlow } from '../domain/serialize';
 import { type Storage } from '../storage/storage';
-import { type Backup, buildBackup, mergeCheckIns } from '../storage/backup';
+import { type Backup, buildBackup } from '../storage/backup';
 import { setStringRecordValue } from '../storage/stringRecord';
 
 export interface Library {
@@ -119,8 +119,9 @@ export function createLibrary(storage: Storage): Library {
       }
 
       for (const [definitionKey, incoming] of Object.entries(backup.checkIns)) {
-        const local = await storage.loadCheckIns(definitionKey);
-        await storage.saveCheckIns(definitionKey, mergeCheckIns(local, incoming));
+        // Storage owns the durable local undo intents as well as visible records.
+        // A restore can add unrecorded doses, but never resurrect an undone dose.
+        await storage.mergeBackupCheckIns(definitionKey, incoming);
       }
       return backup.flows.length;
     },

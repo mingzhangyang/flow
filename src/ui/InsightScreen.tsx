@@ -6,6 +6,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { View, Text, ScrollView, StyleSheet, useColorScheme } from 'react-native';
 import { type Flow } from '../domain/types';
 import { type Library } from '../session/library';
+import { createOperationScope } from '../session/operationScope';
 import { type FlowCatalogSource } from '../session/flowCatalog';
 import { explain } from '../ai/explain';
 import { analyze, type Finding } from '../ai/analyze';
@@ -28,6 +29,10 @@ export function InsightScreen(props: {
   const styles = useMemo(() => createStyles(c), [c]);
   const { locale, t } = useI18n();
   const [previous, setPrevious] = useState<Flow | null>(null);
+  const [restoring, setRestoring] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const operation = useMemo(() => createOperationScope(), []);
+  useEffect(() => () => operation.close(), [operation]);
 
   useEffect(() => {
     let alive = true;
@@ -36,14 +41,14 @@ export function InsightScreen(props: {
     // same open ID must never inherit or restore orphaned owned revisions.
     if (props.source !== 'owned') return () => { alive = false; };
 
-    props.library
-      .revisions(flow.id)
-      .then((revs) => alive && setPrevious(revs.length > 0 ? revs[revs.length - 1] : null))
-      .catch(() => {});
+    operation.latest(() => props.library.revisions(flow.id), {
+      success(revs) { if (alive) setPrevious(revs.length > 0 ? revs[revs.length - 1] : null); },
+      failure(error) { if (alive) setError(String(error)); },
+    });
     return () => {
       alive = false;
     };
-  }, [flow, props.library, props.source]);
+  }, [flow, operation, props.library, props.source]);
 
   const lines = explain(flow, locale);
   const findings = analyze(flow, locale);
@@ -51,13 +56,22 @@ export function InsightScreen(props: {
 
   const restore = (): void => {
     if (props.source !== 'owned' || !previous) return;
-    props.restoreFlow(previous).then(props.onChanged).catch(() => {});
+    const accepted = operation.submit(() => props.restoreFlow(previous), {
+      success: () => props.onChanged(),
+      failure(error) { setError(String(error)); },
+      settled() { setRestoring(false); },
+    });
+    if (accepted) {
+      setRestoring(true);
+      setError(null);
+    }
   };
 
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <HeaderBackButton accessibilityLabel={t.back} color={c.primary} onPress={props.onExit} />
+        <HeaderBackButton accessibilityLabel={t.back} color={c.primary}
+          onPress={() => { operation.close(); props.onExit(); }} />
         <Text style={styles.title} numberOfLines={1}>{t.insightTitle}</Text>
         <HeaderSideSpacer />
       </View>
@@ -96,13 +110,14 @@ export function InsightScreen(props: {
               ) : (
                 changes.map((c, i) => <Text key={i} style={styles.change}>{describeChange(c, locale)}</Text>)
               )}
-              <MotionPressable style={styles.restore} onPress={restore}>
+              <MotionPressable style={styles.restore} disabled={restoring} onPress={restore}>
                 <Text style={styles.restoreText}>{t.insightRestore}</Text>
               </MotionPressable>
             </View>
           </>
         ) : null}
 
+        {error ? <Text style={{ color: c.danger }}>{error}</Text> : null}
         <Text style={styles.note}>{t.insightNote}</Text>
       </ScrollView>
     </View>

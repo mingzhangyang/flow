@@ -3,25 +3,25 @@
 // 「现在」游标标出此刻在一天中的位置。各剂量相互独立，漏一颗不阻塞其它（C5）。
 // 遵守 E6：描述性、非处方性，显式免责。
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import {
-  View, Text, ScrollView, Pressable, StyleSheet, Animated, AppState, Linking, useColorScheme,
+  View, Text, ScrollView, Pressable, StyleSheet, Animated, AppState, Linking, Alert, useColorScheme,
 } from 'react-native';
 import { type Flow } from '../domain/types';
 import { type Notifier, type ReminderAvailability } from '../notifications/notifier';
 import { timeOfDay, MS_PER_DAY } from '../runtime/clock';
+import { calendarDateAt } from '../runtime/calendarDate';
 import { systemTimeZone } from '../runtime/systemTimeZone';
 import { timeZoneForFlow } from '../runtime/ianaTimeZone';
 import { describeRecurrence } from '../runtime/recurrence';
 import {
   todayDoses,
-  recordCheckIn,
   checkIn,
   type CheckIn,
   type DoseState,
   type DoseStatus,
 } from '../runtime/adherence';
-import { type RuntimeSession } from '../session/definitionRuntime';
+import { type RuntimeSession, type CheckInChange } from '../session/definitionRuntime';
 import { nextEvents } from '../runtime/engine';
 import { fmtTimeOfDay } from './format';
 import { useI18n } from './i18n';
@@ -29,6 +29,7 @@ import { type Strings } from './strings';
 import { paletteFor, type Palette, spacing, radius, type, mono } from './theme';
 import { HeaderBackButton, HeaderSideSpacer, mobileControlSize } from './mobileControls';
 import { MotionPressable } from './MotionPressable';
+import { createLeaveGuard } from './leaveGuard';
 import { motionScale, motionSpring, useReducedMotion } from './motion';
 
 const GRACE_MINUTES = 120;
@@ -105,6 +106,8 @@ export function ScheduleScreen(props: {
   /** 打开即视为为这条 flow 开启提醒；实际登记与多日重排由 App 层编排。 */
   onEnrollReminders: () => void;
   onExit: () => void;
+  /** App navigation, Android Back and notification replacement share this permission. */
+  onRegisterExit?: (request: (() => Promise<boolean>) | null) => void;
 }) {
   const { flow, session } = props;
   const c = paletteFor(useColorScheme());
@@ -116,6 +119,14 @@ export function ScheduleScreen(props: {
   const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
   const [checkInsStatus, setCheckInsStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [checkInsAttempt, setCheckInsAttempt] = useState(0);
+  const [writeStatus, setWriteStatus] = useState<'idle' | 'pending' | 'failed'>('idle');
+  const inFlight = useRef(false);
+  const pendingIntent = useRef<CheckInChange | null>(null);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; };
+  }, []);
   const [now, setNow] = useState<number>(() => Date.now());
   // 提醒可用状态：被拒/不支持时必须让用户看见（E6 诚实原则——静默失效会伤人）。
   // 打开与回到前台时各查一次（从系统设置回来后横幅要能消失）。
@@ -158,6 +169,25 @@ export function ScheduleScreen(props: {
     return () => clearInterval(id);
   }, []);
 
+  // Foreground recovery reads from the same serialized session lane. This
+  // cannot overtake a pending write or reconstruct success from stale UI state.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      setNow(Date.now());
+      if (pendingIntent.current) return; // Failed intent stays visible until retried.
+      void session.loadCheckIns()
+        .then((log) => {
+          if (alive.current) {
+            setCheckIns(log);
+            setCheckInsStatus('ready');
+          }
+        })
+        .catch(() => { if (alive.current) setCheckInsStatus('error'); });
+    });
+    return () => sub.remove();
+  }, [session]);
+
   const checkInsReady = checkInsStatus === 'ready';
   const doses = checkInsReady ? todayDoses(flow, checkIns, now, tz, GRACE_MINUTES) : [];
   // 节律在 flow 级：今天不在节律上时给出下一次的日子
@@ -169,20 +199,70 @@ export function ScheduleScreen(props: {
   const cursorIndex = doses.findIndex((d) => timeOfDay(d.scheduledFor, tz) > nowMinutes);
   const cursorAt = cursorIndex === -1 ? doses.length : cursorIndex;
 
-  const persist = (next: CheckIn[]): void => {
-    setCheckIns(next);
-    if (!checkInsReady) return;
-    session.saveCheckIns(next).catch(() => {});
+  // Confirmed-write UI: the dose does not become "taken" until the storage lane
+  // acknowledges the update. A failed intent stays retryable with its original timestamp.
+  const submitIntent = (intent: CheckInChange): void => {
+    if (inFlight.current || !checkInsReady) return;
+    inFlight.current = true;
+    pendingIntent.current = intent;
+    setWriteStatus('pending');
+    void session.changeCheckIn(intent)
+      .then((committed) => {
+        pendingIntent.current = null;
+        if (!alive.current) return;
+        setCheckIns(committed);
+        setWriteStatus('idle');
+      })
+      .catch(async () => {
+        // A rejected storage call may have applied the write before throwing.
+        // Re-read the authoritative log; never derive rollback from a stale UI array.
+        try {
+          const persisted = await session.loadCheckIns();
+          if (alive.current) {
+            setCheckIns(persisted);
+            setCheckInsStatus('ready');
+          }
+        } catch {
+          if (alive.current) setCheckInsStatus('error');
+        }
+        if (alive.current) setWriteStatus('failed');
+      })
+      .finally(() => { inFlight.current = false; });
   };
-  const take = (d: DoseState): void =>
-    persist(recordCheckIn(checkIns, checkIn(d.nodeId, d.scheduledFor, true, Date.now())));
-  const undo = (d: DoseState): void =>
-    persist(checkIns.filter((c) => !(c.nodeId === d.nodeId && c.scheduledFor === d.scheduledFor)));
+  const take = (d: DoseState): void => submitIntent({
+    kind: 'record', entry: checkIn(d.nodeId, d.scheduledFor, true, Date.now()),
+  });
+  const undo = (d: DoseState): void => submitIntent({
+    kind: 'undo', nodeId: d.nodeId, scheduledFor: d.scheduledFor,
+  });
+  // All exits (header, Android Back, notification replacement) ask this same
+  // screen-owned guard. Only App may perform the eventual route transition.
+  const confirmLeave = useRef<(done: (approved: boolean) => void) => void>(() => {});
+  confirmLeave.current = (done) => Alert.alert(t.scheduleUnsavedTitle, t.scheduleUnsavedExit, [
+    { text: t.cancel, style: 'cancel', onPress: () => done(false) },
+    { text: t.scheduleLeaveAnyway, style: 'destructive', onPress: () => done(true) },
+  ], { cancelable: true, onDismiss: () => done(false) });
+  const leaveGuard = useMemo(() => createLeaveGuard({
+    // Check the synchronous intent refs, not the lagging rendered status.
+    disposition: () => pendingIntent.current || inFlight.current ? 'confirm' : 'allow',
+    prompt: (done) => confirmLeave.current(done),
+  }), []);
+
+  const requestExit = (): void => {
+    void leaveGuard.request().then((approved) => {
+      if (approved && alive.current && session.isOpen()) props.onExit();
+    });
+  };
+  useLayoutEffect(() => {
+    props.onRegisterExit?.(leaveGuard.request);
+    return () => props.onRegisterExit?.(null);
+  }, [leaveGuard, props.onRegisterExit]);
+  useEffect(() => () => leaveGuard.cancel(), [leaveGuard]);
 
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <HeaderBackButton accessibilityLabel={t.back} color={c.primary} onPress={props.onExit} />
+        <HeaderBackButton accessibilityLabel={t.back} color={c.primary} onPress={requestExit} />
         <Text style={styles.title} numberOfLines={1}>{flow.title}</Text>
         <HeaderSideSpacer />
       </View>
@@ -207,6 +287,22 @@ export function ScheduleScreen(props: {
           </View>
         ) : null}
 
+        {writeStatus !== 'idle' ? (
+          <View style={styles.storageError}>
+            <Text style={styles.storageErrorText}>
+              {writeStatus === 'pending' ? t.scheduleSaving : t.scheduleSaveFailed}
+            </Text>
+            {writeStatus === 'failed' && pendingIntent.current ? (
+              <MotionPressable
+                style={styles.retryButton}
+                disabled={!checkInsReady}
+                onPress={() => { if (pendingIntent.current) submitIntent(pendingIntent.current); }}
+              >
+                <Text style={styles.retryText}>{t.retry}</Text>
+              </MotionPressable>
+            ) : null}
+          </View>
+        ) : null}
         {checkInsReady ? (
         <View style={styles.card}>
           {doses.length === 0 ? (
@@ -214,8 +310,8 @@ export function ScheduleScreen(props: {
               {t.scheduleOffDay(
                 nextOcc
                   ? {
-                      month: new Date(nextOcc.at).getMonth() + 1,
-                      day: new Date(nextOcc.at).getDate(),
+                      month: calendarDateAt(nextOcc.at, tz).month,
+                      day: calendarDateAt(nextOcc.at, tz).day,
                       time: fmtTimeOfDay(timeOfDay(nextOcc.at, tz)),
                     }
                   : null,
@@ -247,12 +343,17 @@ export function ScheduleScreen(props: {
                   <MotionPressable
                     accessibilityRole="button"
                     style={styles.undoButton}
+                    disabled={writeStatus !== 'idle'}
+                    accessibilityState={{ disabled: writeStatus !== 'idle' }}
                     onPress={() => undo(d)}
                   >
                     <Text style={styles.undo}>{t.undo}</Text>
                   </MotionPressable>
                 ) : (
-                  <MotionPressable accessibilityRole="button" style={styles.take} onPress={() => take(d)}>
+                  <MotionPressable accessibilityRole="button" style={styles.take}
+                    disabled={writeStatus !== 'idle'}
+                    accessibilityState={{ disabled: writeStatus !== 'idle' }}
+                    onPress={() => take(d)}>
                     <Text style={styles.takeText}>{t.checkIn}</Text>
                   </MotionPressable>
                 )}

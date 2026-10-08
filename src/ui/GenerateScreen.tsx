@@ -5,8 +5,8 @@
 import { useEffect, useState, useMemo } from 'react';
 import { View, Text, TextInput, ScrollView, StyleSheet, useColorScheme } from 'react-native';
 import { type Flow } from '../domain/types';
-import { type SecretStore } from '../storage/kv';
 import { generateFlow } from '../ai/generate';
+import { createOperationScope } from '../session/operationScope';
 import {
   createModelPort,
   OPENAI_COMPATIBLE_PRESETS,
@@ -14,7 +14,7 @@ import {
   type ProviderKind,
 } from '../ai/model/providers';
 import { ANTHROPIC_DEFAULT_MODEL } from '../ai/model/anthropic';
-import { loadModelConfig, saveModelConfig } from '../ai/model/settings';
+import { type ModelConfigSession } from '../ai/model/settings';
 import { type FetchLike } from '../ai/model/port';
 import { localDayIndex } from '../runtime/clock';
 import { systemTimeZone } from '../runtime/systemTimeZone';
@@ -27,10 +27,8 @@ const platformFetch: FetchLike = (url, init) =>
   fetch(url, init).then((r) => ({ ok: r.ok, status: r.status, text: () => r.text() }));
 
 export function GenerateScreen(props: {
-  /** 机密存储（原生 = Keychain/Keystore；Web 回落 localStorage）。 */
-  secrets: SecretStore;
-  /** 旧版明文位置；读取时一次性搬迁（可省略）。 */
-  legacySecrets?: SecretStore;
+  /** Application-owned queue: migrated settings reads precede newer user saves. */
+  modelConfig: ModelConfigSession;
   newFlowId: () => string;
   onDraft: (flow: Flow) => void;
   onCancel: () => void;
@@ -45,20 +43,26 @@ export function GenerateScreen(props: {
   const [baseUrl, setBaseUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const operation = useMemo(() => createOperationScope(), []);
+  useEffect(() => () => operation.close(), [operation]);
 
   useEffect(() => {
-    loadModelConfig(props.secrets, props.legacySecrets)
-      .then((saved) => {
+    operation.latest(() => props.modelConfig.load(), {
+      success(saved) {
         if (!saved) return;
         setProvider(saved.provider);
         setApiKey(saved.apiKey);
         setModel(saved.model);
         setBaseUrl(saved.provider === 'openai-compatible' ? saved.baseUrl : (saved.baseUrl ?? ''));
-      })
-      .catch(() => {});
-  }, [props.secrets, props.legacySecrets]);
+      },
+      failure(error) {
+        setError(String(error));
+      },
+    });
+  }, [operation, props.modelConfig]);
 
   const switchProvider = (next: ProviderKind): void => {
+    operation.invalidateLatest(); // User input now owns the form; discard late defaults.
     setProvider(next);
     setError(null);
     if (next === 'anthropic') {
@@ -80,28 +84,40 @@ export function GenerateScreen(props: {
     (provider === 'anthropic' ? apiKey.trim().length > 0 : baseUrl.trim().length > 0);
 
   const doGenerate = (): void => {
-    if (!ready || busy) return;
-    setBusy(true);
-    setError(null);
+    if (!ready) return;
     const cfg = config();
-    saveModelConfig(props.secrets, cfg).catch(() => {});
-    generateFlow(createModelPort(cfg, platformFetch, locale), description, {
+    const request = {
       id: props.newFlowId(),
       locale,
-      todayDayIndex: localDayIndex(Date.now(), systemTimeZone), // everyNDays 的起算日（E3 显式注入）
-    })
-      .then((res) => {
+      todayDayIndex: localDayIndex(Date.now(), systemTimeZone),
+    };
+    const accepted = operation.submit(async () => {
+      // A failed secure-storage write must not silently claim the settings were saved.
+      await props.modelConfig.save(cfg);
+      return generateFlow(createModelPort(cfg, platformFetch, locale), description, request);
+    }, {
+      success(res) {
         if (res.ok) props.onDraft(res.flow);
         else setError(res.error);
-      })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setBusy(false));
+      },
+      failure(error) {
+        setError(error instanceof Error ? error.message : String(error));
+      },
+      settled() {
+        setBusy(false);
+      },
+    });
+    if (accepted) {
+      setBusy(true);
+      setError(null);
+    }
   };
 
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <HeaderBackButton accessibilityLabel={t.back} color={c.primary} onPress={props.onCancel} />
+        <HeaderBackButton accessibilityLabel={t.back} color={c.primary}
+          onPress={() => { operation.close(); props.onCancel(); }} />
         <Text style={styles.title} numberOfLines={1}>{t.generateTitle}</Text>
         <HeaderSideSpacer />
       </View>
@@ -138,7 +154,7 @@ export function GenerateScreen(props: {
             <TextInput
               style={styles.field}
               value={baseUrl}
-              onChangeText={setBaseUrl}
+              onChangeText={(value) => { operation.invalidateLatest(); setBaseUrl(value); setError(null); }}
               placeholder="https://api.deepseek.com/v1"
               placeholderTextColor={c.textFaint}
               autoCapitalize="none"
@@ -146,7 +162,7 @@ export function GenerateScreen(props: {
             />
             <View style={styles.rowWrap}>
               {OPENAI_COMPATIBLE_PRESETS.map((preset) => (
-                <MotionPressable key={preset.label} style={styles.presetChip} onPress={() => setBaseUrl(preset.baseUrl)}>
+                <MotionPressable key={preset.label} style={styles.presetChip} onPress={() => { operation.invalidateLatest(); setBaseUrl(preset.baseUrl); setError(null); }}>
                   <Text style={styles.presetText}>{preset.label}</Text>
                 </MotionPressable>
               ))}
@@ -158,7 +174,7 @@ export function GenerateScreen(props: {
         <TextInput
           style={styles.field}
           value={model}
-          onChangeText={setModel}
+          onChangeText={(value) => { operation.invalidateLatest(); setModel(value); setError(null); }}
           placeholder={provider === 'anthropic' ? ANTHROPIC_DEFAULT_MODEL : t.generateModelPlaceholder}
           placeholderTextColor={c.textFaint}
           autoCapitalize="none"
@@ -169,7 +185,7 @@ export function GenerateScreen(props: {
         <TextInput
           style={styles.field}
           value={apiKey}
-          onChangeText={setApiKey}
+          onChangeText={(value) => { operation.invalidateLatest(); setApiKey(value); setError(null); }}
           placeholder={provider === 'openai-compatible' ? t.generateKeyOptional : 'sk-...'}
           placeholderTextColor={c.textFaint}
           secureTextEntry
