@@ -87,6 +87,8 @@ export interface OpenAppOptions {
   deviceScaleFactor?: number;
   /** Accessibility preference injected before the app loads. */
   reducedMotion?: 'reduce' | 'no-preference';
+  /** Simulated platform faults / test-only adapters, injected before app module loads. */
+  initScripts?: string[];
 }
 
 export interface E2E {
@@ -115,6 +117,7 @@ export async function startE2E(): Promise<E2E> {
         ...(opts?.reducedMotion ? { reducedMotion: opts.reducedMotion } : {}),
       });
       contexts.push(context);
+      for (const script of opts?.initScripts ?? []) await context.addInitScript({ content: script });
       const page = await context.newPage();
       await page.clock.install({ time: FIXED_NOW });
       await page.goto(baseUrl);

@@ -25,6 +25,8 @@ const zh = {
   backupOutcomeShared: '已唤起分享，把备份存到文件或发给自己 ✓',
   backupOutcomeCopied: '已复制备份数据，请粘贴保存到安全的地方 ✓',
   backupOutcomeUnavailable: '此环境不支持分享或剪贴板',
+  backupFailed: '备份失败，请重试',
+  deleteFailed: '删除未完成，请重试',
   catalogUnavailable: '本地数据暂时无法读取；为避免打开错误的流程，已暂停显示流程库。',
   retry: '重试',
   sectionMine: '我的',
@@ -77,6 +79,11 @@ const zh = {
   scheduleNotifSettings: '去系统设置开启 ›',
   scheduleNotifWeb: '网页版不支持定时提醒；请在手机 App 上使用提醒功能。',
   scheduleStorageUnavailable: '打卡记录暂时无法读取。为避免覆盖已有记录，已暂停打卡。',
+  scheduleSaving: '正在保存打卡记录，尚未确认成功…',
+  scheduleSaveFailed: '打卡未确认保存。记录可能未写入，请重试；不会把未确认记录显示为成功。',
+  scheduleUnsavedTitle: '打卡尚未确认保存',
+  scheduleUnsavedExit: '离开后无法在此重试未确认的打卡。已接收的写入仍会完成，但可能失败。',
+  scheduleLeaveAnyway: '仍然离开',
 
   // 编辑器
   editorTitle: '编辑',
@@ -142,6 +149,7 @@ const zh = {
   importHint: '把朋友分享的全文（或 flow 的 JSON、整库备份）粘贴到下面，导入到你的库。',
   importNotFound: '没有找到可导入的 flow 数据，请粘贴分享全文或 JSON',
   importConfirm: '确认导入',
+  importBusy: '导入中…',
   importBackupDetected: (n: number): string =>
     `检测到整库备份：${n} 条 flow。历史修订与打卡记录将一并恢复，不覆盖本机数据。`,
 
@@ -193,6 +201,8 @@ const zhHant: Strings = {
   backupOutcomeShared: '已喚起分享，把備份存到檔案或傳給自己 ✓',
   backupOutcomeCopied: '已複製備份資料，請貼上保存到安全的地方 ✓',
   backupOutcomeUnavailable: '此環境不支援分享或剪貼簿',
+  backupFailed: '備份失敗，請重試',
+  deleteFailed: '刪除未完成，請重試',
   catalogUnavailable: '本機資料暫時無法讀取；為避免開啟錯誤的流程，已暫停顯示流程庫。',
   retry: '重試',
   sectionMine: '我的',
@@ -240,6 +250,11 @@ const zhHant: Strings = {
   scheduleNotifSettings: '去系統設定開啟 ›',
   scheduleNotifWeb: '網頁版不支援定時提醒；請在手機 App 上使用提醒功能。',
   scheduleStorageUnavailable: '打卡記錄暫時無法讀取。為避免覆蓋既有記錄，已暫停打卡。',
+  scheduleSaving: '正在儲存打卡記錄，尚未確認成功…',
+  scheduleSaveFailed: '打卡尚未確認儲存。記錄可能未寫入，請重試；不會把未確認記錄顯示為成功。',
+  scheduleUnsavedTitle: '打卡尚未確認儲存',
+  scheduleUnsavedExit: '離開後無法在此重試未確認的打卡。已接受的寫入仍會完成，但可能失敗。',
+  scheduleLeaveAnyway: '仍然離開',
 
   editorTitle: '編輯',
   editorDiscardTitle: '放棄未儲存的變更？',
@@ -301,6 +316,7 @@ const zhHant: Strings = {
   importHint: '把朋友分享的全文（或 flow 的 JSON、整庫備份）貼到下面，匯入到你的庫。',
   importNotFound: '沒有找到可匯入的 flow 資料，請貼上分享全文或 JSON',
   importConfirm: '確認匯入',
+  importBusy: '匯入中…',
   importBackupDetected: (n) => `偵測到整庫備份：${n} 條 flow。歷史修訂與打卡記錄將一併恢復，不覆蓋本機資料。`,
 
   insightTitle: 'AI 助手',
@@ -346,6 +362,8 @@ const en: Strings = {
   backupOutcomeShared: 'Share sheet opened — save the backup to a file or send it to yourself ✓',
   backupOutcomeCopied: 'Backup copied — paste it somewhere safe ✓',
   backupOutcomeUnavailable: 'Sharing and clipboard are unavailable here',
+  backupFailed: 'Backup failed; retry',
+  deleteFailed: 'Deletion did not finish; retry',
   catalogUnavailable: 'Local data is temporarily unavailable. The catalog is hidden to avoid opening the wrong flow.',
   retry: 'Retry',
   sectionMine: 'MINE',
@@ -396,6 +414,11 @@ const en: Strings = {
   scheduleNotifSettings: 'Enable in system settings ›',
   scheduleNotifWeb: 'The web version cannot deliver scheduled reminders — use the mobile app for reminders.',
   scheduleStorageUnavailable: 'Check-in history could not be read. Check-ins are paused to avoid overwriting saved records.',
+  scheduleSaving: 'Saving check-in — not confirmed yet…',
+  scheduleSaveFailed: 'Check-in not confirmed saved. The write may have failed; retry before relying on this record.',
+  scheduleUnsavedTitle: 'Check-in not confirmed saved',
+  scheduleUnsavedExit: 'Leaving prevents retrying this check-in here. Accepted writes will finish but may still fail.',
+  scheduleLeaveAnyway: 'Leave anyway',
 
   editorTitle: 'Edit',
   editorDiscardTitle: 'Discard unsaved changes?',
@@ -459,6 +482,7 @@ const en: Strings = {
   importHint: "Paste a friend's shared text (or a flow's JSON, or a full backup) below to add it to your library.",
   importNotFound: 'No importable flow data found — paste the full share text or JSON',
   importConfirm: 'Import',
+  importBusy: 'Importing…',
   importBackupDetected: (n) =>
     `Full backup detected: ${n} ${n === 1 ? 'flow' : 'flows'}. History and check-ins will be restored without overwriting local data.`,
 

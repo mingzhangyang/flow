@@ -7,6 +7,7 @@ import { View, Text, TextInput, ScrollView, StyleSheet, useColorScheme } from 'r
 import { type Flow } from '../domain/types';
 import { type SecretStore } from '../storage/kv';
 import { generateFlow } from '../ai/generate';
+import { createOperationScope } from '../session/operationScope';
 import {
   createModelPort,
   OPENAI_COMPATIBLE_PRESETS,
@@ -45,18 +46,23 @@ export function GenerateScreen(props: {
   const [baseUrl, setBaseUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const operation = useMemo(() => createOperationScope(), []);
+  useEffect(() => () => operation.close(), [operation]);
 
   useEffect(() => {
-    loadModelConfig(props.secrets, props.legacySecrets)
-      .then((saved) => {
+    operation.latest(() => loadModelConfig(props.secrets, props.legacySecrets), {
+      success(saved) {
         if (!saved) return;
         setProvider(saved.provider);
         setApiKey(saved.apiKey);
         setModel(saved.model);
         setBaseUrl(saved.provider === 'openai-compatible' ? saved.baseUrl : (saved.baseUrl ?? ''));
-      })
-      .catch(() => {});
-  }, [props.secrets, props.legacySecrets]);
+      },
+      failure(error) {
+        setError(String(error));
+      },
+    });
+  }, [operation, props.secrets, props.legacySecrets]);
 
   const switchProvider = (next: ProviderKind): void => {
     setProvider(next);
@@ -80,28 +86,40 @@ export function GenerateScreen(props: {
     (provider === 'anthropic' ? apiKey.trim().length > 0 : baseUrl.trim().length > 0);
 
   const doGenerate = (): void => {
-    if (!ready || busy) return;
-    setBusy(true);
-    setError(null);
+    if (!ready) return;
     const cfg = config();
-    saveModelConfig(props.secrets, cfg).catch(() => {});
-    generateFlow(createModelPort(cfg, platformFetch, locale), description, {
+    const request = {
       id: props.newFlowId(),
       locale,
-      todayDayIndex: localDayIndex(Date.now(), systemTimeZone), // everyNDays 的起算日（E3 显式注入）
-    })
-      .then((res) => {
+      todayDayIndex: localDayIndex(Date.now(), systemTimeZone),
+    };
+    const accepted = operation.submit(async () => {
+      // A failed secure-storage write must not silently claim the settings were saved.
+      await saveModelConfig(props.secrets, cfg);
+      return generateFlow(createModelPort(cfg, platformFetch, locale), description, request);
+    }, {
+      success(res) {
         if (res.ok) props.onDraft(res.flow);
         else setError(res.error);
-      })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setBusy(false));
+      },
+      failure(error) {
+        setError(error instanceof Error ? error.message : String(error));
+      },
+      settled() {
+        setBusy(false);
+      },
+    });
+    if (accepted) {
+      setBusy(true);
+      setError(null);
+    }
   };
 
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <HeaderBackButton accessibilityLabel={t.back} color={c.primary} onPress={props.onCancel} />
+        <HeaderBackButton accessibilityLabel={t.back} color={c.primary}
+          onPress={() => { operation.close(); props.onCancel(); }} />
         <Text style={styles.title} numberOfLines={1}>{t.generateTitle}</Text>
         <HeaderSideSpacer />
       </View>

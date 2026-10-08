@@ -84,6 +84,18 @@ export default function App() {
   const notificationResponses = useMemo(() => createExpoNotificationResponseSource(), []);
 
   const [screen, setScreen] = useState<Screen>({ name: 'home' });
+  // Imperative route ownership is updated BEFORE React commits its next render.
+  // Delayed AI/import completions cannot navigate after Back, including a return
+  // to another instance of the same screen name.
+  const activeRoute = useRef<Screen>(screen);
+  const navigate = useCallback((next: Screen): void => {
+    activeRoute.current = next;
+    setScreen(next);
+  }, []);
+  const scheduleBackHandler = useRef<(() => void) | null>(null);
+  const registerScheduleBackHandler = useCallback((handler: (() => void) | null): void => {
+    scheduleBackHandler.current = handler;
+  }, []);
   const editorBackHandler = useRef<(() => void) | null>(null);
   const registerEditorBackHandler = useCallback((handler: (() => void) | null): void => {
     editorBackHandler.current = handler;
@@ -94,8 +106,8 @@ export default function App() {
   const home = useCallback((): void => {
     currentSession.current?.close();
     currentSession.current = null;
-    setScreen({ name: 'home' });
-  }, []);
+    navigate({ name: 'home' });
+  }, [navigate]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -107,6 +119,8 @@ export default function App() {
 
       if (screen.name === 'edit') {
         (editorBackHandler.current ?? home)();
+      } else if (screen.name === 'run' && screen.flow.topology === 'scheduled') {
+        (scheduleBackHandler.current ?? home)();
       } else {
         // Every other non-Home screen already exits through home(), including
         // Runner/Schedule where home() closes the active RuntimeSession first.
@@ -126,8 +140,8 @@ export default function App() {
     currentSession.current?.close();
     const session = runtime.open(entry.definitionKey);
     currentSession.current = session;
-    setScreen({ name: 'run', flow: entry.flow, session });
-  }, [catalogCoordinator, runtime]);
+    navigate({ name: 'run', flow: entry.flow, session });
+  }, [catalogCoordinator, navigate, runtime]);
 
   useEffect(() => () => currentSession.current?.close(), []);
 
@@ -299,13 +313,13 @@ export default function App() {
           onRetry={refreshCatalogInBackground}
           onRun={(flow, definitionKey) =>
             openRun(flow.id, definitionKey)}
-          onNew={(topology: Topology) => setScreen({ name: 'edit', flow: createFlow({ id: newFlowId(), title: '', topology }) })}
-          onEdit={(flow) => setScreen({ name: 'edit', flow })}
-          onExport={(flow) => setScreen({ name: 'export', flow })}
-          onInsight={(flow, source) => setScreen({ name: 'insight', flow, source })}
+          onNew={(topology: Topology) => navigate({ name: 'edit', flow: createFlow({ id: newFlowId(), title: '', topology }) })}
+          onEdit={(flow) => navigate({ name: 'edit', flow })}
+          onExport={(flow) => navigate({ name: 'export', flow })}
+          onInsight={(flow, source) => navigate({ name: 'insight', flow, source })}
           onDelete={deleteOwnedFlow}
-          onImport={() => setScreen({ name: 'import' })}
-          onGenerate={() => setScreen({ name: 'generate' })}
+          onImport={() => navigate({ name: 'import' })}
+          onGenerate={() => navigate({ name: 'generate' })}
         />
       ) : screen.name === 'run' ? (
         screen.flow.topology === 'scheduled' ? (
@@ -314,6 +328,7 @@ export default function App() {
             flow={screen.flow}
             session={screen.session}
             notifier={notifier}
+            onRegisterExit={registerScheduleBackHandler}
             onEnrollReminders={() => {
               if (!screen.session.isOpen()) return;
               refreshCatalogInBackground(async () => {
@@ -347,21 +362,27 @@ export default function App() {
           library={library}
           restoreFlow={restoreCatalogRevision}
           onExit={home}
-          onChanged={home}
+          onChanged={() => {
+            if (activeRoute.current === screen) home();
+          }}
         />
       ) : screen.name === 'generate' ? (
         <GenerateScreen
           secrets={secureKV}
           legacySecrets={asyncStorageKV}
           newFlowId={newFlowId}
-          onDraft={(flow) => setScreen({ name: 'edit', flow })}
+          onDraft={(flow) => {
+            if (activeRoute.current === screen) navigate({ name: 'edit', flow });
+          }}
           onCancel={home}
         />
       ) : (
         <ImportScreen
           importFlow={importCatalogFlow}
           importBackup={importCatalogBackup}
-          onImported={home}
+          onImported={() => {
+            if (activeRoute.current === screen) home();
+          }}
           onCancel={home}
         />
       )}

@@ -5,12 +5,17 @@
 import { type Flow, type Run } from '../domain/types';
 import { assertDefinitionKey, assertDefinitionKeyForFlow } from '../domain/definitionIdentity';
 import { type Locale } from '../i18n/locale';
-import { type CheckIn } from '../runtime/adherence';
+import { type CheckIn, recordCheckIn } from '../runtime/adherence';
 import { type Storage } from '../storage/storage';
 import { type Notifier } from '../notifications/notifier';
 import { planSequentialReminder } from '../notifications/plan';
 import { sequentialReminderIdsForRun } from '../notifications/notificationIdentity';
 import { activeRunId, loadRunForDefinition } from './runPersistence';
+
+/** A stable user intent, never an entire UI-owned snapshot of a check-in table. */
+export type CheckInChange =
+  | { kind: 'record'; entry: CheckIn }
+  | { kind: 'undo'; nodeId: string; scheduledFor: number };
 
 export interface RuntimeSession {
   readonly id: number;
@@ -20,7 +25,8 @@ export interface RuntimeSession {
   loadRun(flow: Flow): Promise<Run>;
   saveRun(run: Run, locale: Locale): Promise<void>;
   loadCheckIns(): Promise<CheckIn[]>;
-  saveCheckIns(log: CheckIn[]): Promise<void>;
+  /** Returns the confirmed persisted log; failures reject and do not claim commit. */
+  changeCheckIn(change: CheckInChange): Promise<CheckIn[]>;
 }
 
 export interface DefinitionRuntime {
@@ -38,7 +44,7 @@ interface Lane {
 }
 
 export function createDefinitionRuntime(deps: {
-  storage: Pick<Storage, 'loadRun' | 'saveRun' | 'loadCheckIns' | 'saveCheckIns'>;
+  storage: Pick<Storage, 'loadRun' | 'saveRun' | 'loadCheckIns' | 'modifyCheckIns'>;
   notifier: Pick<Notifier, 'cancel' | 'schedule'>;
   now: () => number;
 }): DefinitionRuntime {
@@ -88,7 +94,13 @@ export function createDefinitionRuntime(deps: {
           if (reminder) await deps.notifier.schedule([reminder]);
         }),
         loadCheckIns: () => submit(() => deps.storage.loadCheckIns(definitionKey)),
-        saveCheckIns: (log) => submit(() => deps.storage.saveCheckIns(definitionKey, log)),
+        changeCheckIn: (change) => submit(() => deps.storage.modifyCheckIns(
+          definitionKey,
+          (log) => change.kind === 'record'
+            ? recordCheckIn(log, change.entry)
+            : log.filter((entry) =>
+              entry.nodeId !== change.nodeId || entry.scheduledFor !== change.scheduledFor),
+        )),
       };
     },
     retire(definitionKey, cleanup) {

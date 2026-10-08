@@ -17,6 +17,8 @@ const flow: Flow = {
 const key = definitionKey({ flowId: flow.id, source: 'owned' });
 const run: Run = { id: activeRunId(key), flow, events: [{ type: 'started', at: 0 }] };
 const log = [{ nodeId: 'step', scheduledFor: 0, taken: true, at: 1 }];
+const record = { kind: 'record' as const, entry: log[0] };
+const undo = { kind: 'undo' as const, nodeId: log[0].nodeId, scheduledFor: log[0].scheduledFor };
 const journal = `txn:delete-owned-flow:v1:${JSON.stringify(['flow', flow.id])}`;
 
 function deferred() {
@@ -25,7 +27,7 @@ function deferred() {
   return { promise, resolve };
 }
 
-for (const stage of ['saveRun', 'saveCheckIns', 'cancel', 'schedule'] as const) {
+for (const stage of ['saveRun', 'changeCheckIn', 'cancel', 'schedule'] as const) {
   test(`deletion drains delayed ${stage} before clearing state, notifications and journal`, async () => {
     const kv = createInMemoryKV();
     const storage = createStorage(kv);
@@ -51,12 +53,12 @@ for (const stage of ['saveRun', 'saveCheckIns', 'cancel', 'schedule'] as const) 
       storage: {
         ...storage,
         async saveRun(value) { await pause('saveRun'); await storage.saveRun(value); },
-        async saveCheckIns(id, value) { await pause('saveCheckIns'); await storage.saveCheckIns(id, value); },
+        async modifyCheckIns(id, change) { await pause('changeCheckIn'); return storage.modifyCheckIns(id, change); },
       },
       notifier, now: () => 1000,
     });
     const session = runtime.open(key);
-    const writing = stage === 'saveCheckIns' ? session.saveCheckIns(log) : session.saveRun(run, 'en');
+    const writing = stage === 'changeCheckIn' ? session.changeCheckIn(record) : session.saveRun(run, 'en');
     await entered.promise;
     session.close(); // The user exits while the platform operation is still pending.
     const deleting = deleteOwnedFlowDurably(flow, key, {
@@ -73,7 +75,7 @@ for (const stage of ['saveRun', 'saveCheckIns', 'cancel', 'schedule'] as const) 
     assert.notEqual(await kv.getItem(journal), null);
     assert.deepEqual(await storage.loadFlow(flow.id), flow); // Cleanup has not overtaken the write.
     assert.throws(() => runtime.open(key), /pending/);
-    await assert.rejects(() => session.saveCheckIns(log), /closed/);
+    await assert.rejects(() => session.changeCheckIn(record), /closed/);
     await assert.rejects(() => session.saveRun(run, 'en'), /closed/);
 
     release.resolve();
@@ -88,8 +90,8 @@ for (const stage of ['saveRun', 'saveCheckIns', 'cancel', 'schedule'] as const) 
     await storage.saveFlow(flow);
     const recreated = runtime.open(key);
     assert.notEqual(recreated.id, session.id);
-    await recreated.saveCheckIns(log);
-    await assert.rejects(() => session.saveCheckIns([]), /closed/);
+    await recreated.changeCheckIn(record);
+    await assert.rejects(() => session.changeCheckIn(undo), /closed/);
     assert.deepEqual(await recreated.loadCheckIns(), log);
   });
 }
@@ -102,20 +104,20 @@ test('exit drains accepted FIFO saves; a reopened screen reads after those saves
   const runtime = createDefinitionRuntime({
     storage: {
       ...storage,
-      async saveCheckIns(id, value) {
+      async modifyCheckIns(id, change) {
         if (++calls === 1) { entered.resolve(); await release.promise; }
-        await storage.saveCheckIns(id, value);
+        return storage.modifyCheckIns(id, change);
       },
     }, notifier: noopNotifier, now: () => 1000,
   });
   const old = runtime.open(key);
-  const first = old.saveCheckIns(log);
+  const first = old.changeCheckIn(record);
   await entered.promise;
-  const second = old.saveCheckIns([]);
+  const second = old.changeCheckIn(undo);
   old.close();
   const current = runtime.open(key);
   const reading = current.loadCheckIns();
-  await assert.rejects(() => old.saveCheckIns(log), /closed/);
+  await assert.rejects(() => old.changeCheckIn(record), /closed/);
   release.resolve();
   await Promise.all([first, second]);
   assert.deepEqual(await reading, []);
@@ -163,8 +165,8 @@ test('retiring owned state leaves a same-ID example session usable', async () =>
   const example = runtime.open(exampleKey);
   const owned = runtime.open(key);
   await runtime.retire(key, async () => {});
-  await assert.rejects(() => owned.saveCheckIns(log), /closed/);
-  await example.saveCheckIns(log);
+  await assert.rejects(() => owned.changeCheckIn(record), /closed/);
+  await example.changeCheckIn(record);
   assert.deepEqual(await storage.loadCheckIns(exampleKey), log);
 });
 

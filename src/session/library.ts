@@ -119,8 +119,9 @@ export function createLibrary(storage: Storage): Library {
       }
 
       for (const [definitionKey, incoming] of Object.entries(backup.checkIns)) {
-        const local = await storage.loadCheckIns(definitionKey);
-        await storage.saveCheckIns(definitionKey, mergeCheckIns(local, incoming));
+        // The same storage lane as live check-ins. A concurrent restore must merge
+        // against the latest committed state, not a stale snapshot from before a tap.
+        await storage.modifyCheckIns(definitionKey, (local) => mergeCheckIns(local, incoming));
       }
       return backup.flows.length;
     },

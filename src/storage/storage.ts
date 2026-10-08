@@ -60,6 +60,9 @@ export interface Storage {
   listRuns(): Promise<Run[]>;
   deleteRun(id: string): Promise<void>;
 
+  /** One serialized read/modify/write for each definition, shared by UI and backup restore.
+   * The resolved log is a confirmed persistent snapshot; a rejected write is never success. */
+  modifyCheckIns(definitionKey: string, change: (persisted: CheckIn[]) => CheckIn[]): Promise<CheckIn[]>;
   /** definitionKey 是唯一主键。 */
   saveCheckIns(definitionKey: string, log: CheckIn[]): Promise<void>;
   loadCheckIns(definitionKey: string): Promise<CheckIn[]>;
@@ -72,6 +75,20 @@ export interface Storage {
 }
 
 export function createStorage(kv: KVStore): Storage {
+  // KVStore has no compare-and-swap. Serialize every check-in read/write/delete for a key
+  // so an import/backup cannot bypass RuntimeSession's queue and overwrite a newer dose.
+  const checkInLanes = new Map<string, Promise<void>>();
+  const inCheckInLane = <T>(key: string, work: () => Promise<T>): Promise<T> => {
+    assertDefinitionKey(key);
+    const result = (checkInLanes.get(key) ?? Promise.resolve()).then(work);
+    const settled = result.then(() => {}, () => {});
+    checkInLanes.set(key, settled);
+    void settled.then(() => {
+      if (checkInLanes.get(key) === settled) checkInLanes.delete(key);
+    });
+    return result;
+  };
+
   async function loadFlow(id: string): Promise<Flow | null> {
     const text = await kv.getItem(FLOW + id);
     if (text === null) return null;
@@ -84,7 +101,7 @@ export function createStorage(kv: KVStore): Storage {
     await kv.setItem(FLOW + flow.id, serializeFlow(flow));
   }
 
-  async function loadCheckIns(definitionKey: string): Promise<CheckIn[]> {
+  async function readCheckIns(definitionKey: string): Promise<CheckIn[]> {
     assertDefinitionKey(definitionKey);
     const text = await kv.getItem(CHECKINS + definitionKey);
     if (text === null) return [];
@@ -150,14 +167,21 @@ export function createStorage(kv: KVStore): Storage {
       await kv.removeItem(RUN + id);
     },
 
-    async saveCheckIns(definitionKey, log) {
-      assertDefinitionKey(definitionKey);
-      await kv.setItem(CHECKINS + definitionKey, JSON.stringify(log));
+    modifyCheckIns(definitionKey, change) {
+      return inCheckInLane(definitionKey, async () => {
+        const next = change(await readCheckIns(definitionKey));
+        await kv.setItem(CHECKINS + definitionKey, JSON.stringify(next));
+        return next;
+      });
     },
-    loadCheckIns,
-    async deleteCheckIns(definitionKey) {
-      assertDefinitionKey(definitionKey);
-      await kv.removeItem(CHECKINS + definitionKey);
+    saveCheckIns(definitionKey, log) {
+      return inCheckInLane(definitionKey, () => kv.setItem(CHECKINS + definitionKey, JSON.stringify(log)));
+    },
+    loadCheckIns(definitionKey) {
+      return inCheckInLane(definitionKey, () => readCheckIns(definitionKey));
+    },
+    deleteCheckIns(definitionKey) {
+      return inCheckInLane(definitionKey, () => kv.removeItem(CHECKINS + definitionKey));
     },
     async listAllCheckIns() {
       const keys = (await kv.keys()).filter((k) => k.startsWith(CHECKINS));
@@ -165,7 +189,7 @@ export function createStorage(kv: KVStore): Storage {
       for (const key of keys) {
         const definitionKey = key.slice(CHECKINS.length);
         assertDefinitionKey(definitionKey);
-        const log = await loadCheckIns(definitionKey);
+        const log = await inCheckInLane(definitionKey, () => readCheckIns(definitionKey));
         if (log.length > 0) setStringRecordValue(all, definitionKey, log);
       }
       return all;

@@ -1,14 +1,15 @@
 // 首页：先回答「此刻该干嘛」（接下来块），再是 flow 库（我的 + 示例）。
 // 卡片带由 id 派生的低饱和色线与拓扑图形徽章，库一多也有节奏而不吵。
 
-import { useMemo, useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, useColorScheme } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { View, Text, Pressable, ScrollView, StyleSheet, AppState, useColorScheme } from 'react-native';
 import { type Flow, type Topology } from '../domain/types';
 import { type Library } from '../session/library';
+import { createOperationScope } from '../session/operationScope';
 import { catalogDefinitionKey, examplesVisibleAlongsideOwned, type FlowCatalogSource, type OwnedCatalogSnapshot } from '../session/flowCatalog';
 import { type Sharer, type ShareOutcome } from '../sharing/sharer';
-import { nextEvents, type ScheduledOccurrence } from '../runtime/engine';
-import { timeOfDay, MS_PER_DAY } from '../runtime/clock';
+import { timeOfDay } from '../runtime/clock';
+import { projectHomeTime, homeClockShouldRefresh } from '../session/homeTime';
 import { systemTimeZone } from '../runtime/systemTimeZone';
 import { timeZoneForFlow } from '../runtime/ianaTimeZone';
 import { fmtTimeOfDay } from './format';
@@ -55,6 +56,10 @@ export function HomeScreen(props: {
   const styles = useMemo(() => createStyles(c), [c]);
   const { t } = useI18n();
   const [backupNote, setBackupNote] = useState<string | null>(null);
+  const [deleteIssue, setDeleteIssue] = useState<{ flow: Flow; message: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const operations = useMemo(() => createOperationScope(), []);
+  useEffect(() => () => operations.close(), [operations]);
   const catalogReady = props.catalog.status === 'ready';
   const mine: Flow[] = props.catalog.status === 'ready' ? props.catalog.flows : [];
   // 整库备份（C6 兜底）：全部 flow + 历史修订 + 打卡日志，经系统分享面板存文件/发给自己。
@@ -64,17 +69,35 @@ export function HomeScreen(props: {
       copied: t.backupOutcomeCopied,
       unavailable: t.backupOutcomeUnavailable,
     };
-    props.library
-      .exportBackup(Date.now())
-      .then((text) => props.sharer.share({ title: t.backupShareTitle, message: text }))
-      .then((outcome) => setBackupNote(outcomeText[outcome]))
-      .catch(() => setBackupNote(null)); // 用户取消等——不打扰
+    const accepted = operations.submit(async () => {
+      const text = await props.library.exportBackup(Date.now());
+      return props.sharer.share({ title: t.backupShareTitle, message: text });
+    }, {
+      success(outcome) { setBackupNote(outcomeText[outcome]); },
+      failure(error) { setBackupNote(`${t.backupFailed}: ${String(error)}`); },
+      settled() { setBusy(false); },
+    });
+    if (accepted) {
+      setBusy(true);
+      setBackupNote(null);
+    }
   };
   const del = (flow: Flow): void => {
-    props.onDelete(flow, catalogDefinitionKey(flow.id, 'owned')).catch(() => {});
+    const accepted = operations.submit(
+      () => props.onDelete(flow, catalogDefinitionKey(flow.id, 'owned')),
+      {
+        success() { setDeleteIssue(null); },
+        failure(error) { setDeleteIssue({ flow, message: String(error) }); },
+        settled() { setBusy(false); },
+      },
+    );
+    if (accepted) {
+      setBusy(true);
+      setDeleteIssue(null);
+    }
   };
 
-  const now = Date.now();
+  const [now, setNow] = useState(() => Date.now());
   const today = new Date(now);
   const visibleExamples = useMemo(
     () => catalogReady ? examplesVisibleAlongsideOwned(props.examples, mine) : [],
@@ -86,24 +109,42 @@ export function HomeScreen(props: {
   };
 
   // 接下来：所有可见日程型 flow 的最近一次提醒（我的优先，无则看未被同 id 用户 Flow 遮蔽的示例）
-  const upNext = useMemo(() => {
-    if (!catalogReady) return null;
-    const mineSched = mine.filter((f) => f.topology === 'scheduled');
-    const pool = mineSched.length > 0
-      ? mineSched.map((flow) => ({ flow, own: true }))
-      : visibleExamples.filter((f) => f.topology === 'scheduled').map((flow) => ({ flow, own: false }));
-    let best: { flow: Flow; occ: ScheduledOccurrence; own: boolean } | null = null;
-    for (const candidate of pool) {
-      const [occ] = nextEvents(
-        candidate.flow,
-        now,
-        timeZoneForFlow(candidate.flow, systemTimeZone),
-        MS_PER_DAY,
-      );
-      if (occ && (!best || occ.at < best.occ.at)) best = { ...candidate, occ };
-    }
-    return best;
-  }, [catalogReady, mine, visibleExamples]);
+  const projection = useMemo(
+    () => projectHomeTime(catalogReady ? mine : [], catalogReady ? visibleExamples : [], now, systemTimeZone),
+    [catalogReady, mine, visibleExamples, now],
+  );
+  const upNext = projection.upNext;
+
+  useEffect(() => {
+    // Only a boundary (Up Next expiry / horizon entry / local midnight) or a
+    // foreground, clock-jump, or zone change updates React. The 60s watchdog
+    // checks environmental changes without rerendering on each tick.
+    let timer: ReturnType<typeof setTimeout>;
+    let zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const arm = (): void => {
+      const current = Date.now();
+      const delay = Math.max(1, Math.min(60_000, projection.nextRefreshAt - current));
+      const expected = current + delay;
+      timer = setTimeout(() => {
+        const actual = Date.now();
+        const currentZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (homeClockShouldRefresh(actual, expected, projection.nextRefreshAt, currentZone !== zone)) {
+          setNow(actual);
+        } else {
+          zone = currentZone;
+          arm();
+        }
+      }, delay);
+    };
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') setNow(Date.now());
+    });
+    arm();
+    return () => {
+      clearTimeout(timer);
+      sub.remove();
+    };
+  }, [projection.nextRefreshAt]);
 
   const card = (flow: Flow, own: boolean) => {
     const tone = flowIdentityFor(c, flow.id);
@@ -131,7 +172,9 @@ export function HomeScreen(props: {
           <>
             <Pressable onPress={() => props.onEdit(flow)}><Text style={styles.link}>{t.linkEdit}</Text></Pressable>
             <Pressable onPress={() => props.onExport(flow)}><Text style={styles.link}>{t.linkShare}</Text></Pressable>
-            <Pressable onPress={() => del(flow)}><Text style={[styles.link, styles.danger]}>{t.delete}</Text></Pressable>
+            <Pressable disabled={busy} onPress={() => del(flow)}>
+              <Text style={[styles.link, styles.danger]}>{t.delete}</Text>
+            </Pressable>
           </>
         ) : null}
       </View>
@@ -149,6 +192,14 @@ export function HomeScreen(props: {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        {deleteIssue ? (
+          <View style={styles.catalogError}>
+            <Text style={styles.catalogErrorText}>{t.deleteFailed}: {deleteIssue.message}</Text>
+            <MotionPressable style={styles.retryButton} disabled={busy} onPress={() => del(deleteIssue.flow)}>
+              <Text style={styles.retryText}>{t.retry}</Text>
+            </MotionPressable>
+          </View>
+        ) : null}
         {props.catalog.status === 'error' ? (
           <View style={styles.catalogError}>
             <Text style={styles.catalogErrorText}>{t.catalogUnavailable}</Text>
@@ -159,8 +210,9 @@ export function HomeScreen(props: {
         ) : null}
 
         {upNext ? (
-          <MotionPressable motion="card" style={styles.next} onPress={() => run(upNext.flow, upNext.own)}>
-            <Text style={styles.nextTime}>{fmtTimeOfDay(timeOfDay(upNext.occ.at, systemTimeZone))}</Text>
+          <MotionPressable motion="card" style={styles.next} testID="home-up-next"
+            onPress={() => run(upNext.flow, upNext.own)}>
+            <Text style={styles.nextTime}>{fmtTimeOfDay(timeOfDay(upNext.occ.at, timeZoneForFlow(upNext.flow, systemTimeZone)))}</Text>
             <View style={styles.nextBody}>
               <Text style={styles.nextKicker}>{t.upNext}</Text>
               <Text style={styles.nextLabel} numberOfLines={1}>{upNext.occ.label}</Text>
@@ -185,7 +237,7 @@ export function HomeScreen(props: {
               <MotionPressable style={[styles.action, styles.actionGhost]} onPress={props.onImport}>
                 <Text style={styles.actionGhostText}>{t.importAction}</Text>
               </MotionPressable>
-              <MotionPressable style={[styles.action, styles.actionGhost]} onPress={backup}>
+              <MotionPressable style={[styles.action, styles.actionGhost]} disabled={busy} onPress={backup}>
                 <Text style={styles.actionGhostText}>{t.backupAction}</Text>
               </MotionPressable>
             </View>
