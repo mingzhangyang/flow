@@ -54,3 +54,24 @@ The four medium-severity review findings were checked against the real execution
 4. **Deletion navigation during runtime retirement:** App owns a synchronous deletion fence from accepted mutation until completion, and Home disables every route-changing control; notification routes and Android navigation follow the same fence. Deletion failure is surfaced and retryable on the original Home screen.
 
 Regression tests use deferred promises and route-driven Back decisions. No schema, recurrence, reminder or visual behavior changed.
+
+## Watchdog lifetime closure (previously missed)
+
+**Confirmed:** The original Home timer was one-shot. After a wall-clock/zone
+correction, its callback called `setNow(actual)` but did not re-arm. If the
+recomputed `nextRefreshAt` stayed equal to the previous value, the effect's
+`[projection.nextRefreshAt]` dependency did not change, leaving Home without
+any future timer.
+
+**Ownership fix:** `createHomeClockWatch` in the UI adapter layer now owns a
+single continuously re-armed watchdog. It samples a supplied clock and zone
+without updating React at every heartbeat, while `projectHomeTime` retains the
+one authoritative deadline. React updates the deadline explicitly and disposes
+the watch on unmount. Expired deadlines use a bounded heartbeat rather than
+busy-spinning while a projection catches up.
+
+**Verification:** Deterministic fake timers simulate backward system time,
+an unchanged anchored deadline, later event expiry, zone changes, foreground
+resume, deadline rescheduling, cleanup, and Strict Mode stop/start. An E2E
+fake-clock regression asserts the Home Up Next transition after a backward
+clock correction without remounting the page. No recurrence/DST rule changes.

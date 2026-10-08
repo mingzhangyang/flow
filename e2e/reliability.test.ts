@@ -98,6 +98,23 @@ test('Home Up Next follows occurrence boundaries and local midnight without a re
   await upNext.getByText('08:00', { exact: true }).waitFor();
 });
 
+test('Home watchdog survives a backward wall-clock jump with the same Up Next deadline', async () => {
+  const page = await e2e.openApp();
+  const upNext = page.getByTestId('home-up-next');
+  await upNext.getByText('14:00', { exact: true }).waitFor();
+
+  // Changing the system clock without advancing timers models an OS/user clock
+  // correction. The same upcoming 14:00 event stays authoritative, so a React
+  // effect depending only on nextRefreshAt would *not* be reinstalled.
+  await page.clock.setSystemTime(new Date(Date.parse('2026-07-15T08:00:00+08:00')));
+  await page.clock.fastForward(60_000);
+  await upNext.getByText('14:00', { exact: true }).waitFor();
+
+  // The next boundary must still fire without navigating away or remounting.
+  await page.clock.fastForward(5 * 60 * 60_000 + 1);
+  await upNext.getByText('22:00', { exact: true }).waitFor();
+});
+
 test('Import double-click does not commit the same flow twice', async () => {
   const page = await e2e.openApp();
   await page.getByText('导入', { exact: true }).click();

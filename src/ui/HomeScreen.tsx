@@ -9,7 +9,8 @@ import { createOperationScope } from '../session/operationScope';
 import { catalogDefinitionKey, examplesVisibleAlongsideOwned, type FlowCatalogSource, type OwnedCatalogSnapshot } from '../session/flowCatalog';
 import { type Sharer, type ShareOutcome } from '../sharing/sharer';
 import { timeOfDay } from '../runtime/clock';
-import { projectHomeTime, homeClockShouldRefresh } from '../session/homeTime';
+import { projectHomeTime } from '../session/homeTime';
+import { createHomeClockWatch } from './homeClockWatch';
 import { systemTimeZone } from '../runtime/systemTimeZone';
 import { timeZoneForFlow } from '../runtime/ianaTimeZone';
 import { fmtTimeOfDay } from './format';
@@ -123,36 +124,31 @@ export function HomeScreen(props: {
   );
   const upNext = projection.upNext;
 
+  // Clock sampling is a persistent UI adapter, not a side effect of whether
+  // a React memo's refresh deadline happened to change. It re-arms itself after
+  // EVERY timeout and only updates React at meaningful time/zone boundaries.
+  const clockWatch = useMemo(() => createHomeClockWatch({
+    now: () => Date.now(),
+    zoneId: () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+    schedule: (callback: () => void, delay: number) => setTimeout(callback, delay),
+    cancel: (timer: ReturnType<typeof setTimeout>) => clearTimeout(timer),
+    refresh: (actual: number) => setNow(actual),
+  }), []);
+
   useEffect(() => {
-    // Only a boundary (Up Next expiry / horizon entry / local midnight) or a
-    // foreground, clock-jump, or zone change updates React. The 60s watchdog
-    // checks environmental changes without rerendering on each tick.
-    let timer: ReturnType<typeof setTimeout>;
-    let zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const arm = (): void => {
-      const current = Date.now();
-      const delay = Math.max(1, Math.min(60_000, projection.nextRefreshAt - current));
-      const expected = current + delay;
-      timer = setTimeout(() => {
-        const actual = Date.now();
-        const currentZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        if (homeClockShouldRefresh(actual, expected, projection.nextRefreshAt, currentZone !== zone)) {
-          setNow(actual);
-        } else {
-          zone = currentZone;
-          arm();
-        }
-      }, delay);
-    };
+    clockWatch.start(projection.nextRefreshAt);
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') setNow(Date.now());
+      if (state === 'active') clockWatch.foreground();
     });
-    arm();
     return () => {
-      clearTimeout(timer);
       sub.remove();
+      clockWatch.stop();
     };
-  }, [projection.nextRefreshAt]);
+  }, [clockWatch]);
+
+  useEffect(() => {
+    clockWatch.updateDeadline(projection.nextRefreshAt);
+  }, [clockWatch, projection.nextRefreshAt]);
 
   const card = (flow: Flow, own: boolean) => {
     const tone = flowIdentityFor(c, flow.id);
