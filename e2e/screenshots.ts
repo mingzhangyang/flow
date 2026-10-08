@@ -32,11 +32,13 @@ const LOCALES = [
 ] as const;
 
 async function screenshot(page: Page, folder: string, name: string): Promise<void> {
-  await assertMobileGeometry(page, folder + '/' + name);
   const directory = path.join(ROOT, folder);
   await mkdir(directory, { recursive: true });
   await page.screenshot({ path: path.join(directory, name + '.png'), animations: 'disabled' });
   console.log('captured ' + folder + '/' + name);
+  // Keep the diagnostic frame even when geometry validation fails. CI uploads
+  // the `shots/` directory on failure, so the assertion must run afterwards.
+  await assertMobileGeometry(page, folder + '/' + name);
 }
 
 async function capture(

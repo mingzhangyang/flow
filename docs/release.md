@@ -99,8 +99,8 @@ or replace signing credentials automatically.
 
 ### Release blockers and native device matrix
 
-Sequential Run persistence is a **release blocker** until PR #17 resolves
-the optimistic saveRun(...).catch(() => {}) in usePersistentRun.ts with a durable
+Sequential Run persistence is a **release blocker** until a dedicated follow-up
+resolves the optimistic saveRun(...).catch(() => {}) in usePersistentRun.ts with a durable
 Run-event contract, write failure feedback/recovery and replay verification.
 A passed Android build is permission to begin device testing, **not** a store
 release decision.

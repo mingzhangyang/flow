@@ -14,7 +14,7 @@ OperationScope, recurrence, notification planning, visuals or motion semantics.
 | Already correct | Editor bottom Save/Back/44dp chips, Schedule Check-in/Undo, Runner secondary buttons, PR #15 confirmed persistence, navigation guards, time/zone projection. Avoid redesign. |
 | Test-only gaps | Existing fixed-clock screenshots lacked 320dp, Editor/Generate coverage, ready/committed-state checks, geometry assertions, and CI evidence. |
 | Native-only, unverified | Keyboard/Back/Safe Area, OS notifications, device font scaling/screen readers, Doze, app kill/reboot, Keystore/Keychain and EAS signed preview. |
-| Separate release blocker | usePersistentRun.ts still silently catches sequential Run snapshot save failures. Dedicated PR #17 is required; do not redesign Run-event semantics in this PR. |
+| Separate release blocker | usePersistentRun.ts still silently catches sequential Run snapshot save failures. A dedicated follow-up is required; do not redesign Run-event semantics in this PR. |
 
 ## Change boundaries
 
@@ -46,7 +46,7 @@ OperationScope, recurrence, notification planning, visuals or motion semantics.
 | APK provenance, actual signature state | Awaiting Android workflow |
 | Android/iOS real-device matrix | Unverified, no connected device |
 | Android exact alarms / Doze / OEM limitations | Unverified release risk |
-| Sequential Run optimistic save | Confirmed public release blocker — PR #17 |
+| Sequential Run optimistic save | Confirmed public release blocker — dedicated follow-up required |
 
 ## Release conclusion
 

@@ -78,12 +78,17 @@ jobs:
             echo "::error::Android apksigner is unavailable; cannot deliver an unverified test APK."
             exit 1
           fi
-          if ! "$SIGNER" verify --print-certs apk-artifact/flow-android-standalone-test.apk > apk-artifact/signature.txt 2>&1; then
+          if ! "$SIGNER" verify --verbose --print-certs apk-artifact/flow-android-standalone-test.apk > apk-artifact/signature.txt 2>&1; then
             cat apk-artifact/signature.txt
             echo "::error::Standalone test APK lacks a verifiable Android signature."
             exit 1
           fi
-          echo "Verified APK signature; test-only signing is not EAS signing." >> "$GITHUB_STEP_SUMMARY"
+          if ! grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' apk-artifact/signature.txt; then
+            cat apk-artifact/signature.txt
+            echo "::error::Standalone test APK is not verified with APK Signature Scheme v2."
+            exit 1
+          fi
+          echo "Verified APK signature including APK Signature Scheme v2; test-only signing is not EAS signing." >> "$GITHUB_STEP_SUMMARY"
           echo "Source SHA: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
           echo "Artifact: flow-android-standalone-test-apk (download ZIP and extract APK)" >> "$GITHUB_STEP_SUMMARY"
 
