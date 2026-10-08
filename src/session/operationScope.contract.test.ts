@@ -123,3 +123,52 @@ test('stale async settings reads cannot overwrite latest result, unmount also re
   await flush();
   assert.deepEqual(updates, ['new']);
 });
+
+test('editing AI config invalidates an older SecureStore read, including late failures', async () => {
+  const scope = createOperationScope();
+  const stale = deferred<string>();
+  const updates: string[] = [];
+  scope.latest(() => stale.promise, {
+    success: (value) => updates.push(value),
+    failure: () => updates.push('error'),
+  });
+  // A direct user edit owns the form; even the first/only read becomes stale.
+  scope.invalidateLatest();
+  stale.resolve('old credentials');
+  await flush();
+  assert.deepEqual(updates, []);
+
+  const second = deferred<string>();
+  scope.latest(() => second.promise, {
+    success: (value) => updates.push(value),
+    failure: () => updates.push('error'),
+  });
+  assert.equal(scope.submit(async () => 'new credentials', {
+    success: (value) => updates.push(value),
+    failure: () => assert.fail('unexpected submit error'),
+  }), true);
+  second.reject(new Error('stale read failed'));
+  await flush();
+  assert.deepEqual(updates, ['new credentials']);
+});
+
+test('read-only export never launches a share effect after leaving Home', async () => {
+  const scope = createOperationScope();
+  const exportGate = deferred<string>();
+  let launched = 0;
+  const accepted = scope.submit(async () => {
+    const backup = await exportGate.promise;
+    if (!scope.isOpen()) return false;
+    launched++;
+    assert.equal(backup, 'backup snapshot');
+    return true;
+  }, { success: () => assert.fail('stale success'), failure: () => assert.fail('unexpected error') });
+  assert.equal(accepted, true);
+  assert.equal(scope.isBusy(), true);
+  scope.close();
+  exportGate.resolve('backup snapshot');
+  await flush();
+  assert.equal(launched, 0);
+  assert.equal(scope.isOpen(), false);
+  assert.equal(scope.isBusy(), false);
+});

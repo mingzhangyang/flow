@@ -40,6 +40,9 @@ function SchedGlyph(props: { color: string }) {
 export function HomeScreen(props: {
   library: Library;
   examples: Flow[];
+  /** App-owned lifetime and deletion fence; do not infer from catalog loading. */
+  deleting: boolean;
+  isActive: () => boolean;
   catalog: OwnedCatalogSnapshot;
   sharer: Sharer;
   onRetry: () => void;
@@ -71,9 +74,12 @@ export function HomeScreen(props: {
     };
     const accepted = operations.submit(async () => {
       const text = await props.library.exportBackup(Date.now());
+      // Export is a read-only background operation. Its share-sheet/clipboard
+      // effect, unlike accepted data commits, requires a still-active Home.
+      if (!operations.isOpen() || !props.isActive()) return null;
       return props.sharer.share({ title: t.backupShareTitle, message: text });
     }, {
-      success(outcome) { setBackupNote(outcomeText[outcome]); },
+      success(outcome) { if (outcome !== null) setBackupNote(outcomeText[outcome]); },
       failure(error) { setBackupNote(`${t.backupFailed}: ${String(error)}`); },
       settled() { setBusy(false); },
     });
@@ -83,6 +89,7 @@ export function HomeScreen(props: {
     }
   };
   const del = (flow: Flow): void => {
+    if (!props.isActive()) return;
     const accepted = operations.submit(
       () => props.onDelete(flow, catalogDefinitionKey(flow.id, 'owned')),
       {
@@ -105,6 +112,7 @@ export function HomeScreen(props: {
   );
 
   const run = (flow: Flow, own: boolean): void => {
+    if (props.deleting) return;
     props.onRun(flow, catalogDefinitionKey(flow.id, own ? 'owned' : 'example'));
   };
 
@@ -151,7 +159,7 @@ export function HomeScreen(props: {
     return (
     <View key={flow.id} style={[styles.card, { backgroundColor: tone.soft }]}>
       <View style={[styles.stripe, { backgroundColor: tone.accent }]} />
-      <MotionPressable motion="card" onPress={() => run(flow, own)}>
+      <MotionPressable motion="card" disabled={props.deleting} onPress={() => run(flow, own)}>
         <View style={styles.cardTop}>
           <Text style={styles.cardTitle}>{flow.title}</Text>
           <View style={styles.badge}>
@@ -167,12 +175,12 @@ export function HomeScreen(props: {
         <Text style={styles.cardMeta}>{t.cardMeta(flow.nodes.length, flow.topology)}</Text>
       </MotionPressable>
       <View style={styles.rowActions}>
-        <Pressable onPress={() => props.onInsight(flow, own ? 'owned' : 'example')}><Text style={styles.link}>{t.linkInsight}</Text></Pressable>
+        <Pressable disabled={props.deleting} onPress={() => props.onInsight(flow, own ? 'owned' : 'example')}><Text style={styles.link}>{t.linkInsight}</Text></Pressable>
         {own ? (
           <>
-            <Pressable onPress={() => props.onEdit(flow)}><Text style={styles.link}>{t.linkEdit}</Text></Pressable>
-            <Pressable onPress={() => props.onExport(flow)}><Text style={styles.link}>{t.linkShare}</Text></Pressable>
-            <Pressable disabled={busy} onPress={() => del(flow)}>
+            <Pressable disabled={props.deleting} onPress={() => props.onEdit(flow)}><Text style={styles.link}>{t.linkEdit}</Text></Pressable>
+            <Pressable disabled={props.deleting} onPress={() => props.onExport(flow)}><Text style={styles.link}>{t.linkShare}</Text></Pressable>
+            <Pressable disabled={busy || props.deleting} onPress={() => del(flow)}>
               <Text style={[styles.link, styles.danger]}>{t.delete}</Text>
             </Pressable>
           </>
@@ -203,7 +211,7 @@ export function HomeScreen(props: {
         {props.catalog.status === 'error' ? (
           <View style={styles.catalogError}>
             <Text style={styles.catalogErrorText}>{t.catalogUnavailable}</Text>
-            <MotionPressable style={styles.retryButton} onPress={() => props.onRetry()}>
+            <MotionPressable style={styles.retryButton} disabled={props.deleting} onPress={() => props.onRetry()}>
               <Text style={styles.retryText}>{t.retry}</Text>
             </MotionPressable>
           </View>
@@ -211,6 +219,7 @@ export function HomeScreen(props: {
 
         {upNext ? (
           <MotionPressable motion="card" style={styles.next} testID="home-up-next"
+            disabled={props.deleting}
             onPress={() => run(upNext.flow, upNext.own)}>
             <Text style={styles.nextTime}>{fmtTimeOfDay(timeOfDay(upNext.occ.at, timeZoneForFlow(upNext.flow, systemTimeZone)))}</Text>
             <View style={styles.nextBody}>
@@ -225,19 +234,19 @@ export function HomeScreen(props: {
         {catalogReady ? (
           <>
             <View style={styles.actions}>
-              <MotionPressable style={styles.action} onPress={() => props.onNew('sequential')}>
+              <MotionPressable style={styles.action} disabled={props.deleting} onPress={() => props.onNew('sequential')}>
                 <Text style={styles.actionText}>{t.newSequential}</Text>
               </MotionPressable>
-              <MotionPressable style={styles.action} onPress={() => props.onNew('scheduled')}>
+              <MotionPressable style={styles.action} disabled={props.deleting} onPress={() => props.onNew('scheduled')}>
                 <Text style={styles.actionText}>{t.newScheduled}</Text>
               </MotionPressable>
-              <MotionPressable style={[styles.action, styles.actionGhost]} onPress={props.onGenerate}>
+              <MotionPressable style={[styles.action, styles.actionGhost]} disabled={props.deleting} onPress={props.onGenerate}>
                 <Text style={styles.actionGhostText}>{t.aiGenerate}</Text>
               </MotionPressable>
-              <MotionPressable style={[styles.action, styles.actionGhost]} onPress={props.onImport}>
+              <MotionPressable style={[styles.action, styles.actionGhost]} disabled={props.deleting} onPress={props.onImport}>
                 <Text style={styles.actionGhostText}>{t.importAction}</Text>
               </MotionPressable>
-              <MotionPressable style={[styles.action, styles.actionGhost]} disabled={busy} onPress={backup}>
+              <MotionPressable style={[styles.action, styles.actionGhost]} disabled={busy || props.deleting} onPress={backup}>
                 <Text style={styles.actionGhostText}>{t.backupAction}</Text>
               </MotionPressable>
             </View>

@@ -11,6 +11,12 @@ export interface OperationHandlers<T> {
 export interface OperationScope {
   submit<T>(work: () => Promise<T>, handlers: OperationHandlers<T>): boolean;
   latest<T>(work: () => Promise<T>, handlers: OperationHandlers<T>): void;
+  /** Synchronously revoke a pending read projection when newer user input takes ownership. */
+  invalidateLatest(): void;
+  /** UI may start a side effect only while its initiating screen is still active. */
+  isOpen(): boolean;
+  /** The synchronous submission gate also guards navigation before React can rerender. */
+  isBusy(): boolean;
   close(): void;
 }
 
@@ -22,6 +28,7 @@ export function createOperationScope(): OperationScope {
     submit(work, handlers) {
       if (!open || submitting) return false;
       submitting = true;
+      latestToken++; // An accepted mutation supersedes unfinished read projections.
       void (async () => {
         try {
           const value = await work();
@@ -49,6 +56,11 @@ export function createOperationScope(): OperationScope {
         }
       })();
     },
+    invalidateLatest() {
+      latestToken++;
+    },
+    isOpen: () => open,
+    isBusy: () => submitting,
     close() {
       open = false;
       latestToken++;

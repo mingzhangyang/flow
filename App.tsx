@@ -17,6 +17,7 @@ import { examplesFor } from './src/examples';
 import { createStorage } from './src/storage/storage';
 import { asyncStorageKV } from './src/storage/asyncStorageKv';
 import { secureKV } from './src/storage/secureKv';
+import { createModelConfigSession } from './src/ai/model/settings';
 import { createLibrary } from './src/session/library';
 import {
   catalogEntriesWithOwnedPrecedence,
@@ -53,7 +54,7 @@ import { InsightScreen } from './src/ui/InsightScreen';
 import { GenerateScreen } from './src/ui/GenerateScreen';
 import { useI18n } from './src/ui/i18n';
 import { dark, paletteFor } from './src/ui/theme';
-import { decideApplicationBack } from './src/ui/applicationBack';
+import { decideApplicationBackTarget } from './src/ui/applicationBack';
 
 configureExpoNotificationPresentation();
 
@@ -78,6 +79,9 @@ export default function App() {
   examplesRef.current = examples;
   const storage = useMemo(() => createStorage(asyncStorageKV), []);
   const library = useMemo(() => createLibrary(storage), [storage]);
+  // Shared by all Generate screen instances: pending legacy migration cannot
+  // overtake a newer user-edited configuration save.
+  const modelConfig = useMemo(() => createModelConfigSession(secureKV, asyncStorageKV), []);
   const notifier = useMemo(() => createExpoNotifier(), []);
   const runtime = useMemo(() => createDefinitionRuntime({ storage, notifier, now: Date.now }), [storage, notifier]);
   const currentSession = useRef<RuntimeSession | null>(null);
@@ -88,13 +92,19 @@ export default function App() {
   // Delayed AI/import completions cannot navigate after Back, including a return
   // to another instance of the same screen name.
   const activeRoute = useRef<Screen>(screen);
+  // Deletion spans catalog, runtime retirement and notification cleanup. Hold a
+  // synchronous app-level navigation fence across the entire accepted mutation.
+  const deletingRef = useRef(false);
+  const [deleting, setDeleting] = useState(false);
   const navigate = useCallback((next: Screen): void => {
+    if (deletingRef.current) return;
     activeRoute.current = next;
     setScreen(next);
   }, []);
-  const scheduleBackHandler = useRef<(() => void) | null>(null);
-  const registerScheduleBackHandler = useCallback((handler: (() => void) | null): void => {
-    scheduleBackHandler.current = handler;
+  const scheduleBackHandler = useRef<{ sessionId: number; handler: () => void } | null>(null);
+  const registerScheduleBackHandler = useCallback((sessionId: number, handler: (() => void) | null): void => {
+    if (handler) scheduleBackHandler.current = { sessionId, handler };
+    else if (scheduleBackHandler.current?.sessionId === sessionId) scheduleBackHandler.current = null;
   }, []);
   const editorBackHandler = useRef<(() => void) | null>(null);
   const registerEditorBackHandler = useCallback((handler: (() => void) | null): void => {
@@ -104,6 +114,7 @@ export default function App() {
   const catalogCoordinator = useMemo(() => createCatalogCoordinator(setCatalog), []);
 
   const home = useCallback((): void => {
+    if (deletingRef.current) return;
     currentSession.current?.close();
     currentSession.current = null;
     navigate({ name: 'home' });
@@ -113,26 +124,31 @@ export default function App() {
     if (Platform.OS !== 'android') return;
 
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      // Keep the first Back native while the IME is visible. Android gets to
-      // dismiss the keyboard before application navigation is considered.
-      if (decideApplicationBack(screen.name, Keyboard.isVisible()) === 'system') return false;
-
-      if (screen.name === 'edit') {
+      // A notification may replace run A with run B without changing the name
+      // "run". Always read the live route, never a closure-captured topology.
+      const route = activeRoute.current;
+      const target = decideApplicationBackTarget(
+        { name: route.name, ...(route.name === 'run' ? { topology: route.flow.topology } : {}) },
+        Keyboard.isVisible(),
+      );
+      if (target === 'system') return false;
+      if (target === 'editor') {
         (editorBackHandler.current ?? home)();
-      } else if (screen.name === 'run' && screen.flow.topology === 'scheduled') {
-        (scheduleBackHandler.current ?? home)();
+      } else if (target === 'schedule' && route.name === 'run') {
+        const registered = scheduleBackHandler.current;
+        if (registered?.sessionId === route.session.id) registered.handler();
+        else home(); // New route has no pending UI intent before its first render.
       } else {
-        // Every other non-Home screen already exits through home(), including
-        // Runner/Schedule where home() closes the active RuntimeSession first.
         home();
       }
       return true;
     });
 
     return () => subscription.remove();
-  }, [home, screen.name]);
+  }, [home]);
 
   const openRun = useCallback((flowId: string, definitionKey: string): void => {
+    if (deletingRef.current) return;
     const snapshot = catalogCoordinator.current();
     if (snapshot.status !== 'ready') return;
     const entry = resolveCatalogEntryForRoute(flowId, definitionKey, snapshot.flows, examplesRef.current);
@@ -237,8 +253,11 @@ export default function App() {
   const deleteOwnedFlow = useCallback((
     flow: Flow,
     definitionKey: string,
-  ): Promise<void> =>
-    runCatalogMutation(() =>
+  ): Promise<void> => {
+    if (deletingRef.current) return Promise.reject(new Error('Deletion already in progress'));
+    deletingRef.current = true; // Must precede any React render or async work.
+    setDeleting(true);
+    const result = runCatalogMutation(() =>
       deleteOwnedFlowDurably(flow, definitionKey, {
         kv: asyncStorageKV,
         runtime,
@@ -249,8 +268,12 @@ export default function App() {
         deleteRun: (id) => storage.deleteRun(id),
         deleteCheckIns: (key) => storage.deleteCheckIns(key),
         deleteRevisions: (id) => storage.deleteRevisions(id),
-      })),
-  [library, notifier, runCatalogMutation, runtime, storage]);
+      }));
+    return result.finally(() => {
+      deletingRef.current = false;
+      setDeleting(false);
+    });
+  }, [library, notifier, runCatalogMutation, runtime, storage]);
 
   const refreshCatalogInBackground = useCallback((
     mutation?: () => Promise<void>,
@@ -308,6 +331,8 @@ export default function App() {
         <HomeScreen
           library={library}
           examples={examples}
+          deleting={deleting}
+          isActive={() => activeRoute.current === screen}
           catalog={catalog}
           sharer={systemSharer}
           onRetry={refreshCatalogInBackground}
@@ -328,7 +353,7 @@ export default function App() {
             flow={screen.flow}
             session={screen.session}
             notifier={notifier}
-            onRegisterExit={registerScheduleBackHandler}
+            onRegisterExit={(handler) => registerScheduleBackHandler(screen.session.id, handler)}
             onEnrollReminders={() => {
               if (!screen.session.isOpen()) return;
               refreshCatalogInBackground(async () => {
@@ -368,8 +393,7 @@ export default function App() {
         />
       ) : screen.name === 'generate' ? (
         <GenerateScreen
-          secrets={secureKV}
-          legacySecrets={asyncStorageKV}
+          modelConfig={modelConfig}
           newFlowId={newFlowId}
           onDraft={(flow) => {
             if (activeRoute.current === screen) navigate({ name: 'edit', flow });
