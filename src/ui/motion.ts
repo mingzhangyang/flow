@@ -9,32 +9,52 @@ export const motionEasing = {
   continuous: Easing.linear,
 } as const;
 
-/**
- * System-owned accessibility preference. Start conservatively so no motion is
- * emitted before the asynchronous platform preference has been read.
- */
-export function useReducedMotion(): boolean {
-  const [reducedMotion, setReducedMotion] = useState(true);
+let reducedMotionSnapshot = true;
+let reducedMotionSubscriptionInstalled = false;
+let reducedMotionReadStarted = false;
+let observedRuntimeChange = false;
+const reducedMotionListeners = new Set<(enabled: boolean) => void>();
 
-  useEffect(() => {
-    let alive = true;
-    let observedRuntimeChange = false;
-    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', (enabled) => {
+function publishReducedMotion(enabled: boolean): void {
+  reducedMotionSnapshot = enabled;
+  for (const listener of reducedMotionListeners) listener(enabled);
+}
+
+function ensureReducedMotionSource(): void {
+  if (!reducedMotionSubscriptionInstalled) {
+    reducedMotionSubscriptionInstalled = true;
+    AccessibilityInfo.addEventListener('reduceMotionChanged', (enabled) => {
       observedRuntimeChange = true;
-      if (alive) setReducedMotion(enabled);
+      publishReducedMotion(enabled);
     });
+  }
 
+  if (!reducedMotionReadStarted) {
+    reducedMotionReadStarted = true;
     void AccessibilityInfo.isReduceMotionEnabled()
       .then((enabled) => {
-        if (alive && !observedRuntimeChange) setReducedMotion(enabled);
+        if (!observedRuntimeChange) publishReducedMotion(enabled);
       })
       .catch(() => {
-        if (alive && !observedRuntimeChange) setReducedMotion(false);
+        if (!observedRuntimeChange) publishReducedMotion(false);
       });
+  }
+}
 
+/**
+ * System-owned accessibility preference, shared by every motion primitive.
+ * The cache starts conservatively at reduced motion until the platform value
+ * resolves; later-mounted controls synchronously reuse the resolved value.
+ */
+export function useReducedMotion(): boolean {
+  const [reducedMotion, setReducedMotion] = useState(reducedMotionSnapshot);
+
+  useEffect(() => {
+    ensureReducedMotionSource();
+    setReducedMotion(reducedMotionSnapshot);
+    reducedMotionListeners.add(setReducedMotion);
     return () => {
-      alive = false;
-      subscription.remove();
+      reducedMotionListeners.delete(setReducedMotion);
     };
   }, []);
 

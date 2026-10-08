@@ -29,15 +29,23 @@ export function MotionReveal(props: {
   const value = useRef(new Animated.Value(1)).current;
   const running = useRef<Animated.CompositeAnimation | null>(null);
   const mounted = useRef(false);
+  const previousReplayKey = useRef(replayKey);
 
   useEffect(() => {
     running.current?.stop();
     running.current = null;
 
-    const shouldAnimate = active && (animateOnMount || mounted.current);
+    const firstRender = !mounted.current;
+    const replayChanged = mounted.current && previousReplayKey.current !== replayKey;
     mounted.current = true;
+    previousReplayKey.current = replayKey;
 
-    if (!shouldAnimate || reducedMotion) {
+    const shouldAnimate =
+      active &&
+      !reducedMotion &&
+      ((firstRender && animateOnMount) || replayChanged);
+
+    if (!shouldAnimate) {
       value.setValue(1);
       return;
     }
