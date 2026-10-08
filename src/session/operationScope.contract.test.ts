@@ -136,7 +136,7 @@ test('editing AI config invalidates an older SecureStore read, including late fa
   scope.invalidateLatest();
   stale.resolve('old credentials');
   await flush();
-  assert.deepEqual(updates, []);
+  assert.equal(updates.length, 0);
 
   const second = deferred<string>();
   scope.latest(() => second.promise, {

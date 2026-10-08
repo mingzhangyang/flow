@@ -43,3 +43,14 @@ Constitution: C0, C5, C6, C9, C10, E3, E4, E6, AI-C1
 - Device follow-up: Android Back/exit warning while a storage write is pending, background/foreground during I/O, Keychain/Keystore transient failure, timezone changes with native AppState, and Android/iOS reminder behavior.
 
 No auto-merge. Workstreams A–D are implemented as one scoped PR.
+
+## Copilot review closure (round 1)
+
+The four medium-severity review findings were checked against the real execution paths and fixed at their owning boundaries:
+
+1. **Android Back on run-to-run notification replacement:** the native Back listener now dereferences the current route and its topology at invocation time, and Schedule's exit handler is session-id keyed. No old run closure can bypass a pending check-in warning.
+2. **AI model credential load/submit race:** `OperationScope.invalidateLatest()` revokes pending UI load projections immediately upon editing any configuration field. An application-owned `ModelConfigSession` also serializes SecureStore reads/legacy migrations and accepted saves, so stale migration cannot durably overwrite the user's new settings, even after screen exit.
+3. **Backup sharing after Home exit:** read-only backup export may finish, but the share sheet and clipboard side effects are authorized only while the original Home scope and App route remain active.
+4. **Deletion navigation during runtime retirement:** App owns a synchronous deletion fence from accepted mutation until completion, and Home disables every route-changing control; notification routes and Android navigation follow the same fence. Deletion failure is surfaced and retryable on the original Home screen.
+
+Regression tests use deferred promises and route-driven Back decisions. No schema, recurrence, reminder or visual behavior changed.
