@@ -104,8 +104,9 @@ automatically.
 
 Sequential Run persistence (formerly a release blocker) is resolved. Invariants,
 guarded by seeded interleaving model tests (`runController` / `definitionRuntime`
-contracts): reminders derive only from the persisted Run (an unconfirmed write
-rejects and leaves them untouched; `Notifier.schedule` reports `denied` /
+contracts): reminders derive only from the stored Run (a rejected write is read back:
+the exact snapshot counts as confirmed, anything else realigns reminders to what
+is stored and rejects; `Notifier.schedule` reports `denied` /
 `unsupported` instead of succeeding silently); a leave needs no confirmation only
 when the visible Run is confirmed persisted (bounded 1.5s wait, then confirm); a
 tap from an older render is ignored. Web leave confirmations use the browser

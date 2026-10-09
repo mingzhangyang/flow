@@ -13,6 +13,7 @@ import { type Notifier } from '../notifications/notifier';
 import { planSequentialReminder } from '../notifications/plan';
 import { sequentialReminderIdsForRun } from '../notifications/notificationIdentity';
 import { activeRunId, loadRunForDefinition } from './runPersistence';
+import { sameJsonValue } from '../domain/jsonValue';
 
 export interface RunSaveOutcome {
   /**
@@ -34,9 +35,10 @@ export interface RuntimeSession {
   /**
    * Durably writes the full Run snapshot, THEN syncs the sequential reminder to it.
    * Invariant (architecture.md, Notification): the installed reminder is always derived
-   * from the persisted Run, never from unsaved screen state. So a write that is not
-   * confirmed rejects and leaves reminders untouched; a confirmed write resolves with
-   * whether its reminder is actually installed.
+   * from the persisted Run, never from unsaved screen state. A rejected write is checked
+   * by reading back what is stored: the exact snapshot counts as confirmed; otherwise the
+   * reminder is realigned to whatever is stored and the call rejects. A confirmed write
+   * resolves with whether its reminder is actually installed.
    */
   saveRun(run: Run, locale: Locale): Promise<RunSaveOutcome>;
   loadCheckIns(): Promise<CheckIn[]>;
@@ -88,11 +90,15 @@ export function createDefinitionRuntime(deps: {
       let closed = false;
       const close = (): void => { closed = true; };
       lane.closeCurrent = close;
-      const syncReminder = async (run: Run, locale: Locale): Promise<RunSaveOutcome['reminder']> => {
+      /** Installs exactly what `stored` plans; null (nothing stored / unreadable) plans nothing. */
+      const syncReminder = async (
+        runId: string, stored: Run | null, locale: Locale,
+      ): Promise<RunSaveOutcome['reminder']> => {
+        await deps.notifier.cancel(sequentialReminderIdsForRun(runId));
+        if (!stored) return 'synced';
         const planned = planSequentialReminder(
-          run.flow, run.events, deps.now(), run.id, locale, definitionKey,
+          stored.flow, stored.events, deps.now(), stored.id, locale, definitionKey,
         );
-        await deps.notifier.cancel(sequentialReminderIdsForRun(run.id));
         if (!planned) return 'synced';
         const delivery = await deps.notifier.schedule([planned]);
         return delivery === 'scheduled' ? 'synced' : delivery;
@@ -110,11 +116,28 @@ export function createDefinitionRuntime(deps: {
         saveRun: (run, locale) => submit(async () => {
           assertDefinitionKeyForFlow(definitionKey, run.flow.id);
           if (run.id !== activeRunId(definitionKey)) throw new Error('Run does not belong to session');
-          // Not confirmed written -> reject before touching reminders (they keep
-          // describing the last persisted Run, which is what reopening shows).
-          await deps.storage.saveRun(run);
           try {
-            return { reminder: await syncReminder(run, locale) };
+            await deps.storage.saveRun(run);
+          } catch (writeError) {
+            // A rejected write may still have landed. Reminders follow what is actually
+            // stored, so read it back: the exact snapshot -> confirmed after all; anything
+            // else (older Run, nothing, unreadable) -> realign to it and reject.
+            let stored: Run | null = null;
+            let confirmed = false;
+            try {
+              stored = await deps.storage.loadRun(run.id);
+              confirmed = stored !== null && sameJsonValue(stored, run);
+            } catch {
+              stored = null; // Unreadable: reopening fails closed, so nothing may ring for it.
+            }
+            if (!confirmed) {
+              // Best effort: the save is reported failed either way, and Retry re-syncs.
+              await syncReminder(run.id, stored, locale).catch(() => {});
+              throw writeError;
+            }
+          }
+          try {
+            return { reminder: await syncReminder(run.id, run, locale) };
           } catch {
             return { reminder: 'failed' };
           }

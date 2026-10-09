@@ -12,7 +12,8 @@ import { project, reduce } from '../runtime/engine';
 import {
   startIfIdleAction, completeCurrentAction, skipCurrentAction, pauseAction, resumeAction, backAction,
 } from './actions';
-import { createDefinitionRuntime } from './definitionRuntime';
+import { createDefinitionRuntime, type RunSaveOutcome } from './definitionRuntime';
+import { sameJsonValue } from '../domain/jsonValue';
 import { activeRunId } from './runPersistence';
 import { deleteOwnedFlowDurably, recoverPendingOwnedFlowDeletions } from './deleteOwnedFlow';
 
@@ -135,7 +136,12 @@ test('failed runtime operation cannot poison deletion; failed cleanup stays fenc
   const storage = createStorage(kv);
   await storage.saveFlow(flow);
   const runtime = createDefinitionRuntime({
-    storage: { ...storage, async saveRun(value) { await storage.saveRun(value); throw new Error('write failed'); } },
+    storage: {
+      ...storage,
+      // Lands, then fails, and cannot even be read back: the save must reject.
+      async saveRun(value) { await storage.saveRun(value); throw new Error('write failed'); },
+      async loadRun() { throw new Error('read failed'); },
+    },
     notifier: noopNotifier, now: () => 1000,
   });
   const old = runtime.open(key);
@@ -244,6 +250,50 @@ test('an unconfirmed write rejects and leaves reminders describing the persisted
   assert.deepEqual([...installed.keys()], sequentialReminderIdsForRun(run.id)); // Still the persisted Run's.
 });
 
+test('a write that lands and then throws is confirmed by reading it back', async () => {
+  const storage = createStorage(createInMemoryKV());
+  const { installed, notifier } = reminderRecorder();
+  const session = createDefinitionRuntime({
+    storage: { ...storage, async saveRun(value) { await storage.saveRun(value); throw new Error('ack lost'); } },
+    notifier, now: () => 1000,
+  }).open(key);
+  assert.deepEqual(await session.saveRun(run, 'en'), { reminder: 'synced' });
+  assert.deepEqual([...installed.keys()], sequentialReminderIdsForRun(run.id));
+});
+
+test('a rejected write realigns reminders to what is stored; unreadable storage rings nothing', async () => {
+  const storage = createStorage(createInMemoryKV());
+  const { installed, notifier } = reminderRecorder();
+  let mode: 'ok' | 'drop' | 'garble' = 'ok';
+  let readable = true;
+  const session = createDefinitionRuntime({
+    storage: {
+      ...storage,
+      async saveRun(value) {
+        if (mode === 'ok') return storage.saveRun(value);
+        if (mode === 'garble') await storage.saveRun({ ...value, events: [] }); // A different Run landed.
+        throw new Error('write failed');
+      },
+      async loadRun(id) {
+        if (!readable) throw new Error('read failed');
+        return storage.loadRun(id);
+      },
+    },
+    notifier, now: () => 1000,
+  }).open(key);
+  mode = 'garble';
+  await assert.rejects(() => session.saveRun(run, 'en'), /write failed/);
+  assert.equal(installed.size, 0); // Stored Run is not started: nothing may ring.
+
+  mode = 'ok';
+  await session.saveRun(run, 'en');
+  assert.equal(installed.size, 1);
+  mode = 'drop';
+  readable = false;
+  await assert.rejects(() => session.saveRun(run, 'en'), /write failed/);
+  assert.equal(installed.size, 0); // Reopening would fail closed; no reminder for it.
+});
+
 test('a reminder that is not actually installed is reported with its reason, never "synced"', async () => {
   for (const mode of ['denied', 'unsupported'] as const) {
     const storage = createStorage(createInMemoryKV());
@@ -292,9 +342,10 @@ test('retrying the latest snapshot after failures persists the whole log and rep
   assert.deepEqual(project(reloaded.flow, reloaded.events, 30_000), project(latest.flow, latest.events, 30_000));
 });
 
-// Interleaving model: random user intents, clocks, storage faults (including a write that
-// lands and then throws) and notifier outcomes. After EVERY confirmed save the installed
-// reminders equal what the persisted Run plans; an unconfirmed save never touches them.
+// Interleaving model: random user intents, clocks, storage faults (a write that is dropped,
+// one that lands and then throws, and an unreadable read-back) and notifier outcomes.
+// After EVERY call, whether it resolved or rejected, installed reminders are exactly what
+// the stored Run plans (or nothing, when delivery did not install or storage is unreadable).
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
@@ -306,7 +357,7 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-test('model: installed reminders always derive from the persisted Run (200 seeded walks)', async () => {
+test('model: installed reminders always derive from the stored Run (200 seeded walks)', async () => {
   const modelFlow: Flow = {
     schemaVersion: 2, id: 'mine', title: 'Mine', topology: 'sequential',
     nodes: [
@@ -324,11 +375,13 @@ test('model: installed reminders always derive from the persisted Run (200 seede
     (r: Run, at: number) => backAction(r.flow, r.events, at),
   ];
   const deliveries: Delivery[] = ['scheduled', 'scheduled', 'scheduled', 'denied', 'unsupported', 'throw'];
+  const writes = ['ok', 'ok', 'ok', 'drop', 'landThenThrow'] as const;
   for (let seed = 1; seed <= 200; seed++) {
     const rand = mulberry32(seed);
     const pick = <T>(xs: readonly T[]): T => xs[Math.floor(rand() * xs.length)];
     const storage = createStorage(createInMemoryKV());
-    let storageMode: 'ok' | 'before' | 'after' = 'ok';
+    let write: (typeof writes)[number] = 'ok';
+    let readable = true;
     let delivery: Delivery = 'scheduled';
     let clock = 0;
     const { installed, notifier } = reminderRecorder(() => delivery);
@@ -336,9 +389,13 @@ test('model: installed reminders always derive from the persisted Run (200 seede
       storage: {
         ...storage,
         async saveRun(value) {
-          if (storageMode === 'before') throw new Error('write rejected');
+          if (write === 'drop') throw new Error('write rejected');
           await storage.saveRun(value);
-          if (storageMode === 'after') throw new Error('write landed, then the call failed');
+          if (write === 'landThenThrow') throw new Error('write landed, then the call failed');
+        },
+        async loadRun(id) {
+          if (!readable) throw new Error('read failed');
+          return storage.loadRun(id);
         },
       },
       notifier, now: () => clock,
@@ -350,26 +407,37 @@ test('model: installed reminders always derive from the persisted Run (200 seede
       const event = pick(intents)(visible, clock);
       if (event) visible = reduce(visible, event);
       else if (rand() < 0.1) visible = { ...visible, events: [] }; // reset
-      storageMode = pick(['ok', 'ok', 'ok', 'before', 'after'] as const);
+      write = pick(writes);
+      readable = rand() < 0.85;
       delivery = pick(deliveries);
-      const before = new Map(installed);
-      const where = `seed ${seed} step ${step}`;
+      const where = `seed ${seed} step ${step} (${write}, ${readable ? 'readable' : 'unreadable'}, ${delivery})`;
+      let outcome: RunSaveOutcome | null = null;
       try {
-        const outcome = await session.saveRun(visible, 'en');
-        assert.equal(storageMode, 'ok', where);
-        const expected = { scheduled: 'synced', denied: 'denied', unsupported: 'unsupported', throw: 'failed' } as const;
-        const planned = planSequentialReminder(modelFlow, visible.events, clock, visible.id, 'en', key);
-        assert.equal(outcome.reminder, planned ? expected[delivery] : 'synced', where);
-        if (outcome.reminder === 'synced') {
-          const persisted = await storage.loadRun(visible.id);
-          assert.ok(persisted, where);
-          const fromPersisted = planSequentialReminder(persisted.flow, persisted.events, clock, persisted.id, 'en', key);
-          assert.deepEqual([...installed.values()], fromPersisted ? [fromPersisted] : [], where);
-        }
+        outcome = await session.saveRun(visible, 'en');
       } catch (error) {
         if (error instanceof assert.AssertionError) throw error;
-        assert.notEqual(storageMode, 'ok', where);
-        assert.deepEqual(installed, before, `${where}: unconfirmed write touched reminders`);
+      }
+      const stored = await storage.loadRun(visible.id);
+      // Confirmed iff the exact snapshot is known to be stored (a dropped write of an
+      // unchanged snapshot reads back identical, and is genuinely confirmed).
+      const confirmed = write === 'ok' || (readable && stored !== null && sameJsonValue(stored, visible));
+      assert.equal(outcome !== null, confirmed, where);
+
+      const planned = stored
+        ? planSequentialReminder(stored.flow, stored.events, clock, stored.id, 'en', key)
+        : null;
+      const installedNow = [...installed.values()];
+      const readBackUsed = !confirmed || write !== 'ok';
+      if (readBackUsed && !readable) {
+        assert.deepEqual(installedNow, [], `${where}: unreadable storage must ring nothing`);
+      } else if (delivery === 'scheduled') {
+        assert.deepEqual(installedNow, planned ? [planned] : [], `${where}: reminder != stored Run`);
+      } else {
+        assert.deepEqual(installedNow, [], `${where}: nothing can be installed`);
+      }
+      if (outcome) {
+        const expected = { scheduled: 'synced', denied: 'denied', unsupported: 'unsupported', throw: 'failed' } as const;
+        assert.equal(outcome.reminder, planned ? expected[delivery] : 'synced', where);
       }
     }
   }
