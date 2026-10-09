@@ -1,7 +1,7 @@
 // 顺序型运行状态、持久化与通知。
 // 有事件的 Run 始终以 run.flow 快照为事实源；当前 catalog Flow 只用于未开始或 reset 后的新 Run。
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { type Flow, type Run, type RunEvent } from '../domain/types';
 import { type Locale } from '../i18n/locale';
 import { type Instant } from '../runtime/clock';
@@ -16,10 +16,19 @@ import {
   resumeAction,
   backAction,
 } from '../session/actions';
+import { createRunSaveTracker, INITIAL_RUN_SAVE, type RunSaveState } from './runSaveTracker';
 
 export interface PersistentRun {
   status: 'loading' | 'ready' | 'error';
   retry: () => void;
+  /** Confirmed-write status of the latest Run snapshot; never optimistic. */
+  save: RunSaveState;
+  /** Re-submit the current Run snapshot after a failed save. */
+  retrySave: () => void;
+  /** Authoritative save status now, ahead of React's next render (for leave guards). */
+  currentSave: () => RunSaveState;
+  /** Resolves when the latest submitted snapshot write settles (for leave guards). */
+  saveSettled: () => Promise<RunSaveState>;
   flow: Flow;
   state: RunState;
   start: () => void;
@@ -73,10 +82,17 @@ export function usePersistentRun(
     return () => clearInterval(id);
   }, [state.status]);
 
+  const [save, setSave] = useState<RunSaveState>(INITIAL_RUN_SAVE);
+  const [saveAttempt, setSaveAttempt] = useState(0);
+  const saves = useMemo(() => createRunSaveTracker(setSave), [session]);
+  useEffect(() => () => saves.dispose(), [saves]);
+
+  // Each save carries the whole event log, so retrying the current snapshot also
+  // covers every earlier failed write. Failure is reported, never swallowed (C6/E2).
   useEffect(() => {
     if (status !== 'ready') return;
-    session.saveRun(run, locale).catch(() => {});
-  }, [locale, run, session, status]);
+    saves.submit(() => session.saveRun(run, locale));
+  }, [locale, run, saveAttempt, saves, session, status]);
 
   const apply = (event: RunEvent | null): void => {
     if (status !== 'ready' || !event) return;
@@ -92,6 +108,10 @@ export function usePersistentRun(
   return {
     status,
     retry: () => setLoadAttempt((attempt) => attempt + 1),
+    save,
+    retrySave: () => { if (status === 'ready') setSaveAttempt((attempt) => attempt + 1); },
+    currentSave: () => saves.current(),
+    saveSettled: () => saves.settled(),
     flow: runtimeFlow,
     state,
     start: () => apply(startAction(Date.now())),

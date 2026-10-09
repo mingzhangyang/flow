@@ -102,9 +102,13 @@ automatically.
 
 ### Release blockers and native device matrix
 
-Sequential Run persistence is a **release blocker** until a dedicated follow-up
-resolves the optimistic saveRun(...).catch(() => {}) in usePersistentRun.ts with a durable
-Run-event contract, write failure feedback/recovery and replay verification.
+Sequential Run persistence (formerly a release blocker) is resolved: `saveRun`
+rejects unless the whole Run snapshot is confirmed written and reports reminder
+sync separately; the Runner shows a non-optimistic failure banner with Retry,
+exits wait for the in-flight save and confirm after a failure, and contract
+tests replay the retried snapshot (`definitionRuntime` / `runSaveTracker`
+contracts, `e2e/runner.test.ts`). Native storage-failure behavior still belongs
+to the device matrix below.
 A passed Android build is permission to begin device testing, **not** a store
 release decision.
 

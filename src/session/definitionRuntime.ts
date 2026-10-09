@@ -14,13 +14,23 @@ import { planSequentialReminder } from '../notifications/plan';
 import { sequentialReminderIdsForRun } from '../notifications/notificationIdentity';
 import { activeRunId, loadRunForDefinition } from './runPersistence';
 
+export interface RunSaveOutcome {
+  reminder: 'synced' | 'failed';
+}
+
 export interface RuntimeSession {
   readonly id: number;
   readonly definitionKey: string;
   isOpen(): boolean;
   close(): void;
   loadRun(flow: Flow): Promise<Run>;
-  saveRun(run: Run, locale: Locale): Promise<void>;
+  /**
+   * Durably writes the full Run snapshot, then syncs its sequential reminder to the
+   * same snapshot. Rejects only when the snapshot was not confirmed written; reminder
+   * sync is still attempted then, so the platform timer never contradicts the screen.
+   * A written snapshot with a failed reminder sync resolves `{ reminder: 'failed' }`.
+   */
+  saveRun(run: Run, locale: Locale): Promise<RunSaveOutcome>;
   loadCheckIns(): Promise<CheckIn[]>;
   /** Returns the confirmed persisted log; failures reject and do not claim commit. */
   changeCheckIn(change: CheckInChange): Promise<CheckIn[]>;
@@ -83,12 +93,26 @@ export function createDefinitionRuntime(deps: {
         saveRun: (run, locale) => submit(async () => {
           assertDefinitionKeyForFlow(definitionKey, run.flow.id);
           if (run.id !== activeRunId(definitionKey)) throw new Error('Run does not belong to session');
-          await deps.storage.saveRun(run);
-          const reminder = planSequentialReminder(
-            run.flow, run.events, deps.now(), run.id, locale, definitionKey,
-          );
-          await deps.notifier.cancel(sequentialReminderIdsForRun(run.id));
-          if (reminder) await deps.notifier.schedule([reminder]);
+          let persisted = true;
+          let persistError: unknown;
+          try {
+            await deps.storage.saveRun(run);
+          } catch (error) {
+            persisted = false;
+            persistError = error;
+          }
+          let reminder: RunSaveOutcome['reminder'] = 'synced';
+          try {
+            const planned = planSequentialReminder(
+              run.flow, run.events, deps.now(), run.id, locale, definitionKey,
+            );
+            await deps.notifier.cancel(sequentialReminderIdsForRun(run.id));
+            if (planned) await deps.notifier.schedule([planned]);
+          } catch {
+            reminder = 'failed';
+          }
+          if (!persisted) throw persistError;
+          return { reminder };
         }),
         loadCheckIns: () => submit(() => deps.storage.loadCheckIns(definitionKey)),
         changeCheckIn: (change) => submit(() => deps.storage.changeCheckIn(definitionKey, change)),

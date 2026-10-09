@@ -2,10 +2,12 @@
 // 沉浸式深墨绿场景：进入运行即切换到深色，环 + 珠（应用图标的形状语言）承载进度，
 // 极细大字倒计时是画面的主角。运行状态、持久化（C6）与通知（C5）收在 usePersistentRun。
 
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { View, Text, ScrollView, StyleSheet, Alert, Platform } from 'react-native';
 import { type Flow } from '../domain/types';
 import { type RuntimeSession } from '../session/definitionRuntime';
 import { usePersistentRun } from './usePersistentRun';
+import { createLeaveGuard } from './leaveGuard';
 import { Timeline } from './Timeline';
 import { ProgressRing } from './ProgressRing';
 import { fmtDuration } from './format';
@@ -21,6 +23,7 @@ export function RunnerScreen(props: {
   flow: Flow;
   session: RuntimeSession;
   onExit: () => void;
+  onRegisterExit?: (request: (() => Promise<boolean>) | null) => void;
 }) {
   const { locale, t } = useI18n();
   const run = usePersistentRun(
@@ -43,12 +46,55 @@ export function RunnerScreen(props: {
   const progressMotionKey = `${state.status}:${state.currentIndex}:${node?.id ?? 'none'}`;
   const stepMotionKey = `${state.status}:${state.currentIndex}:${node?.id ?? 'none'}`;
 
+  // All exits (header, Android Back, notification replacement) ask this one
+  // screen-owned guard. An in-flight save settles first; a failed one asks (C6).
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; };
+  }, []);
+  const latest = useRef(run);
+  latest.current = run;
+  const confirmLeave = useRef<(done: (approved: boolean) => void) => void>(() => {});
+  confirmLeave.current = (done) => {
+    if (Platform.OS === 'web') {
+      // react-native-web's Alert is a no-op; never leave the guard unresolved.
+      done(typeof window !== 'undefined' && typeof window.confirm === 'function'
+        ? window.confirm(`${t.runUnsavedTitle}\n\n${t.runUnsavedExit}`)
+        : false);
+      return;
+    }
+    Alert.alert(t.runUnsavedTitle, t.runUnsavedExit, [
+      { text: t.cancel, style: 'cancel', onPress: () => done(false) },
+      { text: t.runLeaveAnyway, style: 'destructive', onPress: () => done(true) },
+    ], { cancelable: true, onDismiss: () => done(false) });
+  };
+  const leaveGuard = useMemo(() => createLeaveGuard({
+    // Read the tracker, not the rendered status: it may lag the settled write.
+    disposition: () => latest.current.currentSave().status === 'failed' ? 'confirm' : 'allow',
+    prompt: (done) => confirmLeave.current(done),
+  }), []);
+  const requestLeave = useMemo(() => async (): Promise<boolean> => {
+    await latest.current.saveSettled();
+    return leaveGuard.request();
+  }, [leaveGuard]);
+  const requestExit = (): void => {
+    void requestLeave().then((approved) => {
+      if (approved && alive.current && props.session.isOpen()) props.onExit();
+    });
+  };
+  useLayoutEffect(() => {
+    props.onRegisterExit?.(requestLeave);
+    return () => props.onRegisterExit?.(null);
+  }, [requestLeave, props.onRegisterExit]);
+  useEffect(() => () => leaveGuard.cancel(), [leaveGuard]);
+
   if (run.status === 'loading') return <View style={styles.screen} />;
   if (run.status === 'error') {
     return (
       <View style={styles.screen}>
         <View style={styles.header}>
-          <HeaderBackButton accessibilityLabel={t.back} color={dark.accent} onPress={props.onExit} />
+          <HeaderBackButton accessibilityLabel={t.back} color={dark.accent} onPress={requestExit} />
           <Text style={styles.title} numberOfLines={1}>{props.flow.title}</Text>
           <HeaderSideSpacer />
         </View>
@@ -65,12 +111,22 @@ export function RunnerScreen(props: {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <HeaderBackButton accessibilityLabel={t.back} color={dark.accent} onPress={props.onExit} />
+        <HeaderBackButton accessibilityLabel={t.back} color={dark.accent} onPress={requestExit} />
         <Text style={styles.title} numberOfLines={1}>{flow.title}</Text>
         <HeaderSideSpacer />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        {run.save.status === 'failed' || run.save.reminderFailed ? (
+          <View style={styles.saveIssue} accessibilityRole="alert">
+            <Text style={styles.saveIssueText}>
+              {run.save.status === 'failed' ? t.runSaveFailed : t.runReminderSyncFailed}
+            </Text>
+            <MotionPressable style={styles.retry} onPress={run.retrySave}>
+              <Text style={styles.retryText}>{t.retry}</Text>
+            </MotionPressable>
+          </View>
+        ) : null}
         <View style={styles.stage}>
           <Text style={styles.kicker}>
             {state.status === 'completed'
@@ -187,6 +243,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
   },
   retryText: { color: dark.accent, fontSize: type.body, fontWeight: '600' },
+  saveIssue: {
+    flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm,
+    borderRadius: radius.md, borderWidth: 1, borderColor: dark.warm,
+    backgroundColor: dark.surface, padding: spacing.md,
+  },
+  saveIssueText: { flex: 1, minWidth: 0, flexBasis: 200, color: dark.warm, fontSize: type.body, lineHeight: 21 },
   stage: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.lg },
   kicker: { fontSize: type.caption + 1, color: dark.textMuted, letterSpacing: 2, marginBottom: spacing.md },
   clock: {
