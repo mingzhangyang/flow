@@ -79,7 +79,7 @@ export function RunnerScreen(props: {
     await latest.current.saveSettledWithin(LEAVE_SAVE_WAIT_MS);
     const abandoning = unsaved();
     const approved = await leaveGuard.request();
-    // Submitted synchronously, before App closes this session.
+    // Armed only: realignment is queued if and when App actually closes this session.
     if (approved && abandoning) latest.current.abandonUnsaved();
     return approved;
   }, [leaveGuard]);

@@ -341,3 +341,55 @@ test('an unreadable persisted Run cancels the reminder instead of guessing', asy
   await session.syncReminderToSaved(flow, 'en');
   assert.equal(scheduled.size, 0);
 });
+
+test('an armed realignment waits for the session to actually close', async () => {
+  const kv = createInMemoryKV();
+  const storage = createStorage(kv);
+  const { scheduled, notifier } = reminderRecorder();
+  let failing = false;
+  const runtime = createDefinitionRuntime({
+    storage: {
+      ...storage,
+      async saveRun(value) {
+        if (failing) throw new Error('disk full');
+        await storage.saveRun(value);
+      },
+    },
+    notifier, now: () => 1000,
+  });
+  const session = runtime.open(key);
+  await session.saveRun(run, 'en'); // Persisted: running.
+  failing = true;
+  const paused: Run = { ...run, events: [...run.events, { type: 'paused', at: 2000 }] };
+  await assert.rejects(() => session.saveRun(paused, 'en'));
+  assert.equal(scheduled.size, 0);
+
+  // The user approved leaving, but navigation was abandoned (e.g. catalog not ready):
+  // the Runner still shows "paused", so nothing may realign yet.
+  session.realignReminderOnClose(flow, 'en');
+  await session.loadRun(flow); // Drain the lane.
+  assert.equal(scheduled.size, 0);
+
+  // Reopening closes the old session first; its realignment runs before the new read.
+  const reopened = runtime.open(key);
+  const loaded = await reopened.loadRun(flow);
+  assert.deepEqual(loaded, run);
+  assert.deepEqual([...scheduled], sequentialReminderIdsForRun(run.id));
+});
+
+test('an unarmed close and a deletion fence never realign reminders', async () => {
+  const storage = createStorage(createInMemoryKV());
+  const { scheduled, notifier } = reminderRecorder();
+  const runtime = createDefinitionRuntime({ storage, notifier, now: () => 1000 });
+  const session = runtime.open(key);
+  await session.saveRun(run, 'en');
+  scheduled.clear();
+  session.close();
+  await runtime.open(key).loadRun(flow);
+  assert.equal(scheduled.size, 0);
+
+  const armed = runtime.open(key);
+  armed.realignReminderOnClose(flow, 'en');
+  await runtime.retire(key, async () => {});
+  assert.equal(scheduled.size, 0);
+});

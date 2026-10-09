@@ -38,6 +38,12 @@ export interface RuntimeSession {
    * left pointing at progress that may not exist.
    */
   syncReminderToSaved(flow: Flow, locale: Locale): Promise<void>;
+  /**
+   * Arms syncReminderToSaved to be queued at the moment this session closes, ahead of any
+   * later submission. Approval to leave is not leaving: until App closes the session the
+   * Runner (and its reminder) stays as is. Re-arming replaces the earlier request.
+   */
+  realignReminderOnClose(flow: Flow, locale: Locale): void;
   loadCheckIns(): Promise<CheckIn[]>;
   /** Returns the confirmed persisted log; failures reject and do not claim commit. */
   changeCheckIn(change: CheckInChange): Promise<CheckIn[]>;
@@ -85,7 +91,15 @@ export function createDefinitionRuntime(deps: {
       if (lane.blocked) throw new Error('definition deletion is pending');
       lane.closeCurrent();
       let closed = false;
-      const close = (): void => { closed = true; };
+      let onClose: (() => Promise<void>) | null = null;
+      const close = (): void => {
+        if (closed) return;
+        closed = true;
+        const armed = onClose;
+        onClose = null;
+        // Deletion (blocked lane) cancels every reminder of this definition anyway.
+        if (armed && !lane.blocked) enqueue(lane, armed).catch(() => {});
+      };
       lane.closeCurrent = close;
       const syncReminder = async (run: Run, locale: Locale): Promise<void> => {
         const planned = planSequentialReminder(
@@ -93,6 +107,17 @@ export function createDefinitionRuntime(deps: {
         );
         await deps.notifier.cancel(sequentialReminderIdsForRun(run.id));
         if (planned) await deps.notifier.schedule([planned]);
+      };
+      const realign = async (flow: Flow, locale: Locale): Promise<void> => {
+        assertDefinitionKeyForFlow(definitionKey, flow.id);
+        let saved: Run;
+        try {
+          saved = await loadRunForDefinition(deps.storage, flow, definitionKey);
+        } catch {
+          await deps.notifier.cancel(sequentialReminderIdsForRun(activeRunId(definitionKey)));
+          return;
+        }
+        await syncReminder(saved, locale);
       };
       const submit = <T>(task: () => Promise<T>): Promise<T> => {
         if (closed || lane.blocked) return Promise.reject(new Error('runtime session is closed'));
@@ -124,17 +149,11 @@ export function createDefinitionRuntime(deps: {
           if (!persisted) throw persistError;
           return { reminder };
         }),
-        syncReminderToSaved: (flow, locale) => submit(async () => {
+        syncReminderToSaved: (flow, locale) => submit(() => realign(flow, locale)),
+        realignReminderOnClose: (flow, locale) => {
           assertDefinitionKeyForFlow(definitionKey, flow.id);
-          let saved: Run;
-          try {
-            saved = await loadRunForDefinition(deps.storage, flow, definitionKey);
-          } catch {
-            await deps.notifier.cancel(sequentialReminderIdsForRun(activeRunId(definitionKey)));
-            return;
-          }
-          await syncReminder(saved, locale);
-        }),
+          if (!closed) onClose = () => realign(flow, locale);
+        },
         loadCheckIns: () => submit(() => deps.storage.loadCheckIns(definitionKey)),
         changeCheckIn: (change) => submit(() => deps.storage.changeCheckIn(definitionKey, change)),
       };

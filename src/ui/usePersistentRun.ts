@@ -1,7 +1,7 @@
 // 顺序型运行状态、持久化与通知。
 // 有事件的 Run 始终以 run.flow 快照为事实源；当前 catalog Flow 只用于未开始或 reset 后的新 Run。
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { type Flow, type Run, type RunEvent } from '../domain/types';
 import { type Locale } from '../i18n/locale';
 import { type Instant } from '../runtime/clock';
@@ -29,7 +29,7 @@ export interface PersistentRun {
   currentSave: () => RunSaveState;
   /** Waits for the latest snapshot write, at most `ms`; 'saving' means still unconfirmed. */
   saveSettledWithin: (ms: number) => Promise<RunSaveState>;
-  /** Leaving with an unconfirmed snapshot: realign the reminder with the persisted Run. */
+  /** Approved leave with an unconfirmed snapshot: realign the reminder when the session closes. */
   abandonUnsaved: () => void;
   flow: Flow;
   state: RunState;
@@ -48,7 +48,14 @@ export function usePersistentRun(
   locale: Locale,
 ): PersistentRun {
   const runId = activeRunId(session.definitionKey);
-  const [run, setRun] = useState<Run>(() => ({ id: runId, flow, events: [] }));
+  const [run, setRunState] = useState<Run>(() => ({ id: runId, flow, events: [] }));
+  // Synchronous source of truth for mutations: a second tap before React re-renders
+  // must build on the first, and a save must be submitted in the same handler.
+  const runRef = useRef(run);
+  const setRun = (next: Run): void => {
+    runRef.current = next;
+    setRunState(next);
+  };
   const [now, setNow] = useState<Instant>(() => Date.now());
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [loadAttempt, setLoadAttempt] = useState(0);
@@ -91,20 +98,34 @@ export function usePersistentRun(
 
   // Each save carries the whole event log, so retrying the current snapshot also
   // covers every earlier failed write. Failure is reported, never swallowed (C6/E2).
+  const localeRef = useRef(locale);
+  localeRef.current = locale;
+  const submitSave = (snapshot: Run): void => {
+    saves.submit(() => session.saveRun(snapshot, localeRef.current));
+  };
+  // Loaded/ready, locale change (reminder copy) and explicit retry re-save the current
+  // snapshot. User mutations submit in their own handler, never from a later effect.
   useEffect(() => {
     if (status !== 'ready') return;
-    saves.submit(() => session.saveRun(run, locale));
-  }, [locale, run, saveAttempt, saves, session, status]);
+    submitSave(runRef.current);
+  }, [locale, saveAttempt, saves, session, status]);
 
-  const apply = (event: RunEvent | null): void => {
-    if (status !== 'ready' || !event) return;
-    setRun((current) => reduce(current, event));
+  // A mutation is marked 'saving' in the same handler that changes the Run, so a leave
+  // guard can never see the previous snapshot as saved and authorize an unsubmitted Run.
+  const commit = (next: Run): void => {
+    setRun(next);
     setNow(Date.now());
+    submitSave(next);
+  };
+  const apply = (decide: (current: Run) => RunEvent | null): void => {
+    if (status !== 'ready') return;
+    const event = decide(runRef.current);
+    if (!event) return;
+    commit(reduce(runRef.current, event));
   };
   const reset = (): void => {
     if (status !== 'ready') return;
-    setRun({ id: runId, flow, events: [] });
-    setNow(Date.now());
+    commit({ id: runId, flow, events: [] });
   };
 
   return {
@@ -117,18 +138,18 @@ export function usePersistentRun(
       new Promise<void>((resolve) => { setTimeout(resolve, ms); }),
     ),
     abandonUnsaved: () => {
-      // Queued behind every accepted save, before App closes the session. Nobody is left
-      // on this screen to tell; a failure here leaves the last synced reminder in place.
-      session.syncReminderToSaved(flow, locale).catch(() => {});
+      // Armed only: the realignment is queued when App actually closes this session.
+      // If navigation is abandoned after approval, this Runner and its reminder stay as is.
+      session.realignReminderOnClose(flow, localeRef.current);
     },
     flow: runtimeFlow,
     state,
-    start: () => apply(startAction(Date.now())),
-    complete: () => apply(completeCurrentAction(runtimeFlow, run.events, Date.now())),
-    skip: () => apply(skipCurrentAction(runtimeFlow, run.events, Date.now())),
-    pause: () => apply(pauseAction(runtimeFlow, run.events, Date.now())),
-    resume: () => apply(resumeAction(runtimeFlow, run.events, Date.now())),
-    back: () => apply(backAction(runtimeFlow, run.events, Date.now())),
+    start: () => apply(() => startAction(Date.now())),
+    complete: () => apply((r) => completeCurrentAction(r.flow, r.events, Date.now())),
+    skip: () => apply((r) => skipCurrentAction(r.flow, r.events, Date.now())),
+    pause: () => apply((r) => pauseAction(r.flow, r.events, Date.now())),
+    resume: () => apply((r) => resumeAction(r.flow, r.events, Date.now())),
+    back: () => apply((r) => backAction(r.flow, r.events, Date.now())),
     reset,
   };
 }
