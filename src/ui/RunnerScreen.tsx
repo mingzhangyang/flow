@@ -3,11 +3,11 @@
 // 极细大字倒计时是画面的主角。运行状态、持久化（C6）与通知（C5）收在 usePersistentRun。
 
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, AppState, Linking } from 'react-native';
 import { type Flow } from '../domain/types';
 import { type RuntimeSession } from '../session/definitionRuntime';
 import { usePersistentRun } from './usePersistentRun';
-import { createLeaveGuard } from './leaveGuard';
+import { createLeaveGuard, shareInFlight } from './leaveGuard';
 import { promptLeaveConfirmation } from './confirmLeave';
 import { Timeline } from './Timeline';
 import { ProgressRing } from './ProgressRing';
@@ -75,15 +75,19 @@ export function RunnerScreen(props: {
     disposition: () => unsaved() ? 'confirm' : 'allow',
     prompt: (done) => confirmLeave.current(done),
   }), []);
-  const requestLeave = useMemo(() => async (): Promise<boolean> => {
+  // Concurrent exits (header + notification + Back) share ONE wait-and-confirm attempt,
+  // so a later request can never open a second, stale prompt after the first resolves.
+  const requestLeave = useMemo(() => shareInFlight(async (): Promise<boolean> => {
     await latest.current.saveSettledWithin(LEAVE_SAVE_WAIT_MS);
+    if (!alive.current) return false; // This Runner is gone; nothing left to authorize.
     const approved = await leaveGuard.request();
+    if (!approved || !alive.current) return false;
     // Re-read AFTER the prompt: a save may have been confirmed while the dialog was open,
     // and a redundant realignment would only cancel/reschedule a correct reminder.
     // Armed only: realignment is queued if and when App actually closes this session.
-    if (approved && unsaved()) latest.current.abandonUnsaved();
-    return approved;
-  }, [leaveGuard]);
+    if (unsaved()) latest.current.abandonUnsaved();
+    return true;
+  }), [leaveGuard]);
   const requestExit = (): void => {
     void requestLeave().then((approved) => {
       if (approved && alive.current && props.session.isOpen()) props.onExit();
@@ -94,6 +98,16 @@ export function RunnerScreen(props: {
     return () => props.onRegisterExit?.(null);
   }, [requestLeave, props.onRegisterExit]);
   useEffect(() => () => leaveGuard.cancel(), [leaveGuard]);
+
+  // Back from system settings: re-sync so a newly granted permission clears the warning.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active' && latest.current.currentSave().reminderIssue === 'denied') {
+        latest.current.retrySave();
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   if (run.status === 'loading') return <View style={styles.screen} />;
   if (run.status === 'error') {
@@ -123,7 +137,7 @@ export function RunnerScreen(props: {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        {run.save.status === 'failed' || run.save.reminderFailed ? (
+        {run.save.status === 'failed' || run.save.reminderIssue === 'failed' ? (
           <View style={styles.saveIssue} accessibilityRole="alert">
             <Text style={styles.saveIssueText}>
               {run.save.status === 'failed' ? t.runSaveFailed : t.runReminderSyncFailed}
@@ -132,6 +146,15 @@ export function RunnerScreen(props: {
               <Text style={styles.retryText}>{t.retry}</Text>
             </MotionPressable>
           </View>
+        ) : run.save.reminderIssue === 'denied' ? (
+          // Same honesty contract as the Schedule screen (E6): a timer that cannot ring says so.
+          <MotionPressable accessibilityRole="button" accessibilityLabel={t.scheduleNotifSettings}
+            style={styles.saveIssue} onPress={() => { Linking.openSettings().catch(() => {}); }}>
+            <Text style={styles.saveIssueText}>{t.scheduleNotifDenied}</Text>
+            <Text style={styles.retryText}>{t.scheduleNotifSettings}</Text>
+          </MotionPressable>
+        ) : run.save.reminderIssue === 'unsupported' ? (
+          <Text style={styles.reminderNote}>{t.scheduleNotifWeb}</Text>
         ) : null}
         <View style={styles.stage}>
           <Text style={styles.kicker}>
@@ -254,6 +277,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md, borderWidth: 1, borderColor: dark.warm,
     backgroundColor: dark.surface, padding: spacing.md,
   },
+  reminderNote: { color: dark.textMuted, fontSize: type.caption + 1, lineHeight: 18, textAlign: 'center' },
   saveIssueText: { flex: 1, minWidth: 0, flexBasis: 200, color: dark.warm, fontSize: type.body, lineHeight: 21 },
   stage: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.lg },
   kicker: { fontSize: type.caption + 1, color: dark.textMuted, letterSpacing: 2, marginBottom: spacing.md },

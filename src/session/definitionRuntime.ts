@@ -15,7 +15,13 @@ import { sequentialReminderIdsForRun } from '../notifications/notificationIdenti
 import { activeRunId, loadRunForDefinition } from './runPersistence';
 
 export interface RunSaveOutcome {
-  reminder: 'synced' | 'failed';
+  /**
+   * synced: the reminder matching the snapshot is installed (or none is needed).
+   * failed: syncing threw (or permission is still undetermined) — worth retrying.
+   * denied / unsupported: scheduling "succeeded" but nothing will fire (no permission,
+   * or a platform without scheduled notifications); the UI must say so (E6).
+   */
+  reminder: 'synced' | 'failed' | 'denied' | 'unsupported';
 }
 
 export interface RuntimeSession {
@@ -28,7 +34,7 @@ export interface RuntimeSession {
    * Durably writes the full Run snapshot, then syncs its sequential reminder to the
    * same snapshot. Rejects only when the snapshot was not confirmed written; reminder
    * sync is still attempted then, so the platform timer never contradicts the screen.
-   * A written snapshot with a failed reminder sync resolves `{ reminder: 'failed' }`.
+   * A written snapshot whose reminder is not actually installed resolves with the reason.
    */
   saveRun(run: Run, locale: Locale): Promise<RunSaveOutcome>;
   /**
@@ -66,7 +72,7 @@ interface Lane {
 
 export function createDefinitionRuntime(deps: {
   storage: Pick<Storage, 'loadRun' | 'saveRun' | 'loadCheckIns' | 'changeCheckIn'>;
-  notifier: Pick<Notifier, 'cancel' | 'schedule'>;
+  notifier: Pick<Notifier, 'cancel' | 'schedule' | 'status'>;
   now: () => number;
 }): DefinitionRuntime {
   const lanes = new Map<string, Lane>();
@@ -102,12 +108,19 @@ export function createDefinitionRuntime(deps: {
         if (armed && !lane.blocked) enqueue(lane, armed).catch(() => {});
       };
       lane.closeCurrent = close;
-      const syncReminder = async (run: Run, locale: Locale): Promise<void> => {
+      // Notifier.schedule resolves even when nothing was installed (permission denied,
+      // web no-op), so a planned reminder is only 'synced' once availability is 'ready'.
+      const syncReminder = async (run: Run, locale: Locale): Promise<RunSaveOutcome['reminder']> => {
         const planned = planSequentialReminder(
           run.flow, run.events, deps.now(), run.id, locale, definitionKey,
         );
         await deps.notifier.cancel(sequentialReminderIdsForRun(run.id));
-        if (planned) await deps.notifier.schedule([planned]);
+        if (!planned) return 'synced';
+        await deps.notifier.schedule([planned]);
+        const availability = await deps.notifier.status();
+        if (availability === 'ready') return 'synced';
+        if (availability === 'denied' || availability === 'unsupported') return availability;
+        return 'failed'; // Still undetermined: a retry asks again.
       };
       const realign = async (flow: Flow, locale: Locale): Promise<void> => {
         assertDefinitionKeyForFlow(definitionKey, flow.id);
@@ -141,16 +154,16 @@ export function createDefinitionRuntime(deps: {
             persisted = false;
             persistError = error;
           }
-          let reminder: RunSaveOutcome['reminder'] = 'synced';
+          let reminder: RunSaveOutcome['reminder'];
           try {
-            await syncReminder(run, locale);
+            reminder = await syncReminder(run, locale);
           } catch {
             reminder = 'failed';
           }
           if (!persisted) throw persistError;
-          // Persisted and reminder now describe the same snapshot: an armed close
-          // realignment would only re-cancel a correct reminder. A failed reminder
-          // sync keeps it armed, as a second chance at close.
+          // Persisted and installed reminder now describe the same snapshot: an armed
+          // close realignment would only re-cancel a correct reminder. Any reminder
+          // that is not actually installed keeps it armed, as a second chance at close.
           if (reminder === 'synced') onClose = null;
           return { reminder };
         }),

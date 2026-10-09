@@ -8,11 +8,14 @@ import { type RunSaveOutcome } from '../session/definitionRuntime';
 export interface RunSaveState {
   /** 'idle' before the first save of a ready Run has been submitted. */
   status: 'idle' | 'saving' | 'saved' | 'failed';
-  /** Snapshot written, but the platform reminder could not be synced to it. */
-  reminderFailed: boolean;
+  /**
+   * Why the reminder for the latest written snapshot is not installed, or null when it is
+   * (or none is needed). Kept while a newer save is pending; only a resolved save changes it.
+   */
+  reminderIssue: Exclude<RunSaveOutcome['reminder'], 'synced'> | null;
 }
 
-export const INITIAL_RUN_SAVE: RunSaveState = { status: 'idle', reminderFailed: false };
+export const INITIAL_RUN_SAVE: RunSaveState = { status: 'idle', reminderIssue: null };
 
 export interface RunSaveTracker {
   submit(write: () => Promise<RunSaveOutcome>): void;
@@ -51,7 +54,7 @@ export function createRunSaveTracker(onChange: (state: RunSaveState) => void): R
     submit(write) {
       const mine = ++generation;
       // Keep the last known reminder problem visible until a newer save resolves it.
-      publish({ status: 'saving', reminderFailed: state.reminderFailed });
+      publish({ status: 'saving', reminderIssue: state.reminderIssue });
       let attempt: Promise<RunSaveOutcome>;
       try {
         attempt = write();
@@ -60,10 +63,12 @@ export function createRunSaveTracker(onChange: (state: RunSaveState) => void): R
       }
       latest = attempt.then(
         (outcome) => {
-          if (mine === generation) publish({ status: 'saved', reminderFailed: outcome.reminder === 'failed' });
+          if (mine === generation) {
+            publish({ status: 'saved', reminderIssue: outcome.reminder === 'synced' ? null : outcome.reminder });
+          }
         },
         () => {
-          if (mine === generation) publish({ status: 'failed', reminderFailed: state.reminderFailed });
+          if (mine === generation) publish({ status: 'failed', reminderIssue: state.reminderIssue });
         },
       );
     },

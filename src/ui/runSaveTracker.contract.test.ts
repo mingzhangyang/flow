@@ -23,7 +23,7 @@ test('a save is never reported saved before the write is confirmed', async () =>
   tracker.submit(write.write);
   assert.equal(tracker.current().status, 'saving');
   write.resolve({ reminder: 'synced' });
-  assert.deepEqual(await tracker.settled(), { status: 'saved', reminderFailed: false });
+  assert.deepEqual(await tracker.settled(), { status: 'saved', reminderIssue: null });
   assert.deepEqual(seen.map((s) => s.status), ['saving', 'saved']);
 });
 
@@ -77,12 +77,12 @@ test('a synchronously throwing write is a failed save, not an escaped exception'
 test('reminder sync failure stays visible until a newer save resolves it', async () => {
   const { tracker } = recording();
   tracker.submit(async () => ({ reminder: 'failed' }));
-  assert.deepEqual(await tracker.settled(), { status: 'saved', reminderFailed: true });
+  assert.deepEqual(await tracker.settled(), { status: 'saved', reminderIssue: 'failed' });
   const pending = controlled();
   tracker.submit(pending.write);
-  assert.deepEqual(tracker.current(), { status: 'saving', reminderFailed: true });
+  assert.deepEqual(tracker.current(), { status: 'saving', reminderIssue: 'failed' });
   pending.resolve({ reminder: 'synced' });
-  assert.deepEqual(await tracker.settled(), { status: 'saved', reminderFailed: false });
+  assert.deepEqual(await tracker.settled(), { status: 'saved', reminderIssue: null });
 });
 
 test('a disposed tracker stops publishing to an unmounted screen', async () => {
@@ -102,7 +102,7 @@ test('settledWithin never waits past its timeout; a stuck write reports still sa
   const timeout = controlled();
   const waiting = tracker.settledWithin(timeout.write().then(() => {}));
   timeout.resolve({ reminder: 'synced' });
-  assert.deepEqual(await waiting, { status: 'saving', reminderFailed: false });
+  assert.deepEqual(await waiting, { status: 'saving', reminderIssue: null });
 });
 
 test('settledWithin returns the settled state when the write finishes first', async () => {
@@ -110,4 +110,14 @@ test('settledWithin returns the settled state when the write finishes first', as
   tracker.submit(() => Promise.reject(new Error('disk full')));
   const never = new Promise<void>(() => {});
   assert.equal((await tracker.settledWithin(never)).status, 'failed');
+});
+
+test('an uninstalled reminder (denied / unsupported) is surfaced, not reported as saved-and-fine', async () => {
+  const { tracker } = recording();
+  tracker.submit(async () => ({ reminder: 'denied' }));
+  assert.deepEqual(await tracker.settled(), { status: 'saved', reminderIssue: 'denied' });
+  tracker.submit(async () => ({ reminder: 'unsupported' }));
+  assert.deepEqual(await tracker.settled(), { status: 'saved', reminderIssue: 'unsupported' });
+  tracker.submit(async () => ({ reminder: 'synced' }));
+  assert.deepEqual(await tracker.settled(), { status: 'saved', reminderIssue: null });
 });

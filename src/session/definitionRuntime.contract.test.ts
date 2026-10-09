@@ -5,7 +5,7 @@ import { type Flow, type Run } from '../domain/types';
 import { definitionKey } from '../domain/definitionIdentity';
 import { createInMemoryKV } from '../storage/kv';
 import { createStorage } from '../storage/storage';
-import { noopNotifier } from '../notifications/notifier';
+import { noopNotifier, type ReminderAvailability } from '../notifications/notifier';
 import { sequentialReminderIdsForRun } from '../notifications/notificationIdentity';
 import { project } from '../runtime/engine';
 import { createDefinitionRuntime } from './definitionRuntime';
@@ -195,10 +195,13 @@ test('session rejects a Run belonging to another definition before persistence o
 
 // Sequential Run persistence: failure is reported, never swallowed; reminders follow the
 // visible snapshot; a retry of the latest snapshot restores the whole replayable log (C6/E2/E4).
-function reminderRecorder(failSchedule = false) {
+const readyNotifier = { ...noopNotifier, async status(): Promise<ReminderAvailability> { return 'ready'; } };
+
+function reminderRecorder(failSchedule = false, availability: ReminderAvailability = 'ready') {
   const scheduled = new Set<string>();
   const notifier = {
     ...noopNotifier,
+    async status() { return availability; },
     async cancel(ids: string[]) { for (const id of ids) scheduled.delete(id); },
     async schedule(reminders: Parameters<typeof noopNotifier.schedule>[0]) {
       if (failSchedule) throw new Error('schedule failed');
@@ -253,7 +256,7 @@ test('retrying the latest snapshot after failures persists the whole log and rep
         await storage.saveRun(value);
       },
     },
-    notifier: noopNotifier, now: () => 1000,
+    notifier: readyNotifier, now: () => 1000,
   }).open(key);
   const steps: Run[] = [
     run,
@@ -399,7 +402,7 @@ test('a confirmed save after an abandoned navigation disarms the close realignme
   const scheduled = new Set<string>();
   let scheduleFails = false;
   const notifier = {
-    ...noopNotifier,
+    ...readyNotifier,
     async cancel(ids: string[]) { for (const id of ids) scheduled.delete(id); },
     async schedule(reminders: Parameters<typeof noopNotifier.schedule>[0]) {
       if (scheduleFails) throw new Error('transient schedule failure');
@@ -437,7 +440,7 @@ test('a save whose reminder sync failed keeps the close realignment armed', asyn
   let scheduleFails = true;
   const scheduled = new Set<string>();
   const notifier = {
-    ...noopNotifier,
+    ...readyNotifier,
     async cancel(ids: string[]) { for (const id of ids) scheduled.delete(id); },
     async schedule(reminders: Parameters<typeof noopNotifier.schedule>[0]) {
       if (scheduleFails) throw new Error('transient schedule failure');
@@ -452,4 +455,28 @@ test('a save whose reminder sync failed keeps the close realignment armed', asyn
   session.close(); // Second chance: realign from the persisted Run.
   await runtime.open(key).loadRun(flow);
   assert.deepEqual([...scheduled], sequentialReminderIdsForRun(run.id));
+});
+
+test('a reminder that schedule() silently did not install is reported, never "synced"', async () => {
+  for (const availability of ['denied', 'unsupported'] as const) {
+    const storage = createStorage(createInMemoryKV());
+    const { notifier } = reminderRecorder(false, availability);
+    const session = createDefinitionRuntime({ storage, notifier, now: () => 1000 }).open(key);
+    assert.deepEqual(await session.saveRun(run, 'en'), { reminder: availability });
+    assert.deepEqual(await storage.loadRun(run.id), run); // The snapshot itself is saved.
+  }
+  const { notifier } = reminderRecorder(false, 'undetermined');
+  const session = createDefinitionRuntime({
+    storage: createStorage(createInMemoryKV()), notifier, now: () => 1000,
+  }).open(key);
+  assert.deepEqual(await session.saveRun(run, 'en'), { reminder: 'failed' });
+});
+
+test('no planned reminder needs no permission: a paused Run is synced even when denied', async () => {
+  const { notifier } = reminderRecorder(false, 'denied');
+  const session = createDefinitionRuntime({
+    storage: createStorage(createInMemoryKV()), notifier, now: () => 1000,
+  }).open(key);
+  const paused: Run = { ...run, events: [...run.events, { type: 'paused', at: 2000 }] };
+  assert.deepEqual(await session.saveRun(paused, 'en'), { reminder: 'synced' });
 });

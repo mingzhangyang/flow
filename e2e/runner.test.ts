@@ -28,6 +28,8 @@ test('法压咖啡：开始 → 计时 → 暂停 → 刷新后恢复 → 跳过
   await page.getByText('完成本步', { exact: true }).click();
   await expectText(page, '浸泡'); // 第 2 步：计时 240s
   await expectText(page, '让咖啡粉充分萃取'); // rationale 展示（C2）
+  // 计时步骤需要到点提醒；网页版排不进去，必须如实说明而不是报「已同步」（E6）
+  await expectText(page, /网页版不支持定时提醒/);
 
   // 计时在走：拨快 10s 后剩余应落在 03:5x
   await page.clock.fastForward(10_000);
