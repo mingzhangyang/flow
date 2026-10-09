@@ -105,7 +105,9 @@ automatically.
 Sequential Run persistence (formerly a release blocker) is resolved: `saveRun`
 rejects unless the whole Run snapshot is confirmed written and reports reminder
 sync separately; the Runner shows a non-optimistic failure banner with Retry,
-exits wait for the in-flight save and confirm after a failure, and contract
+exits wait (bounded, 1.5s) for the in-flight save, confirm when it failed or is
+still unconfirmed, and leaving anyway realigns the reminder with the persisted
+Run. Web leave confirmations use the browser dialog (RN-web Alert is a no-op). Contract
 tests replay the retried snapshot (`definitionRuntime` / `runSaveTracker`
 contracts, `e2e/runner.test.ts`). Native storage-failure behavior still belongs
 to the device matrix below.

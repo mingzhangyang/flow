@@ -94,3 +94,20 @@ test('a disposed tracker stops publishing to an unmounted screen', async () => {
   await tracker.settled();
   assert.deepEqual(seen.map((s) => s.status), ['saving']);
 });
+
+test('settledWithin never waits past its timeout; a stuck write reports still saving', async () => {
+  const { tracker } = recording();
+  const stuck = controlled();
+  tracker.submit(stuck.write);
+  const timeout = controlled();
+  const waiting = tracker.settledWithin(timeout.write().then(() => {}));
+  timeout.resolve({ reminder: 'synced' });
+  assert.deepEqual(await waiting, { status: 'saving', reminderFailed: false });
+});
+
+test('settledWithin returns the settled state when the write finishes first', async () => {
+  const { tracker } = recording();
+  tracker.submit(() => Promise.reject(new Error('disk full')));
+  const never = new Promise<void>(() => {});
+  assert.equal((await tracker.settledWithin(never)).status, 'failed');
+});

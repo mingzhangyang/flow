@@ -270,3 +270,74 @@ test('retrying the latest snapshot after failures persists the whole log and rep
   assert.deepEqual(reloaded, latest);
   assert.deepEqual(project(reloaded.flow, reloaded.events, 30_000), project(latest.flow, latest.events, 30_000));
 });
+
+test('leaving after a failed save realigns the reminder with the persisted Run', async () => {
+  const kv = createInMemoryKV();
+  const storage = createStorage(kv);
+  const { scheduled, notifier } = reminderRecorder();
+  let failing = false;
+  const session = createDefinitionRuntime({
+    storage: {
+      ...storage,
+      async saveRun(value) {
+        if (failing) throw new Error('disk full');
+        await storage.saveRun(value);
+      },
+    },
+    notifier, now: () => 1000,
+  }).open(key);
+  await session.saveRun(run, 'en'); // Persisted: running, timer reminder pending.
+  failing = true;
+  const paused: Run = { ...run, events: [...run.events, { type: 'paused', at: 2000 }] };
+  await assert.rejects(() => session.saveRun(paused, 'en'));
+  assert.equal(scheduled.size, 0); // Screen showed "paused": no alarm while it was visible.
+
+  await session.syncReminderToSaved(flow, 'en');
+  // Reopening shows the persisted running step, so its reminder is back.
+  assert.deepEqual([...scheduled], sequentialReminderIdsForRun(run.id));
+});
+
+test('reminder realignment runs after an in-flight failing save, never before it', async () => {
+  const storage = createStorage(createInMemoryKV());
+  const { scheduled, notifier } = reminderRecorder();
+  const entered = deferred();
+  const release = deferred();
+  let failing = false;
+  const session = createDefinitionRuntime({
+    storage: {
+      ...storage,
+      async saveRun(value) {
+        if (!failing) return storage.saveRun(value);
+        entered.resolve();
+        await release.promise;
+        throw new Error('disk full');
+      },
+    },
+    notifier, now: () => 1000,
+  }).open(key);
+  await session.saveRun(run, 'en'); // Persisted: running.
+  failing = true;
+  const paused: Run = { ...run, events: [...run.events, { type: 'paused', at: 2000 }] };
+  const saving = session.saveRun(paused, 'en');
+  await entered.promise;
+  const realigning = session.syncReminderToSaved(flow, 'en');
+  session.close(); // App closes the session right after the guard approves.
+  release.resolve();
+  await assert.rejects(saving, /disk full/);
+  await realigning;
+  // The failed paused save cancelled the alarm; realignment ran AFTER it and restored
+  // the persisted running reminder. Running it first would have left no reminder.
+  assert.deepEqual([...scheduled], sequentialReminderIdsForRun(run.id));
+});
+
+test('an unreadable persisted Run cancels the reminder instead of guessing', async () => {
+  const kv = createInMemoryKV();
+  const storage = createStorage(kv);
+  const { scheduled, notifier } = reminderRecorder();
+  const session = createDefinitionRuntime({ storage, notifier, now: () => 1000 }).open(key);
+  await session.saveRun(run, 'en');
+  assert.equal(scheduled.size, 1);
+  await kv.setItem(`run:${run.id}`, '{ damaged');
+  await session.syncReminderToSaved(flow, 'en');
+  assert.equal(scheduled.size, 0);
+});

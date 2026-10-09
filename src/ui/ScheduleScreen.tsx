@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, Animated, AppState, Linking, Alert, useColorScheme,
+  View, Text, ScrollView, StyleSheet, Animated, AppState, Linking, useColorScheme,
 } from 'react-native';
 import { type Flow } from '../domain/types';
 import { type Notifier, type ReminderAvailability } from '../notifications/notifier';
@@ -30,6 +30,7 @@ import { paletteFor, type Palette, spacing, radius, type, mono } from './theme';
 import { HeaderBackButton, HeaderSideSpacer, mobileControlSize } from './mobileControls';
 import { MotionPressable } from './MotionPressable';
 import { createLeaveGuard } from './leaveGuard';
+import { promptLeaveConfirmation } from './confirmLeave';
 import { motionScale, motionSpring, useReducedMotion } from './motion';
 
 const GRACE_MINUTES = 120;
@@ -238,10 +239,10 @@ export function ScheduleScreen(props: {
   // All exits (header, Android Back, notification replacement) ask this same
   // screen-owned guard. Only App may perform the eventual route transition.
   const confirmLeave = useRef<(done: (approved: boolean) => void) => void>(() => {});
-  confirmLeave.current = (done) => Alert.alert(t.scheduleUnsavedTitle, t.scheduleUnsavedExit, [
-    { text: t.cancel, style: 'cancel', onPress: () => done(false) },
-    { text: t.scheduleLeaveAnyway, style: 'destructive', onPress: () => done(true) },
-  ], { cancelable: true, onDismiss: () => done(false) });
+  confirmLeave.current = (done) => promptLeaveConfirmation({
+    title: t.scheduleUnsavedTitle, message: t.scheduleUnsavedExit,
+    stayLabel: t.cancel, leaveLabel: t.scheduleLeaveAnyway,
+  }, done);
   const leaveGuard = useMemo(() => createLeaveGuard({
     // Check the synchronous intent refs, not the lagging rendered status.
     disposition: () => pendingIntent.current || inFlight.current ? 'confirm' : 'allow',

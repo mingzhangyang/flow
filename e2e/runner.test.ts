@@ -88,7 +88,7 @@ test('顺序型运行：进度写入失败如实提示，可重试；离开需�
   page.once('dialog', (dialog) => { prompted = dialog.message(); void dialog.dismiss(); });
   await page.getByRole('button', { name: '‹ 返回' }).click();
   await expectText(page, /进度未能保存/);
-  assert.match(prompted, /运行进度尚未保存/);
+  assert.match(prompted, /运行进度尚未确认保存/);
 
   // 重试成功后提示消失，刷新可恢复到暂停状态（E2）
   await failRunWrites(false);

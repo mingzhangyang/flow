@@ -27,8 +27,10 @@ export interface PersistentRun {
   retrySave: () => void;
   /** Authoritative save status now, ahead of React's next render (for leave guards). */
   currentSave: () => RunSaveState;
-  /** Resolves when the latest submitted snapshot write settles (for leave guards). */
-  saveSettled: () => Promise<RunSaveState>;
+  /** Waits for the latest snapshot write, at most `ms`; 'saving' means still unconfirmed. */
+  saveSettledWithin: (ms: number) => Promise<RunSaveState>;
+  /** Leaving with an unconfirmed snapshot: realign the reminder with the persisted Run. */
+  abandonUnsaved: () => void;
   flow: Flow;
   state: RunState;
   start: () => void;
@@ -111,7 +113,14 @@ export function usePersistentRun(
     save,
     retrySave: () => { if (status === 'ready') setSaveAttempt((attempt) => attempt + 1); },
     currentSave: () => saves.current(),
-    saveSettled: () => saves.settled(),
+    saveSettledWithin: (ms) => saves.settledWithin(
+      new Promise<void>((resolve) => { setTimeout(resolve, ms); }),
+    ),
+    abandonUnsaved: () => {
+      // Queued behind every accepted save, before App closes the session. Nobody is left
+      // on this screen to tell; a failure here leaves the last synced reminder in place.
+      session.syncReminderToSaved(flow, locale).catch(() => {});
+    },
     flow: runtimeFlow,
     state,
     start: () => apply(startAction(Date.now())),

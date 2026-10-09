@@ -19,6 +19,11 @@ export interface RunSaveTracker {
   current(): RunSaveState;
   /** Resolves once the latest submitted save (including later re-submissions) settles. */
   settled(): Promise<RunSaveState>;
+  /**
+   * Like settled(), but gives up when `timeout` resolves first and reports the state at
+   * that moment ('saving' = still unconfirmed). Leaving must never hang on a stuck write.
+   */
+  settledWithin(timeout: Promise<void>): Promise<RunSaveState>;
   /** Stop reporting: an unmounted screen must not receive late status updates. */
   dispose(): void;
 }
@@ -28,6 +33,15 @@ export function createRunSaveTracker(onChange: (state: RunSaveState) => void): R
   let generation = 0;
   let latest: Promise<void> = Promise.resolve();
   let disposed = false;
+  const settled = async (): Promise<RunSaveState> => {
+    // A save submitted while waiting replaces `latest`; wait for that one too.
+    let observed: Promise<void>;
+    do {
+      observed = latest;
+      await observed;
+    } while (observed !== latest);
+    return state;
+  };
   const publish = (next: RunSaveState): void => {
     state = next;
     if (!disposed) onChange(next);
@@ -54,13 +68,9 @@ export function createRunSaveTracker(onChange: (state: RunSaveState) => void): R
       );
     },
     current: () => state,
-    async settled() {
-      // A save submitted while waiting replaces `latest`; wait for that one too.
-      let observed: Promise<void>;
-      do {
-        observed = latest;
-        await observed;
-      } while (observed !== latest);
+    settled,
+    async settledWithin(timeout) {
+      await Promise.race([settled(), timeout]);
       return state;
     },
     dispose() {

@@ -31,6 +31,13 @@ export interface RuntimeSession {
    * A written snapshot with a failed reminder sync resolves `{ reminder: 'failed' }`.
    */
   saveRun(run: Run, locale: Locale): Promise<RunSaveOutcome>;
+  /**
+   * After the user leaves with an unconfirmed snapshot, align the sequential reminder with
+   * what is actually persisted (what reopening will show). Queued behind every accepted
+   * save. If the persisted Run cannot be read, the reminder is cancelled rather than
+   * left pointing at progress that may not exist.
+   */
+  syncReminderToSaved(flow: Flow, locale: Locale): Promise<void>;
   loadCheckIns(): Promise<CheckIn[]>;
   /** Returns the confirmed persisted log; failures reject and do not claim commit. */
   changeCheckIn(change: CheckInChange): Promise<CheckIn[]>;
@@ -80,6 +87,13 @@ export function createDefinitionRuntime(deps: {
       let closed = false;
       const close = (): void => { closed = true; };
       lane.closeCurrent = close;
+      const syncReminder = async (run: Run, locale: Locale): Promise<void> => {
+        const planned = planSequentialReminder(
+          run.flow, run.events, deps.now(), run.id, locale, definitionKey,
+        );
+        await deps.notifier.cancel(sequentialReminderIdsForRun(run.id));
+        if (planned) await deps.notifier.schedule([planned]);
+      };
       const submit = <T>(task: () => Promise<T>): Promise<T> => {
         if (closed || lane.blocked) return Promise.reject(new Error('runtime session is closed'));
         return enqueue(lane, task);
@@ -103,16 +117,23 @@ export function createDefinitionRuntime(deps: {
           }
           let reminder: RunSaveOutcome['reminder'] = 'synced';
           try {
-            const planned = planSequentialReminder(
-              run.flow, run.events, deps.now(), run.id, locale, definitionKey,
-            );
-            await deps.notifier.cancel(sequentialReminderIdsForRun(run.id));
-            if (planned) await deps.notifier.schedule([planned]);
+            await syncReminder(run, locale);
           } catch {
             reminder = 'failed';
           }
           if (!persisted) throw persistError;
           return { reminder };
+        }),
+        syncReminderToSaved: (flow, locale) => submit(async () => {
+          assertDefinitionKeyForFlow(definitionKey, flow.id);
+          let saved: Run;
+          try {
+            saved = await loadRunForDefinition(deps.storage, flow, definitionKey);
+          } catch {
+            await deps.notifier.cancel(sequentialReminderIdsForRun(activeRunId(definitionKey)));
+            return;
+          }
+          await syncReminder(saved, locale);
         }),
         loadCheckIns: () => submit(() => deps.storage.loadCheckIns(definitionKey)),
         changeCheckIn: (change) => submit(() => deps.storage.changeCheckIn(definitionKey, change)),

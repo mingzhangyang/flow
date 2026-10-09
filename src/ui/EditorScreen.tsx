@@ -3,7 +3,6 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -29,6 +28,7 @@ import { HeaderBackButton, HeaderSideSpacer, mobileControlSize } from './mobileC
 import { MotionPressable } from './MotionPressable';
 import { MotionReveal } from './MotionReveal';
 import { createLeaveGuard } from './leaveGuard';
+import { promptLeaveConfirmation } from './confirmLeave';
 import {
   editorDurationInputKey,
   editorEveryNDaysInputKey,
@@ -192,14 +192,10 @@ export function EditorScreen(props: EditorScreenProps) {
   const dirtyRef = useRef(isDirty);
   dirtyRef.current = isDirty;
   const promptLeave = useRef<(done: (approved: boolean) => void) => void>(() => {});
-  promptLeave.current = (done) => Alert.alert(
-    t.editorDiscardTitle, t.editorDiscardMessage,
-    [
-      { text: t.editorContinueEditing, style: 'cancel', onPress: () => done(false) },
-      { text: t.editorDiscardChanges, style: 'destructive', onPress: () => done(true) },
-    ],
-    { cancelable: true, onDismiss: () => done(false) },
-  );
+  promptLeave.current = (done) => promptLeaveConfirmation({
+    title: t.editorDiscardTitle, message: t.editorDiscardMessage,
+    stayLabel: t.editorContinueEditing, leaveLabel: t.editorDiscardChanges,
+  }, done);
   const leaveGuard = useMemo(() => createLeaveGuard({
     disposition: () => savingRef.current ? 'block' : dirtyRef.current ? 'confirm' : 'allow',
     prompt: (done) => promptLeave.current(done),

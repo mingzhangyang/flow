@@ -3,11 +3,12 @@
 // 极细大字倒计时是画面的主角。运行状态、持久化（C6）与通知（C5）收在 usePersistentRun。
 
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, Platform } from 'react-native';
+import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { type Flow } from '../domain/types';
 import { type RuntimeSession } from '../session/definitionRuntime';
 import { usePersistentRun } from './usePersistentRun';
 import { createLeaveGuard } from './leaveGuard';
+import { promptLeaveConfirmation } from './confirmLeave';
 import { Timeline } from './Timeline';
 import { ProgressRing } from './ProgressRing';
 import { fmtDuration } from './format';
@@ -18,6 +19,8 @@ import { MotionPressable } from './MotionPressable';
 import { MotionReveal } from './MotionReveal';
 
 const RING = 268;
+/** Back waits this long for an in-flight save before asking instead of hanging. */
+const LEAVE_SAVE_WAIT_MS = 1500;
 
 export function RunnerScreen(props: {
   flow: Flow;
@@ -47,7 +50,8 @@ export function RunnerScreen(props: {
   const stepMotionKey = `${state.status}:${state.currentIndex}:${node?.id ?? 'none'}`;
 
   // All exits (header, Android Back, notification replacement) ask this one
-  // screen-owned guard. An in-flight save settles first; a failed one asks (C6).
+  // screen-owned guard. An in-flight save gets a bounded wait; a failed or still
+  // unconfirmed one asks, and leaving anyway realigns the reminder (C5/C6).
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -55,28 +59,29 @@ export function RunnerScreen(props: {
   }, []);
   const latest = useRef(run);
   latest.current = run;
-  const confirmLeave = useRef<(done: (approved: boolean) => void) => void>(() => {});
-  confirmLeave.current = (done) => {
-    if (Platform.OS === 'web') {
-      // react-native-web's Alert is a no-op; never leave the guard unresolved.
-      done(typeof window !== 'undefined' && typeof window.confirm === 'function'
-        ? window.confirm(`${t.runUnsavedTitle}\n\n${t.runUnsavedExit}`)
-        : false);
-      return;
-    }
-    Alert.alert(t.runUnsavedTitle, t.runUnsavedExit, [
-      { text: t.cancel, style: 'cancel', onPress: () => done(false) },
-      { text: t.runLeaveAnyway, style: 'destructive', onPress: () => done(true) },
-    ], { cancelable: true, onDismiss: () => done(false) });
-  };
-  const leaveGuard = useMemo(() => createLeaveGuard({
+  const unsaved = (): boolean => {
     // Read the tracker, not the rendered status: it may lag the settled write.
-    disposition: () => latest.current.currentSave().status === 'failed' ? 'confirm' : 'allow',
+    const status = latest.current.currentSave().status;
+    return status === 'failed' || status === 'saving';
+  };
+  const confirmLeave = useRef<(done: (approved: boolean) => void) => void>(() => {});
+  confirmLeave.current = (done) => promptLeaveConfirmation({
+    title: t.runUnsavedTitle,
+    message: latest.current.currentSave().status === 'saving' ? t.runSavePendingExit : t.runUnsavedExit,
+    stayLabel: t.cancel,
+    leaveLabel: t.runLeaveAnyway,
+  }, done);
+  const leaveGuard = useMemo(() => createLeaveGuard({
+    disposition: () => unsaved() ? 'confirm' : 'allow',
     prompt: (done) => confirmLeave.current(done),
   }), []);
   const requestLeave = useMemo(() => async (): Promise<boolean> => {
-    await latest.current.saveSettled();
-    return leaveGuard.request();
+    await latest.current.saveSettledWithin(LEAVE_SAVE_WAIT_MS);
+    const abandoning = unsaved();
+    const approved = await leaveGuard.request();
+    // Submitted synchronously, before App closes this session.
+    if (approved && abandoning) latest.current.abandonUnsaved();
+    return approved;
   }, [leaveGuard]);
   const requestExit = (): void => {
     void requestLeave().then((approved) => {
