@@ -196,6 +196,7 @@ test('partial scheduled batch is canceled before deletion journal clears; cancel
         pending.add(reminder.id);
         if (failScheduling) throw new Error('partial batch');
       }
+      return 'scheduled' as const;
     },
     async cancel(ids: string[]) {
       if (failCancel) throw new Error('platform unavailable');

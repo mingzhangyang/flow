@@ -5,9 +5,13 @@ import { type Flow, type Run } from '../domain/types';
 import { definitionKey } from '../domain/definitionIdentity';
 import { createInMemoryKV } from '../storage/kv';
 import { createStorage } from '../storage/storage';
-import { noopNotifier, type ReminderAvailability } from '../notifications/notifier';
+import { noopNotifier } from '../notifications/notifier';
+import { planSequentialReminder, type Reminder } from '../notifications/plan';
 import { sequentialReminderIdsForRun } from '../notifications/notificationIdentity';
-import { project } from '../runtime/engine';
+import { project, reduce } from '../runtime/engine';
+import {
+  startIfIdleAction, completeCurrentAction, skipCurrentAction, pauseAction, resumeAction, backAction,
+} from './actions';
 import { createDefinitionRuntime } from './definitionRuntime';
 import { activeRunId } from './runPersistence';
 import { deleteOwnedFlowDurably, recoverPendingOwnedFlowDeletions } from './deleteOwnedFlow';
@@ -49,6 +53,7 @@ for (const stage of ['saveRun', 'changeCheckIn', 'cancel', 'schedule'] as const)
       async schedule(reminders: Parameters<typeof noopNotifier.schedule>[0]) {
         await pause('schedule');
         for (const reminder of reminders) notifications.add(reminder.id);
+        return 'scheduled' as const;
       },
     };
     const runtime = createDefinitionRuntime({
@@ -193,70 +198,83 @@ test('session rejects a Run belonging to another definition before persistence o
   assert.deepEqual(await kv.keys(), []);
 });
 
-// Sequential Run persistence: failure is reported, never swallowed; reminders follow the
-// visible snapshot; a retry of the latest snapshot restores the whole replayable log (C6/E2/E4).
-const readyNotifier = { ...noopNotifier, async status(): Promise<ReminderAvailability> { return 'ready'; } };
+// Sequential Run persistence. Invariant (architecture.md, Notification): the installed
+// reminder is derived from the PERSISTED Run only. An unconfirmed write rejects and leaves
+// reminders untouched; a confirmed one reports whether its reminder is installed (C6/E2/E6).
+type Delivery = 'scheduled' | 'denied' | 'unsupported' | 'throw';
 
-function reminderRecorder(failSchedule = false, availability: ReminderAvailability = 'ready') {
-  const scheduled = new Set<string>();
+function reminderRecorder(delivery: () => Delivery = () => 'scheduled') {
+  const installed = new Map<string, Reminder>();
   const notifier = {
     ...noopNotifier,
-    async status() { return availability; },
-    async cancel(ids: string[]) { for (const id of ids) scheduled.delete(id); },
-    async schedule(reminders: Parameters<typeof noopNotifier.schedule>[0]) {
-      if (failSchedule) throw new Error('schedule failed');
-      for (const reminder of reminders) scheduled.add(reminder.id);
+    async cancel(ids: string[]) { for (const id of ids) installed.delete(id); },
+    async schedule(reminders: Reminder[]) {
+      const mode = delivery();
+      if (mode === 'throw') throw new Error('native scheduling failed');
+      if (mode !== 'scheduled') return mode;
+      for (const reminder of reminders) installed.set(reminder.id, reminder);
+      return 'scheduled' as const;
     },
   };
-  return { scheduled, notifier };
+  return { installed, notifier };
 }
 
-test('saveRun resolves with a synced reminder only after the snapshot is durably written', async () => {
+test('saveRun installs the reminder for the snapshot only after it is durably written', async () => {
   const storage = createStorage(createInMemoryKV());
-  const { scheduled, notifier } = reminderRecorder();
+  const { installed, notifier } = reminderRecorder();
   const session = createDefinitionRuntime({ storage, notifier, now: () => 1000 }).open(key);
   assert.deepEqual(await session.saveRun(run, 'en'), { reminder: 'synced' });
   assert.deepEqual(await storage.loadRun(run.id), run);
-  assert.deepEqual([...scheduled], sequentialReminderIdsForRun(run.id));
+  assert.deepEqual([...installed.keys()], sequentialReminderIdsForRun(run.id));
 });
 
-test('a failed snapshot write rejects, yet the reminder still follows the visible Run', async () => {
+test('an unconfirmed write rejects and leaves reminders describing the persisted Run', async () => {
   const storage = createStorage(createInMemoryKV());
-  const { scheduled, notifier } = reminderRecorder();
+  const { installed, notifier } = reminderRecorder();
+  let failing = false;
   const session = createDefinitionRuntime({
-    storage: { ...storage, async saveRun() { throw new Error('disk full'); } },
+    storage: { ...storage, async saveRun(value) { if (failing) throw new Error('disk full'); await storage.saveRun(value); } },
     notifier, now: () => 1000,
   }).open(key);
-  await assert.rejects(() => session.saveRun(run, 'en'), /disk full/);
-  assert.equal(await storage.loadRun(run.id), null); // Nothing claims to be committed.
-  assert.deepEqual([...scheduled], sequentialReminderIdsForRun(run.id)); // Timer keeps its reminder.
-
-  // Pausing with a failing disk cancels the obsolete timer reminder instead of firing it.
+  await session.saveRun(run, 'en'); // Persisted: running, reminder installed.
+  failing = true;
   const paused: Run = { ...run, events: [...run.events, { type: 'paused', at: 2000 }] };
   await assert.rejects(() => session.saveRun(paused, 'en'), /disk full/);
-  assert.equal(scheduled.size, 0);
+  assert.deepEqual(await storage.loadRun(run.id), run);
+  assert.deepEqual([...installed.keys()], sequentialReminderIdsForRun(run.id)); // Still the persisted Run's.
 });
 
-test('a written snapshot with a failed reminder sync resolves and reports the reminder failure', async () => {
-  const storage = createStorage(createInMemoryKV());
-  const { notifier } = reminderRecorder(true);
-  const session = createDefinitionRuntime({ storage, notifier, now: () => 1000 }).open(key);
+test('a reminder that is not actually installed is reported with its reason, never "synced"', async () => {
+  for (const mode of ['denied', 'unsupported'] as const) {
+    const storage = createStorage(createInMemoryKV());
+    const { installed, notifier } = reminderRecorder(() => mode);
+    const session = createDefinitionRuntime({ storage, notifier, now: () => 1000 }).open(key);
+    assert.deepEqual(await session.saveRun(run, 'en'), { reminder: mode });
+    assert.deepEqual(await storage.loadRun(run.id), run); // The snapshot itself is saved.
+    assert.equal(installed.size, 0);
+  }
+  const { notifier } = reminderRecorder(() => 'throw');
+  const session = createDefinitionRuntime({
+    storage: createStorage(createInMemoryKV()), notifier, now: () => 1000,
+  }).open(key);
   assert.deepEqual(await session.saveRun(run, 'en'), { reminder: 'failed' });
-  assert.deepEqual(await storage.loadRun(run.id), run);
+});
+
+test('no planned reminder needs no delivery: a paused Run is synced even when denied', async () => {
+  const { notifier } = reminderRecorder(() => 'denied');
+  const session = createDefinitionRuntime({
+    storage: createStorage(createInMemoryKV()), notifier, now: () => 1000,
+  }).open(key);
+  const paused: Run = { ...run, events: [...run.events, { type: 'paused', at: 2000 }] };
+  assert.deepEqual(await session.saveRun(paused, 'en'), { reminder: 'synced' });
 });
 
 test('retrying the latest snapshot after failures persists the whole log and replays identically', async () => {
   const storage = createStorage(createInMemoryKV());
   let failing = true;
   const session = createDefinitionRuntime({
-    storage: {
-      ...storage,
-      async saveRun(value) {
-        if (failing) throw new Error('transient');
-        await storage.saveRun(value);
-      },
-    },
-    notifier: readyNotifier, now: () => 1000,
+    storage: { ...storage, async saveRun(value) { if (failing) throw new Error('transient'); await storage.saveRun(value); } },
+    notifier: reminderRecorder().notifier, now: () => 1000,
   }).open(key);
   const steps: Run[] = [
     run,
@@ -264,7 +282,7 @@ test('retrying the latest snapshot after failures persists the whole log and rep
     { ...run, events: [...run.events, { type: 'paused', at: 10_000 }, { type: 'resumed', at: 20_000 }] },
   ];
   for (const step of steps) await assert.rejects(() => session.saveRun(step, 'en'), /transient/);
-  assert.equal(await session.loadRun(flow).then((loaded) => loaded.events.length), 0);
+  assert.equal((await session.loadRun(flow)).events.length, 0);
 
   failing = false;
   const latest = steps[steps.length - 1];
@@ -274,209 +292,85 @@ test('retrying the latest snapshot after failures persists the whole log and rep
   assert.deepEqual(project(reloaded.flow, reloaded.events, 30_000), project(latest.flow, latest.events, 30_000));
 });
 
-test('leaving after a failed save realigns the reminder with the persisted Run', async () => {
-  const kv = createInMemoryKV();
-  const storage = createStorage(kv);
-  const { scheduled, notifier } = reminderRecorder();
-  let failing = false;
-  const session = createDefinitionRuntime({
-    storage: {
-      ...storage,
-      async saveRun(value) {
-        if (failing) throw new Error('disk full');
-        await storage.saveRun(value);
-      },
-    },
-    notifier, now: () => 1000,
-  }).open(key);
-  await session.saveRun(run, 'en'); // Persisted: running, timer reminder pending.
-  failing = true;
-  const paused: Run = { ...run, events: [...run.events, { type: 'paused', at: 2000 }] };
-  await assert.rejects(() => session.saveRun(paused, 'en'));
-  assert.equal(scheduled.size, 0); // Screen showed "paused": no alarm while it was visible.
-
-  await session.syncReminderToSaved(flow, 'en');
-  // Reopening shows the persisted running step, so its reminder is back.
-  assert.deepEqual([...scheduled], sequentialReminderIdsForRun(run.id));
-});
-
-test('reminder realignment runs after an in-flight failing save, never before it', async () => {
-  const storage = createStorage(createInMemoryKV());
-  const { scheduled, notifier } = reminderRecorder();
-  const entered = deferred();
-  const release = deferred();
-  let failing = false;
-  const session = createDefinitionRuntime({
-    storage: {
-      ...storage,
-      async saveRun(value) {
-        if (!failing) return storage.saveRun(value);
-        entered.resolve();
-        await release.promise;
-        throw new Error('disk full');
-      },
-    },
-    notifier, now: () => 1000,
-  }).open(key);
-  await session.saveRun(run, 'en'); // Persisted: running.
-  failing = true;
-  const paused: Run = { ...run, events: [...run.events, { type: 'paused', at: 2000 }] };
-  const saving = session.saveRun(paused, 'en');
-  await entered.promise;
-  const realigning = session.syncReminderToSaved(flow, 'en');
-  session.close(); // App closes the session right after the guard approves.
-  release.resolve();
-  await assert.rejects(saving, /disk full/);
-  await realigning;
-  // The failed paused save cancelled the alarm; realignment ran AFTER it and restored
-  // the persisted running reminder. Running it first would have left no reminder.
-  assert.deepEqual([...scheduled], sequentialReminderIdsForRun(run.id));
-});
-
-test('an unreadable persisted Run cancels the reminder instead of guessing', async () => {
-  const kv = createInMemoryKV();
-  const storage = createStorage(kv);
-  const { scheduled, notifier } = reminderRecorder();
-  const session = createDefinitionRuntime({ storage, notifier, now: () => 1000 }).open(key);
-  await session.saveRun(run, 'en');
-  assert.equal(scheduled.size, 1);
-  await kv.setItem(`run:${run.id}`, '{ damaged');
-  await session.syncReminderToSaved(flow, 'en');
-  assert.equal(scheduled.size, 0);
-});
-
-test('an armed realignment waits for the session to actually close', async () => {
-  const kv = createInMemoryKV();
-  const storage = createStorage(kv);
-  const { scheduled, notifier } = reminderRecorder();
-  let failing = false;
-  const runtime = createDefinitionRuntime({
-    storage: {
-      ...storage,
-      async saveRun(value) {
-        if (failing) throw new Error('disk full');
-        await storage.saveRun(value);
-      },
-    },
-    notifier, now: () => 1000,
-  });
-  const session = runtime.open(key);
-  await session.saveRun(run, 'en'); // Persisted: running.
-  failing = true;
-  const paused: Run = { ...run, events: [...run.events, { type: 'paused', at: 2000 }] };
-  await assert.rejects(() => session.saveRun(paused, 'en'));
-  assert.equal(scheduled.size, 0);
-
-  // The user approved leaving, but navigation was abandoned (e.g. catalog not ready):
-  // the Runner still shows "paused", so nothing may realign yet.
-  session.realignReminderOnClose(flow, 'en');
-  await session.loadRun(flow); // Drain the lane.
-  assert.equal(scheduled.size, 0);
-
-  // Reopening closes the old session first; its realignment runs before the new read.
-  const reopened = runtime.open(key);
-  const loaded = await reopened.loadRun(flow);
-  assert.deepEqual(loaded, run);
-  assert.deepEqual([...scheduled], sequentialReminderIdsForRun(run.id));
-});
-
-test('an unarmed close and a deletion fence never realign reminders', async () => {
-  const storage = createStorage(createInMemoryKV());
-  const { scheduled, notifier } = reminderRecorder();
-  const runtime = createDefinitionRuntime({ storage, notifier, now: () => 1000 });
-  const session = runtime.open(key);
-  await session.saveRun(run, 'en');
-  scheduled.clear();
-  session.close();
-  await runtime.open(key).loadRun(flow);
-  assert.equal(scheduled.size, 0);
-
-  const armed = runtime.open(key);
-  armed.realignReminderOnClose(flow, 'en');
-  await runtime.retire(key, async () => {});
-  assert.equal(scheduled.size, 0);
-});
-
-test('a confirmed save after an abandoned navigation disarms the close realignment', async () => {
-  const storage = createStorage(createInMemoryKV());
-  const scheduled = new Set<string>();
-  let scheduleFails = false;
-  const notifier = {
-    ...readyNotifier,
-    async cancel(ids: string[]) { for (const id of ids) scheduled.delete(id); },
-    async schedule(reminders: Parameters<typeof noopNotifier.schedule>[0]) {
-      if (scheduleFails) throw new Error('transient schedule failure');
-      for (const reminder of reminders) scheduled.add(reminder.id);
-    },
+// Interleaving model: random user intents, clocks, storage faults (including a write that
+// lands and then throws) and notifier outcomes. After EVERY confirmed save the installed
+// reminders equal what the persisted Run plans; an unconfirmed save never touches them.
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
-  let failing = true;
-  const runtime = createDefinitionRuntime({
-    storage: {
-      ...storage,
-      async saveRun(value) {
-        if (failing) throw new Error('disk full');
-        await storage.saveRun(value);
-      },
-    },
-    notifier, now: () => 1000,
-  });
-  const session = runtime.open(key);
-  await assert.rejects(() => session.saveRun(run, 'en'));
-  session.realignReminderOnClose(flow, 'en'); // Approved, but navigation was abandoned.
+}
 
-  failing = false; // Retry on the still-visible Runner succeeds.
-  assert.deepEqual(await session.saveRun(run, 'en'), { reminder: 'synced' });
-  assert.deepEqual([...scheduled], sequentialReminderIdsForRun(run.id));
-
-  // A later normal exit must not cancel/reschedule the now-correct reminder.
-  scheduleFails = true;
-  session.close();
-  await runtime.open(key).loadRun(flow);
-  assert.deepEqual([...scheduled], sequentialReminderIdsForRun(run.id));
-});
-
-test('a save whose reminder sync failed keeps the close realignment armed', async () => {
-  const storage = createStorage(createInMemoryKV());
-  let scheduleFails = true;
-  const scheduled = new Set<string>();
-  const notifier = {
-    ...readyNotifier,
-    async cancel(ids: string[]) { for (const id of ids) scheduled.delete(id); },
-    async schedule(reminders: Parameters<typeof noopNotifier.schedule>[0]) {
-      if (scheduleFails) throw new Error('transient schedule failure');
-      for (const reminder of reminders) scheduled.add(reminder.id);
-    },
+test('model: installed reminders always derive from the persisted Run (200 seeded walks)', async () => {
+  const modelFlow: Flow = {
+    schemaVersion: 2, id: 'mine', title: 'Mine', topology: 'sequential',
+    nodes: [
+      { id: 'a', kind: 'timed', label: 'A', durationSec: 60 },
+      { id: 'b', kind: 'gate', label: 'B' },
+      { id: 'c', kind: 'timed', label: 'C', durationSec: 30 },
+    ],
   };
-  const runtime = createDefinitionRuntime({ storage, notifier, now: () => 1000 });
-  const session = runtime.open(key);
-  session.realignReminderOnClose(flow, 'en');
-  assert.deepEqual(await session.saveRun(run, 'en'), { reminder: 'failed' });
-  scheduleFails = false;
-  session.close(); // Second chance: realign from the persisted Run.
-  await runtime.open(key).loadRun(flow);
-  assert.deepEqual([...scheduled], sequentialReminderIdsForRun(run.id));
-});
-
-test('a reminder that schedule() silently did not install is reported, never "synced"', async () => {
-  for (const availability of ['denied', 'unsupported'] as const) {
+  const intents = [
+    (r: Run, at: number) => startIfIdleAction(r.events, at),
+    (r: Run, at: number) => completeCurrentAction(r.flow, r.events, at),
+    (r: Run, at: number) => skipCurrentAction(r.flow, r.events, at),
+    (r: Run, at: number) => pauseAction(r.flow, r.events, at),
+    (r: Run, at: number) => resumeAction(r.flow, r.events, at),
+    (r: Run, at: number) => backAction(r.flow, r.events, at),
+  ];
+  const deliveries: Delivery[] = ['scheduled', 'scheduled', 'scheduled', 'denied', 'unsupported', 'throw'];
+  for (let seed = 1; seed <= 200; seed++) {
+    const rand = mulberry32(seed);
+    const pick = <T>(xs: readonly T[]): T => xs[Math.floor(rand() * xs.length)];
     const storage = createStorage(createInMemoryKV());
-    const { notifier } = reminderRecorder(false, availability);
-    const session = createDefinitionRuntime({ storage, notifier, now: () => 1000 }).open(key);
-    assert.deepEqual(await session.saveRun(run, 'en'), { reminder: availability });
-    assert.deepEqual(await storage.loadRun(run.id), run); // The snapshot itself is saved.
-  }
-  const { notifier } = reminderRecorder(false, 'undetermined');
-  const session = createDefinitionRuntime({
-    storage: createStorage(createInMemoryKV()), notifier, now: () => 1000,
-  }).open(key);
-  assert.deepEqual(await session.saveRun(run, 'en'), { reminder: 'failed' });
-});
+    let storageMode: 'ok' | 'before' | 'after' = 'ok';
+    let delivery: Delivery = 'scheduled';
+    let clock = 0;
+    const { installed, notifier } = reminderRecorder(() => delivery);
+    const session = createDefinitionRuntime({
+      storage: {
+        ...storage,
+        async saveRun(value) {
+          if (storageMode === 'before') throw new Error('write rejected');
+          await storage.saveRun(value);
+          if (storageMode === 'after') throw new Error('write landed, then the call failed');
+        },
+      },
+      notifier, now: () => clock,
+    }).open(key);
+    let visible: Run = { id: activeRunId(key), flow: modelFlow, events: [] };
 
-test('no planned reminder needs no permission: a paused Run is synced even when denied', async () => {
-  const { notifier } = reminderRecorder(false, 'denied');
-  const session = createDefinitionRuntime({
-    storage: createStorage(createInMemoryKV()), notifier, now: () => 1000,
-  }).open(key);
-  const paused: Run = { ...run, events: [...run.events, { type: 'paused', at: 2000 }] };
-  assert.deepEqual(await session.saveRun(paused, 'en'), { reminder: 'synced' });
+    for (let step = 0; step < 25; step++) {
+      clock += Math.floor(rand() * 40_000);
+      const event = pick(intents)(visible, clock);
+      if (event) visible = reduce(visible, event);
+      else if (rand() < 0.1) visible = { ...visible, events: [] }; // reset
+      storageMode = pick(['ok', 'ok', 'ok', 'before', 'after'] as const);
+      delivery = pick(deliveries);
+      const before = new Map(installed);
+      const where = `seed ${seed} step ${step}`;
+      try {
+        const outcome = await session.saveRun(visible, 'en');
+        assert.equal(storageMode, 'ok', where);
+        const expected = { scheduled: 'synced', denied: 'denied', unsupported: 'unsupported', throw: 'failed' } as const;
+        const planned = planSequentialReminder(modelFlow, visible.events, clock, visible.id, 'en', key);
+        assert.equal(outcome.reminder, planned ? expected[delivery] : 'synced', where);
+        if (outcome.reminder === 'synced') {
+          const persisted = await storage.loadRun(visible.id);
+          assert.ok(persisted, where);
+          const fromPersisted = planSequentialReminder(persisted.flow, persisted.events, clock, persisted.id, 'en', key);
+          assert.deepEqual([...installed.values()], fromPersisted ? [fromPersisted] : [], where);
+        }
+      } catch (error) {
+        if (error instanceof assert.AssertionError) throw error;
+        assert.notEqual(storageMode, 'ok', where);
+        assert.deepEqual(installed, before, `${where}: unconfirmed write touched reminders`);
+      }
+    }
+  }
 });

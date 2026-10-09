@@ -51,7 +51,8 @@ export function RunnerScreen(props: {
 
   // All exits (header, Android Back, notification replacement) ask this one
   // screen-owned guard. An in-flight save gets a bounded wait; a failed or still
-  // unconfirmed one asks, and leaving anyway realigns the reminder (C5/C6).
+  // unconfirmed one asks (C6). Reminders need no exit-time work: the session derives
+  // them from the persisted Run only.
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -59,20 +60,15 @@ export function RunnerScreen(props: {
   }, []);
   const latest = useRef(run);
   latest.current = run;
-  const unsaved = (): boolean => {
-    // Read the tracker, not the rendered status: it may lag the settled write.
-    const status = latest.current.currentSave().status;
-    return status === 'failed' || status === 'saving';
-  };
   const confirmLeave = useRef<(done: (approved: boolean) => void) => void>(() => {});
   confirmLeave.current = (done) => promptLeaveConfirmation({
     title: t.runUnsavedTitle,
-    message: latest.current.currentSave().status === 'saving' ? t.runSavePendingExit : t.runUnsavedExit,
+    message: latest.current.save.status === 'saving' ? t.runSavePendingExit : t.runUnsavedExit,
     stayLabel: t.cancel,
     leaveLabel: t.runLeaveAnyway,
   }, done);
   const leaveGuard = useMemo(() => createLeaveGuard({
-    disposition: () => unsaved() ? 'confirm' : 'allow',
+    disposition: () => latest.current.needsLeaveConfirmation() ? 'confirm' : 'allow',
     prompt: (done) => confirmLeave.current(done),
   }), []);
   // Concurrent exits (header + notification + Back) share ONE wait-and-confirm attempt,
@@ -80,13 +76,7 @@ export function RunnerScreen(props: {
   const requestLeave = useMemo(() => shareInFlight(async (): Promise<boolean> => {
     await latest.current.saveSettledWithin(LEAVE_SAVE_WAIT_MS);
     if (!alive.current) return false; // This Runner is gone; nothing left to authorize.
-    const approved = await leaveGuard.request();
-    if (!approved || !alive.current) return false;
-    // Re-read AFTER the prompt: a save may have been confirmed while the dialog was open,
-    // and a redundant realignment would only cancel/reschedule a correct reminder.
-    // Armed only: realignment is queued if and when App actually closes this session.
-    if (unsaved()) latest.current.abandonUnsaved();
-    return true;
+    return await leaveGuard.request() && alive.current;
   }), [leaveGuard]);
   const requestExit = (): void => {
     void requestLeave().then((approved) => {
@@ -102,7 +92,7 @@ export function RunnerScreen(props: {
   // Back from system settings: re-sync so a newly granted permission clears the warning.
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next) => {
-      if (next === 'active' && latest.current.currentSave().reminderIssue === 'denied') {
+      if (next === 'active' && latest.current.save.reminderIssue === 'denied') {
         latest.current.retrySave();
       }
     });

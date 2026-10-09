@@ -16,10 +16,11 @@ import { activeRunId, loadRunForDefinition } from './runPersistence';
 
 export interface RunSaveOutcome {
   /**
-   * synced: the reminder matching the snapshot is installed (or none is needed).
-   * failed: syncing threw (or permission is still undetermined) — worth retrying.
-   * denied / unsupported: scheduling "succeeded" but nothing will fire (no permission,
-   * or a platform without scheduled notifications); the UI must say so (E6).
+   * The sequential reminder for the snapshot that was just persisted:
+   * - synced: installed (or none is needed for this state).
+   * - failed: the platform call threw; a retry re-syncs.
+   * - denied / unsupported: nothing installed (no permission / no scheduled notifications
+   *   on this platform). Not an error to retry, but the UI must say so (E6).
    */
   reminder: 'synced' | 'failed' | 'denied' | 'unsupported';
 }
@@ -31,26 +32,13 @@ export interface RuntimeSession {
   close(): void;
   loadRun(flow: Flow): Promise<Run>;
   /**
-   * Durably writes the full Run snapshot, then syncs its sequential reminder to the
-   * same snapshot. Rejects only when the snapshot was not confirmed written; reminder
-   * sync is still attempted then, so the platform timer never contradicts the screen.
-   * A written snapshot whose reminder is not actually installed resolves with the reason.
+   * Durably writes the full Run snapshot, THEN syncs the sequential reminder to it.
+   * Invariant (architecture.md, Notification): the installed reminder is always derived
+   * from the persisted Run, never from unsaved screen state. So a write that is not
+   * confirmed rejects and leaves reminders untouched; a confirmed write resolves with
+   * whether its reminder is actually installed.
    */
   saveRun(run: Run, locale: Locale): Promise<RunSaveOutcome>;
-  /**
-   * After the user leaves with an unconfirmed snapshot, align the sequential reminder with
-   * what is actually persisted (what reopening will show). Queued behind every accepted
-   * save. If the persisted Run cannot be read, the reminder is cancelled rather than
-   * left pointing at progress that may not exist.
-   */
-  syncReminderToSaved(flow: Flow, locale: Locale): Promise<void>;
-  /**
-   * Arms syncReminderToSaved to be queued at the moment this session closes, ahead of any
-   * later submission. Approval to leave is not leaving: until App closes the session the
-   * Runner (and its reminder) stays as is. Re-arming replaces the earlier request; a later
-   * save that confirms both the snapshot and its reminder disarms it.
-   */
-  realignReminderOnClose(flow: Flow, locale: Locale): void;
   loadCheckIns(): Promise<CheckIn[]>;
   /** Returns the confirmed persisted log; failures reject and do not claim commit. */
   changeCheckIn(change: CheckInChange): Promise<CheckIn[]>;
@@ -72,7 +60,7 @@ interface Lane {
 
 export function createDefinitionRuntime(deps: {
   storage: Pick<Storage, 'loadRun' | 'saveRun' | 'loadCheckIns' | 'changeCheckIn'>;
-  notifier: Pick<Notifier, 'cancel' | 'schedule' | 'status'>;
+  notifier: Pick<Notifier, 'cancel' | 'schedule'>;
   now: () => number;
 }): DefinitionRuntime {
   const lanes = new Map<string, Lane>();
@@ -98,40 +86,16 @@ export function createDefinitionRuntime(deps: {
       if (lane.blocked) throw new Error('definition deletion is pending');
       lane.closeCurrent();
       let closed = false;
-      let onClose: (() => Promise<void>) | null = null;
-      const close = (): void => {
-        if (closed) return;
-        closed = true;
-        const armed = onClose;
-        onClose = null;
-        // Deletion (blocked lane) cancels every reminder of this definition anyway.
-        if (armed && !lane.blocked) enqueue(lane, armed).catch(() => {});
-      };
+      const close = (): void => { closed = true; };
       lane.closeCurrent = close;
-      // Notifier.schedule resolves even when nothing was installed (permission denied,
-      // web no-op), so a planned reminder is only 'synced' once availability is 'ready'.
       const syncReminder = async (run: Run, locale: Locale): Promise<RunSaveOutcome['reminder']> => {
         const planned = planSequentialReminder(
           run.flow, run.events, deps.now(), run.id, locale, definitionKey,
         );
         await deps.notifier.cancel(sequentialReminderIdsForRun(run.id));
         if (!planned) return 'synced';
-        await deps.notifier.schedule([planned]);
-        const availability = await deps.notifier.status();
-        if (availability === 'ready') return 'synced';
-        if (availability === 'denied' || availability === 'unsupported') return availability;
-        return 'failed'; // Still undetermined: a retry asks again.
-      };
-      const realign = async (flow: Flow, locale: Locale): Promise<void> => {
-        assertDefinitionKeyForFlow(definitionKey, flow.id);
-        let saved: Run;
-        try {
-          saved = await loadRunForDefinition(deps.storage, flow, definitionKey);
-        } catch {
-          await deps.notifier.cancel(sequentialReminderIdsForRun(activeRunId(definitionKey)));
-          return;
-        }
-        await syncReminder(saved, locale);
+        const delivery = await deps.notifier.schedule([planned]);
+        return delivery === 'scheduled' ? 'synced' : delivery;
       };
       const submit = <T>(task: () => Promise<T>): Promise<T> => {
         if (closed || lane.blocked) return Promise.reject(new Error('runtime session is closed'));
@@ -146,32 +110,15 @@ export function createDefinitionRuntime(deps: {
         saveRun: (run, locale) => submit(async () => {
           assertDefinitionKeyForFlow(definitionKey, run.flow.id);
           if (run.id !== activeRunId(definitionKey)) throw new Error('Run does not belong to session');
-          let persisted = true;
-          let persistError: unknown;
+          // Not confirmed written -> reject before touching reminders (they keep
+          // describing the last persisted Run, which is what reopening shows).
+          await deps.storage.saveRun(run);
           try {
-            await deps.storage.saveRun(run);
-          } catch (error) {
-            persisted = false;
-            persistError = error;
-          }
-          let reminder: RunSaveOutcome['reminder'];
-          try {
-            reminder = await syncReminder(run, locale);
+            return { reminder: await syncReminder(run, locale) };
           } catch {
-            reminder = 'failed';
+            return { reminder: 'failed' };
           }
-          if (!persisted) throw persistError;
-          // Persisted and installed reminder now describe the same snapshot: an armed
-          // close realignment would only re-cancel a correct reminder. Any reminder
-          // that is not actually installed keeps it armed, as a second chance at close.
-          if (reminder === 'synced') onClose = null;
-          return { reminder };
         }),
-        syncReminderToSaved: (flow, locale) => submit(() => realign(flow, locale)),
-        realignReminderOnClose: (flow, locale) => {
-          assertDefinitionKeyForFlow(definitionKey, flow.id);
-          if (!closed) onClose = () => realign(flow, locale);
-        },
         loadCheckIns: () => submit(() => deps.storage.loadCheckIns(definitionKey)),
         changeCheckIn: (change) => submit(() => deps.storage.changeCheckIn(definitionKey, change)),
       };

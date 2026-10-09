@@ -102,14 +102,14 @@ automatically.
 
 ### Release blockers and native device matrix
 
-Sequential Run persistence (formerly a release blocker) is resolved: `saveRun`
-rejects unless the whole Run snapshot is confirmed written and reports reminder
-sync separately; the Runner shows a non-optimistic failure banner with Retry,
-exits wait (bounded, 1.5s) for the in-flight save, confirm when it failed or is
-still unconfirmed, and leaving anyway realigns the reminder with the persisted
-Run. Web leave confirmations use the browser dialog (RN-web Alert is a no-op). Contract
-tests replay the retried snapshot (`definitionRuntime` / `runSaveTracker`
-contracts, `e2e/runner.test.ts`). Native storage-failure behavior still belongs
+Sequential Run persistence (formerly a release blocker) is resolved. Invariants,
+guarded by seeded interleaving model tests (`runController` / `definitionRuntime`
+contracts): reminders derive only from the persisted Run (an unconfirmed write
+rejects and leaves them untouched; `Notifier.schedule` reports `denied` /
+`unsupported` instead of succeeding silently); a leave needs no confirmation only
+when the visible Run is confirmed persisted (bounded 1.5s wait, then confirm); a
+tap from an older render is ignored. Web leave confirmations use the browser
+dialog (RN-web Alert is a no-op). Native storage-failure behavior still belongs
 to the device matrix below.
 A passed Android build is permission to begin device testing, **not** a store
 release decision.
