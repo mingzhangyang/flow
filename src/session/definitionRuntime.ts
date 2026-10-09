@@ -41,7 +41,8 @@ export interface RuntimeSession {
   /**
    * Arms syncReminderToSaved to be queued at the moment this session closes, ahead of any
    * later submission. Approval to leave is not leaving: until App closes the session the
-   * Runner (and its reminder) stays as is. Re-arming replaces the earlier request.
+   * Runner (and its reminder) stays as is. Re-arming replaces the earlier request; a later
+   * save that confirms both the snapshot and its reminder disarms it.
    */
   realignReminderOnClose(flow: Flow, locale: Locale): void;
   loadCheckIns(): Promise<CheckIn[]>;
@@ -147,6 +148,10 @@ export function createDefinitionRuntime(deps: {
             reminder = 'failed';
           }
           if (!persisted) throw persistError;
+          // Persisted and reminder now describe the same snapshot: an armed close
+          // realignment would only re-cancel a correct reminder. A failed reminder
+          // sync keeps it armed, as a second chance at close.
+          if (reminder === 'synced') onClose = null;
           return { reminder };
         }),
         syncReminderToSaved: (flow, locale) => submit(() => realign(flow, locale)),

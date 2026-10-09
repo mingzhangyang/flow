@@ -77,10 +77,11 @@ export function RunnerScreen(props: {
   }), []);
   const requestLeave = useMemo(() => async (): Promise<boolean> => {
     await latest.current.saveSettledWithin(LEAVE_SAVE_WAIT_MS);
-    const abandoning = unsaved();
     const approved = await leaveGuard.request();
+    // Re-read AFTER the prompt: a save may have been confirmed while the dialog was open,
+    // and a redundant realignment would only cancel/reschedule a correct reminder.
     // Armed only: realignment is queued if and when App actually closes this session.
-    if (approved && abandoning) latest.current.abandonUnsaved();
+    if (approved && unsaved()) latest.current.abandonUnsaved();
     return approved;
   }, [leaveGuard]);
   const requestExit = (): void => {

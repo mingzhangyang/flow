@@ -393,3 +393,63 @@ test('an unarmed close and a deletion fence never realign reminders', async () =
   await runtime.retire(key, async () => {});
   assert.equal(scheduled.size, 0);
 });
+
+test('a confirmed save after an abandoned navigation disarms the close realignment', async () => {
+  const storage = createStorage(createInMemoryKV());
+  const scheduled = new Set<string>();
+  let scheduleFails = false;
+  const notifier = {
+    ...noopNotifier,
+    async cancel(ids: string[]) { for (const id of ids) scheduled.delete(id); },
+    async schedule(reminders: Parameters<typeof noopNotifier.schedule>[0]) {
+      if (scheduleFails) throw new Error('transient schedule failure');
+      for (const reminder of reminders) scheduled.add(reminder.id);
+    },
+  };
+  let failing = true;
+  const runtime = createDefinitionRuntime({
+    storage: {
+      ...storage,
+      async saveRun(value) {
+        if (failing) throw new Error('disk full');
+        await storage.saveRun(value);
+      },
+    },
+    notifier, now: () => 1000,
+  });
+  const session = runtime.open(key);
+  await assert.rejects(() => session.saveRun(run, 'en'));
+  session.realignReminderOnClose(flow, 'en'); // Approved, but navigation was abandoned.
+
+  failing = false; // Retry on the still-visible Runner succeeds.
+  assert.deepEqual(await session.saveRun(run, 'en'), { reminder: 'synced' });
+  assert.deepEqual([...scheduled], sequentialReminderIdsForRun(run.id));
+
+  // A later normal exit must not cancel/reschedule the now-correct reminder.
+  scheduleFails = true;
+  session.close();
+  await runtime.open(key).loadRun(flow);
+  assert.deepEqual([...scheduled], sequentialReminderIdsForRun(run.id));
+});
+
+test('a save whose reminder sync failed keeps the close realignment armed', async () => {
+  const storage = createStorage(createInMemoryKV());
+  let scheduleFails = true;
+  const scheduled = new Set<string>();
+  const notifier = {
+    ...noopNotifier,
+    async cancel(ids: string[]) { for (const id of ids) scheduled.delete(id); },
+    async schedule(reminders: Parameters<typeof noopNotifier.schedule>[0]) {
+      if (scheduleFails) throw new Error('transient schedule failure');
+      for (const reminder of reminders) scheduled.add(reminder.id);
+    },
+  };
+  const runtime = createDefinitionRuntime({ storage, notifier, now: () => 1000 });
+  const session = runtime.open(key);
+  session.realignReminderOnClose(flow, 'en');
+  assert.deepEqual(await session.saveRun(run, 'en'), { reminder: 'failed' });
+  scheduleFails = false;
+  session.close(); // Second chance: realign from the persisted Run.
+  await runtime.open(key).loadRun(flow);
+  assert.deepEqual([...scheduled], sequentialReminderIdsForRun(run.id));
+});

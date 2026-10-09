@@ -10,6 +10,11 @@ export function startAction(now: Instant): RunEvent {
   return { type: 'started', at: now };
 }
 
+/** 开始（幂等意图）：已开始的 Run 不再产生 started——连点或渲染前重复派发不会抛错。 */
+export function startIfIdleAction(events: RunEvent[], now: Instant): RunEvent | null {
+  return events.some((e) => e.type === 'started') ? null : startAction(now);
+}
+
 /** 完成当前步：gate 节点记为确认，其余记为完成。 */
 export function completeCurrentAction(flow: Flow, events: RunEvent[], now: Instant): RunEvent | null {
   const s = project(flow, events, now);

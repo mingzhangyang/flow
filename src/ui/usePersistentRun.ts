@@ -9,7 +9,7 @@ import { reduce, project, type RunState } from '../runtime/engine';
 import { type RuntimeSession } from '../session/definitionRuntime';
 import { activeRunId } from '../session/runPersistence';
 import {
-  startAction,
+  startIfIdleAction,
   completeCurrentAction,
   skipCurrentAction,
   pauseAction,
@@ -144,7 +144,7 @@ export function usePersistentRun(
     },
     flow: runtimeFlow,
     state,
-    start: () => apply(() => startAction(Date.now())),
+    start: () => apply((r) => startIfIdleAction(r.events, Date.now())),
     complete: () => apply((r) => completeCurrentAction(r.flow, r.events, Date.now())),
     skip: () => apply((r) => skipCurrentAction(r.flow, r.events, Date.now())),
     pause: () => apply((r) => pauseAction(r.flow, r.events, Date.now())),
