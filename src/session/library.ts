@@ -1,6 +1,7 @@
 // Flow 库服务：用户 Flow、历史修订、开放格式导入/导出与整库备份。
 
 import { type Flow } from '../domain/types';
+import { sameJsonValue } from '../domain/jsonValue';
 import { type Instant } from '../runtime/clock';
 import { deserializeFlow } from '../domain/serialize';
 import { type Storage } from '../storage/storage';
@@ -21,28 +22,6 @@ export interface Library {
 }
 
 export const MAX_REVISIONS = 50;
-
-function sameJsonValue(left: unknown, right: unknown): boolean {
-  if (Object.is(left, right)) return true;
-  if (Array.isArray(left) || Array.isArray(right)) {
-    return Array.isArray(left) &&
-      Array.isArray(right) &&
-      left.length === right.length &&
-      left.every((value, index) => sameJsonValue(value, right[index]));
-  }
-  if (
-    typeof left !== 'object' || left === null ||
-    typeof right !== 'object' || right === null
-  ) {
-    return false;
-  }
-  const a = left as Record<string, unknown>;
-  const b = right as Record<string, unknown>;
-  const aKeys = Object.keys(a).filter((key) => a[key] !== undefined).sort();
-  const bKeys = Object.keys(b).filter((key) => b[key] !== undefined).sort();
-  return aKeys.length === bKeys.length &&
-    aKeys.every((key, index) => key === bKeys[index] && sameJsonValue(a[key], b[key]));
-}
 
 function sameFlowContent(left: Flow, right: Flow): boolean {
   const { version: _leftVersion, ...leftContent } = left;

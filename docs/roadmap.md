@@ -86,6 +86,7 @@
 - [x] 提醒能力对用户诚实：`Notifier.status()`（ready/undetermined/denied/unsupported）——权限被拒时日程视图显示警示横幅 + 「去系统设置」；网页版明示不支持定时提醒（e2e 断言）。权限请求时机本就延迟在首次登记提醒时（schedule 内 ensurePermission）　`E6,C5,C10`
 - [x] 通知点击回流：提醒仅携带稳定 `flowId/nodeId/definitionKey`；运行中点击与 App 被杀后的冷启动都回到对应 Flow，消费后清除 last response，避免下次普通启动重复跳转　`C5,C6,C10`
 - [x] SDK 57 补丁依赖收口：根依赖保持 `expo ~57.0.26`，验证后的 lockfile 实际解析 Expo 57.0.27 / React Native 0.86.3，并通过 `expo install --check` + `expo-doctor`　`C10`
+- [x] 顺序型 Run 持久化闭环（发布阻断项）：保存失败不再静默吞掉——会话层分开上报快照写入与提醒同步，运行页显示失败提示与重试，离开前等待保存落定、失败需确认；契约测试覆盖失败→重试→重放一致，e2e 覆盖写入失败、取消/放弃离开与刷新恢复　`C5,C6,E2,E4`
 - [ ] 提醒断档修复（后续，需真机）：Android 13+ 通知权限与精确闹钟（`SCHEDULE_EXACT_ALARM`）编排、Doze 实测、电池优化白名单引导；被拒横幅的真机行为验证　`C5`
 - [ ] 真机验证本地推送（清单见 `docs/release.md`：权限时机、强杀/重启/Doze 到点、被拒横幅、国产 ROM）——需真机
 - [x] 品牌资产：图标/自适应图标/splash/favicon 已从 `assets/brand/` SVG 源渲染（`scripts/render-brand.mjs`）

@@ -2,10 +2,13 @@
 // 沉浸式深墨绿场景：进入运行即切换到深色，环 + 珠（应用图标的形状语言）承载进度，
 // 极细大字倒计时是画面的主角。运行状态、持久化（C6）与通知（C5）收在 usePersistentRun。
 
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { View, Text, ScrollView, StyleSheet, AppState, Linking } from 'react-native';
 import { type Flow } from '../domain/types';
 import { type RuntimeSession } from '../session/definitionRuntime';
 import { usePersistentRun } from './usePersistentRun';
+import { createLeaveGuard, shareInFlight } from './leaveGuard';
+import { promptLeaveConfirmation } from './confirmLeave';
 import { Timeline } from './Timeline';
 import { ProgressRing } from './ProgressRing';
 import { fmtDuration } from './format';
@@ -16,11 +19,14 @@ import { MotionPressable } from './MotionPressable';
 import { MotionReveal } from './MotionReveal';
 
 const RING = 268;
+/** Back waits this long for an in-flight save before asking instead of hanging. */
+const LEAVE_SAVE_WAIT_MS = 1500;
 
 export function RunnerScreen(props: {
   flow: Flow;
   session: RuntimeSession;
   onExit: () => void;
+  onRegisterExit?: (request: (() => Promise<boolean>) | null) => void;
 }) {
   const { locale, t } = useI18n();
   const run = usePersistentRun(
@@ -43,12 +49,62 @@ export function RunnerScreen(props: {
   const progressMotionKey = `${state.status}:${state.currentIndex}:${node?.id ?? 'none'}`;
   const stepMotionKey = `${state.status}:${state.currentIndex}:${node?.id ?? 'none'}`;
 
+  // All exits (header, Android Back, notification replacement) ask this one
+  // screen-owned guard. An in-flight save gets a bounded wait; a failed or still
+  // unconfirmed one asks (C6). Reminders need no exit-time work: the session derives
+  // them from the persisted Run only.
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; };
+  }, []);
+  const latest = useRef(run);
+  latest.current = run;
+  const confirmLeave = useRef<(done: (approved: boolean) => void) => void>(() => {});
+  confirmLeave.current = (done) => promptLeaveConfirmation({
+    title: t.runUnsavedTitle,
+    message: latest.current.save.status === 'saving' ? t.runSavePendingExit : t.runUnsavedExit,
+    stayLabel: t.cancel,
+    leaveLabel: t.runLeaveAnyway,
+  }, done);
+  const leaveGuard = useMemo(() => createLeaveGuard({
+    disposition: () => latest.current.needsLeaveConfirmation() ? 'confirm' : 'allow',
+    prompt: (done) => confirmLeave.current(done),
+  }), []);
+  // Concurrent exits (header + notification + Back) share ONE wait-and-confirm attempt,
+  // so a later request can never open a second, stale prompt after the first resolves.
+  const requestLeave = useMemo(() => shareInFlight(async (): Promise<boolean> => {
+    await latest.current.saveSettledWithin(LEAVE_SAVE_WAIT_MS);
+    if (!alive.current) return false; // This Runner is gone; nothing left to authorize.
+    return await leaveGuard.request() && alive.current;
+  }), [leaveGuard]);
+  const requestExit = (): void => {
+    void requestLeave().then((approved) => {
+      if (approved && alive.current && props.session.isOpen()) props.onExit();
+    });
+  };
+  useLayoutEffect(() => {
+    props.onRegisterExit?.(requestLeave);
+    return () => props.onRegisterExit?.(null);
+  }, [requestLeave, props.onRegisterExit]);
+  useEffect(() => () => leaveGuard.cancel(), [leaveGuard]);
+
+  // Back from system settings: re-sync so a newly granted permission clears the warning.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active' && latest.current.save.reminderIssue === 'denied') {
+        latest.current.retrySave();
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
   if (run.status === 'loading') return <View style={styles.screen} />;
   if (run.status === 'error') {
     return (
       <View style={styles.screen}>
         <View style={styles.header}>
-          <HeaderBackButton accessibilityLabel={t.back} color={dark.accent} onPress={props.onExit} />
+          <HeaderBackButton accessibilityLabel={t.back} color={dark.accent} onPress={requestExit} />
           <Text style={styles.title} numberOfLines={1}>{props.flow.title}</Text>
           <HeaderSideSpacer />
         </View>
@@ -65,12 +121,31 @@ export function RunnerScreen(props: {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <HeaderBackButton accessibilityLabel={t.back} color={dark.accent} onPress={props.onExit} />
+        <HeaderBackButton accessibilityLabel={t.back} color={dark.accent} onPress={requestExit} />
         <Text style={styles.title} numberOfLines={1}>{flow.title}</Text>
         <HeaderSideSpacer />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        {run.save.status === 'failed' || run.save.reminderIssue === 'failed' ? (
+          <View style={styles.saveIssue} accessibilityRole="alert">
+            <Text style={styles.saveIssueText}>
+              {run.save.status === 'failed' ? t.runSaveFailed : t.runReminderSyncFailed}
+            </Text>
+            <MotionPressable style={styles.retry} onPress={run.retrySave}>
+              <Text style={styles.retryText}>{t.retry}</Text>
+            </MotionPressable>
+          </View>
+        ) : run.save.reminderIssue === 'denied' ? (
+          // Same honesty contract as the Schedule screen (E6): a timer that cannot ring says so.
+          <MotionPressable accessibilityRole="button" accessibilityLabel={t.scheduleNotifSettings}
+            style={styles.saveIssue} onPress={() => { Linking.openSettings().catch(() => {}); }}>
+            <Text style={styles.saveIssueText}>{t.scheduleNotifDenied}</Text>
+            <Text style={styles.retryText}>{t.scheduleNotifSettings}</Text>
+          </MotionPressable>
+        ) : run.save.reminderIssue === 'unsupported' ? (
+          <Text style={styles.reminderNote}>{t.scheduleNotifWeb}</Text>
+        ) : null}
         <View style={styles.stage}>
           <Text style={styles.kicker}>
             {state.status === 'completed'
@@ -187,6 +262,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
   },
   retryText: { color: dark.accent, fontSize: type.body, fontWeight: '600' },
+  saveIssue: {
+    flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm,
+    borderRadius: radius.md, borderWidth: 1, borderColor: dark.warm,
+    backgroundColor: dark.surface, padding: spacing.md,
+  },
+  reminderNote: { color: dark.textMuted, fontSize: type.caption + 1, lineHeight: 18, textAlign: 'center' },
+  saveIssueText: { flex: 1, minWidth: 0, flexBasis: 200, color: dark.warm, fontSize: type.body, lineHeight: 21 },
   stage: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.lg },
   kicker: { fontSize: type.caption + 1, color: dark.textMuted, letterSpacing: 2, marginBottom: spacing.md },
   clock: {

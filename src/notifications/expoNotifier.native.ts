@@ -41,8 +41,8 @@ export function createExpoNotifier(): Notifier {
 
   return {
     async schedule(reminders) {
-      if (reminders.length === 0) return;
-      if (!(await ensurePermission())) return;
+      if (reminders.length === 0) return 'scheduled';
+      if (!(await ensurePermission())) return 'denied';
       for (const r of reminders) {
         await Notifications.scheduleNotificationAsync({
           identifier: r.id,
@@ -63,6 +63,7 @@ export function createExpoNotifier(): Notifier {
           trigger: triggerFor(r),
         });
       }
+      return 'scheduled';
     },
     async cancel(ids) {
       for (const id of ids) await Notifications.cancelScheduledNotificationAsync(id);

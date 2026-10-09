@@ -50,6 +50,23 @@ export function createLeaveGuard(deps: {
 }
 
 /**
+ * Concurrent callers share ONE in-flight attempt (e.g. a bounded save wait followed by
+ * the confirmation). A new attempt starts only after the shared one settles, so a later
+ * exit request can never open a second, stale prompt.
+ */
+export function shareInFlight<T>(attempt: () => Promise<T>): () => Promise<T> {
+  let pending: Promise<T> | null = null;
+  return () => {
+    if (pending) return pending;
+    const current: Promise<T> = Promise.resolve()
+      .then(attempt)
+      .finally(() => { if (pending === current) pending = null; });
+    pending = current;
+    return current;
+  };
+}
+
+/**
  * Route ownership is the same object identity used by App.activeRoute.
  * An old confirmation cannot replace a newer route, regardless of approval.
  */

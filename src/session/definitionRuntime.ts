@@ -13,6 +13,18 @@ import { type Notifier } from '../notifications/notifier';
 import { planSequentialReminder } from '../notifications/plan';
 import { sequentialReminderIdsForRun } from '../notifications/notificationIdentity';
 import { activeRunId, loadRunForDefinition } from './runPersistence';
+import { sameJsonValue } from '../domain/jsonValue';
+
+export interface RunSaveOutcome {
+  /**
+   * The sequential reminder for the snapshot that was just persisted:
+   * - synced: installed (or none is needed for this state).
+   * - failed: the platform call threw; a retry re-syncs.
+   * - denied / unsupported: nothing installed (no permission / no scheduled notifications
+   *   on this platform). Not an error to retry, but the UI must say so (E6).
+   */
+  reminder: 'synced' | 'failed' | 'denied' | 'unsupported';
+}
 
 export interface RuntimeSession {
   readonly id: number;
@@ -20,7 +32,15 @@ export interface RuntimeSession {
   isOpen(): boolean;
   close(): void;
   loadRun(flow: Flow): Promise<Run>;
-  saveRun(run: Run, locale: Locale): Promise<void>;
+  /**
+   * Durably writes the full Run snapshot, THEN syncs the sequential reminder to it.
+   * Invariant (architecture.md, Notification): the installed reminder is always derived
+   * from the persisted Run, never from unsaved screen state. A rejected write is checked
+   * by reading back what is stored: the exact snapshot counts as confirmed; otherwise the
+   * reminder is realigned to whatever is stored and the call rejects. A confirmed write
+   * resolves with whether its reminder is actually installed.
+   */
+  saveRun(run: Run, locale: Locale): Promise<RunSaveOutcome>;
   loadCheckIns(): Promise<CheckIn[]>;
   /** Returns the confirmed persisted log; failures reject and do not claim commit. */
   changeCheckIn(change: CheckInChange): Promise<CheckIn[]>;
@@ -70,6 +90,19 @@ export function createDefinitionRuntime(deps: {
       let closed = false;
       const close = (): void => { closed = true; };
       lane.closeCurrent = close;
+      /** Installs exactly what `stored` plans; null (nothing stored / unreadable) plans nothing. */
+      const syncReminder = async (
+        runId: string, stored: Run | null, locale: Locale,
+      ): Promise<RunSaveOutcome['reminder']> => {
+        await deps.notifier.cancel(sequentialReminderIdsForRun(runId));
+        if (!stored) return 'synced';
+        const planned = planSequentialReminder(
+          stored.flow, stored.events, deps.now(), stored.id, locale, definitionKey,
+        );
+        if (!planned) return 'synced';
+        const delivery = await deps.notifier.schedule([planned]);
+        return delivery === 'scheduled' ? 'synced' : delivery;
+      };
       const submit = <T>(task: () => Promise<T>): Promise<T> => {
         if (closed || lane.blocked) return Promise.reject(new Error('runtime session is closed'));
         return enqueue(lane, task);
@@ -83,12 +116,31 @@ export function createDefinitionRuntime(deps: {
         saveRun: (run, locale) => submit(async () => {
           assertDefinitionKeyForFlow(definitionKey, run.flow.id);
           if (run.id !== activeRunId(definitionKey)) throw new Error('Run does not belong to session');
-          await deps.storage.saveRun(run);
-          const reminder = planSequentialReminder(
-            run.flow, run.events, deps.now(), run.id, locale, definitionKey,
-          );
-          await deps.notifier.cancel(sequentialReminderIdsForRun(run.id));
-          if (reminder) await deps.notifier.schedule([reminder]);
+          try {
+            await deps.storage.saveRun(run);
+          } catch (writeError) {
+            // A rejected write may still have landed. Reminders follow what is actually
+            // stored, so read it back: the exact snapshot -> confirmed after all; anything
+            // else (older Run, nothing, unreadable) -> realign to it and reject.
+            let stored: Run | null = null;
+            let confirmed = false;
+            try {
+              stored = await deps.storage.loadRun(run.id);
+              confirmed = stored !== null && sameJsonValue(stored, run);
+            } catch {
+              stored = null; // Unreadable: reopening fails closed, so nothing may ring for it.
+            }
+            if (!confirmed) {
+              // Best effort: the save is reported failed either way, and Retry re-syncs.
+              await syncReminder(run.id, stored, locale).catch(() => {});
+              throw writeError;
+            }
+          }
+          try {
+            return { reminder: await syncReminder(run.id, run, locale) };
+          } catch {
+            return { reminder: 'failed' };
+          }
         }),
         loadCheckIns: () => submit(() => deps.storage.loadCheckIns(definitionKey)),
         changeCheckIn: (change) => submit(() => deps.storage.changeCheckIn(definitionKey, change)),

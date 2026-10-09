@@ -15,7 +15,7 @@ function recordingNotifier() {
   const scheduled: Reminder[][] = [];
   const cancelled: string[][] = [];
   const notifier: Notifier = {
-    async schedule(reminders) { scheduled.push(reminders); },
+    async schedule(reminders) { scheduled.push(reminders); return 'scheduled'; },
     async cancel(ids) { cancelled.push(ids); },
     async cancelAll() {},
     async status() { return 'ready'; },
@@ -209,6 +209,7 @@ for (const recovery of ['retry', 'remove'] as const) {
           pending.add(reminder.id);
           if (fail && i === 0) throw new Error('native batch failed after one scheduled item');
         }
+        return 'scheduled';
       },
     };
     const opts = { kv, notifier, flows: [{ flow: medicationFlow, definitionKey: medKey }], now: NOW, deviceTz: tz };
@@ -265,7 +266,7 @@ for (const failure of ['cancel', 'final registry write'] as const) {
           if (fail && failure === 'cancel') throw new Error('partial cancellation');
         }
       },
-      async schedule(reminders) { for (const r of reminders) pending.add(r.id); },
+      async schedule(reminders) { for (const r of reminders) pending.add(r.id); return 'scheduled'; },
     };
     const opts = { kv, notifier, flows: [{ flow: medicationFlow, definitionKey: medKey }], now: NOW, deviceTz: tz };
     await assert.rejects(() => rescheduleReminders(opts));

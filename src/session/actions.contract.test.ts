@@ -8,6 +8,7 @@ import { reduce } from '../runtime/engine';
 import { coffeeFlow } from '../examples/coffee';
 import {
   startAction,
+  startIfIdleAction,
   completeCurrentAction,
   skipCurrentAction,
   pauseAction,
@@ -20,6 +21,12 @@ const T0 = 1_000_000;
 function runWith(events: RunEvent[]): Run {
   return events.reduce<Run>((r, ev) => reduce(r, ev), { id: 'r', flow: coffeeFlow, events: [] });
 }
+
+test('startIfIdleAction：未开始才产生 started，重复开始返回 null 而不是非法事件', () => {
+  assert.deepEqual(startIfIdleAction([], T0), { type: 'started', at: T0 });
+  const started = runWith([startAction(T0)]);
+  assert.equal(startIfIdleAction(started.events, T0 + 1), null);
+});
 
 test('startAction 产生 started', () => {
   assert.deepEqual(startAction(T0), { type: 'started', at: T0 });

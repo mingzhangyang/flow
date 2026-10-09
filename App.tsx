@@ -112,8 +112,7 @@ export default function App() {
   // bypassing pending/failed writes or Editor dirty-discard.
   const authorizeLeave = useCallback((origin: Screen): Promise<boolean> => {
     if (activeRoute.current !== origin) return Promise.resolve(false);
-    const protectedRoute = origin.name === 'edit' ||
-      (origin.name === 'run' && origin.flow.topology === 'scheduled');
+    const protectedRoute = origin.name === 'edit' || origin.name === 'run';
     const request = protectedRoute ? routeExits.get(origin) : async () => true;
     if (!request) return Promise.resolve(false);
     return authorizeRouteExit(origin, () => activeRoute.current, request);
@@ -140,7 +139,7 @@ export default function App() {
         Keyboard.isVisible(),
       );
       if (target === 'system') return false;
-      if (target === 'editor' || target === 'schedule') {
+      if (target === 'editor' || target === 'schedule' || target === 'runner') {
         // The same async confirmation used by notification-driven replacement.
         // Recheck route identity after the Alert settles: stale confirmations
         // must never close or navigate a newer RuntimeSession.
@@ -179,11 +178,10 @@ export default function App() {
     currentSession.current = session;
     const next: Screen = { name: 'run', flow: entry.flow, session };
     // The notification response source processes taps serially. Do not release
-    // its next queued tap until this new scheduled screen has registered its
-    // leave guard in useLayoutEffect; no second tap can fall through a mounting
-    // gap or be silently consumed without navigation.
-    const mounted = entry.flow.topology === 'scheduled'
-      ? routeExits.waitFor(next) : Promise.resolve(true);
+    // its next queued tap until this new run screen (scheduled or sequential)
+    // has registered its leave guard in useLayoutEffect; no second tap can fall
+    // through a mounting gap or be silently consumed without navigation.
+    const mounted = routeExits.waitFor(next);
     navigate(next);
     await mounted;
   }, [authorizeLeave, catalogCoordinator, navigate, routeExits, runtime]);
@@ -398,7 +396,8 @@ export default function App() {
             key={screen.session.id}
             flow={screen.flow}
             session={screen.session}
-            onExit={home}
+            onRegisterExit={(request) => routeExits.set(screen, request)}
+            onExit={() => { if (activeRoute.current === screen) home(); }}
           />
         )
       ) : screen.name === 'edit' ? (

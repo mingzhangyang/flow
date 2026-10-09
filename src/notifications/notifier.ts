@@ -12,9 +12,18 @@ import { type Reminder } from './plan';
  */
 export type ReminderAvailability = 'ready' | 'undetermined' | 'denied' | 'unsupported';
 
+/**
+ * schedule 的结果——端口必须如实说明提醒是否真的排上（E6），不能「静默成功」：
+ * - scheduled：已全部排入（空列表也算）。
+ * - denied：没有通知权限，什么也没排。
+ * - unsupported：平台没有定时本地通知能力（如网页版），什么也没排。
+ * 平台调用本身出错则 reject。
+ */
+export type ReminderDelivery = 'scheduled' | 'denied' | 'unsupported';
+
 export interface Notifier {
-  /** 按 id 排入提醒（同 id 视为替换）。 */
-  schedule(reminders: Reminder[]): Promise<void>;
+  /** 按 id 排入提醒（同 id 视为替换），并如实返回是否排上。 */
+  schedule(reminders: Reminder[]): Promise<ReminderDelivery>;
   cancel(ids: string[]): Promise<void>;
   cancelAll(): Promise<void>;
   /** 当前环境能否真正送达提醒（权限/平台能力）。 */
@@ -22,7 +31,9 @@ export interface Notifier {
 }
 
 export const noopNotifier: Notifier = {
-  async schedule() {},
+  async schedule() {
+    return 'unsupported';
+  },
   async cancel() {},
   async cancelAll() {},
   async status() {

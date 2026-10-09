@@ -31,7 +31,7 @@ test('Android Back decision reads the latest run topology, including a same-name
   // Its handler must dereference the live route rather than a captured render.
   let activeRoute: ApplicationBackRoute = { name: 'run', topology: 'sequential' };
   const pressBack = () => decideApplicationBackTarget(activeRoute, false);
-  assert.equal(pressBack(), 'home');
+  assert.equal(pressBack(), 'runner'); // Sequential Run exits through its save-aware guard.
   activeRoute = { name: 'run', topology: 'scheduled' };
   assert.equal(pressBack(), 'schedule');
   activeRoute = { name: 'edit' };

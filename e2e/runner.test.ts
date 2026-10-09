@@ -28,6 +28,8 @@ test('法压咖啡：开始 → 计时 → 暂停 → 刷新后恢复 → 跳过
   await page.getByText('完成本步', { exact: true }).click();
   await expectText(page, '浸泡'); // 第 2 步：计时 240s
   await expectText(page, '让咖啡粉充分萃取'); // rationale 展示（C2）
+  // 计时步骤需要到点提醒；网页版排不进去，必须如实说明而不是报「已同步」（E6）
+  await expectText(page, /网页版不支持定时提醒/);
 
   // 计时在走：拨快 10s 后剩余应落在 03:5x
   await page.clock.fastForward(10_000);
@@ -51,4 +53,62 @@ test('法压咖啡：开始 → 计时 → 暂停 → 刷新后恢复 → 跳过
   await page.getByText('上一步', { exact: true }).click();
   await expectText(page, /第 2 \/ 5 步/);
   assert.equal(await page.getByText('浸泡', { exact: true }).count() > 0, true);
+});
+
+test('顺序型运行：进度写入失败如实提示，可重试；离开需确认，放弃后回到上次保存的步骤', async () => {
+  const page = await e2e.openApp({
+    initScripts: [`
+      (() => {
+        const original = Storage.prototype.setItem;
+        window.__failRunWrites = false;
+        Storage.prototype.setItem = function (key, value) {
+          if (window.__failRunWrites && String(key).includes('run:')) {
+            throw new Error('simulated durable-write failure');
+          }
+          return original.call(this, key, value);
+        };
+      })();
+    `],
+  });
+  const failRunWrites = (fail: boolean) => page.evaluate((value) => {
+    (globalThis as unknown as { __failRunWrites: boolean }).__failRunWrites = value;
+  }, fail);
+
+  await page.getByText('法压咖啡', { exact: true }).first().click();
+  await page.getByText('开始', { exact: true }).click();
+  await page.getByText('完成本步', { exact: true }).click();
+  await expectText(page, /第 2 \/ 5 步/);
+
+  // 写入失败：不再静默吞掉（C6）
+  await failRunWrites(true);
+  await page.getByText('暂停', { exact: true }).click();
+  await expectText(page, /已暂停/);
+  await expectText(page, /进度未能保存/);
+
+  // 离开需确认；取消则留在原页，可继续重试
+  let prompted = '';
+  page.once('dialog', (dialog) => { prompted = dialog.message(); void dialog.dismiss(); });
+  await page.getByRole('button', { name: '‹ 返回' }).click();
+  await expectText(page, /进度未能保存/);
+  assert.match(prompted, /运行进度尚未确认保存/);
+
+  // 重试成功后提示消失，刷新可恢复到暂停状态（E2）
+  await failRunWrites(false);
+  await page.getByText('重试', { exact: true }).click();
+  await page.getByText(/进度未能保存/).waitFor({ state: 'detached' });
+  await page.reload();
+  await page.getByText('准时', { exact: true }).waitFor({ timeout: 30_000 });
+  await page.getByText('法压咖啡', { exact: true }).first().click();
+  await expectText(page, /第 2 \/ 5 步 · 已暂停/);
+
+  // 再次失败后确认放弃：回到首页，重开为上次成功保存的步骤（仍暂停）
+  await failRunWrites(true);
+  await page.getByText('恢复', { exact: true }).click();
+  await expectText(page, /进度未能保存/);
+  page.once('dialog', (dialog) => { void dialog.accept(); });
+  await page.getByRole('button', { name: '‹ 返回' }).click();
+  await page.getByText('准时', { exact: true }).waitFor();
+  await failRunWrites(false);
+  await page.getByText('法压咖啡', { exact: true }).first().click();
+  await expectText(page, /第 2 \/ 5 步 · 已暂停/);
 });

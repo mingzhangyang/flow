@@ -169,3 +169,49 @@ test('Import double-click does not commit the same flow twice', async () => {
   await page.getByRole('button', { name: '‹ 返回' }).click();
   await expectText(page, 'v1');
 });
+
+test('web Back on guarded screens shows a real confirmation: cancel stays, confirm leaves', async () => {
+  const page = await e2e.openApp({
+    initScripts: [`
+      (() => {
+        const original = Storage.prototype.setItem;
+        Storage.prototype.setItem = function (key, value) {
+          if (String(key).includes('checkins:v1:')) throw new Error('simulated durable-write failure');
+          return original.call(this, key, value);
+        };
+      })();
+    `],
+  });
+  const answerNextDialog = (accept: boolean): Promise<string> => new Promise((resolve) => {
+    page.once('dialog', (dialog) => {
+      resolve(dialog.message());
+      void (accept ? dialog.accept() : dialog.dismiss());
+    });
+  });
+
+  // Schedule: a failed check-in previously made Back silently do nothing on web.
+  await page.getByText('每日服药提醒', { exact: true }).first().click();
+  await expectText(page, '可服用');
+  await page.getByText('打卡', { exact: true }).first().click();
+  await expectText(page, /打卡未确认保存/);
+  let shown = answerNextDialog(false);
+  await page.getByRole('button', { name: '‹ 返回' }).click();
+  assert.match(await shown, /打卡尚未确认保存/);
+  await expectText(page, /打卡未确认保存/);
+  shown = answerNextDialog(true);
+  await page.getByRole('button', { name: '‹ 返回' }).click();
+  await shown;
+  await expectText(page, '示例');
+
+  // Editor: a dirty draft asks before discarding.
+  await page.getByText('＋ 日程', { exact: true }).click();
+  await page.getByText('每天', { exact: true }).click();
+  shown = answerNextDialog(false);
+  await page.getByRole('button', { name: '‹ 返回' }).click();
+  assert.match(await shown, /放弃未保存的更改/);
+  await page.getByText('仅今天', { exact: true }).waitFor();
+  shown = answerNextDialog(true);
+  await page.getByRole('button', { name: '‹ 返回' }).click();
+  await shown;
+  await expectText(page, '示例');
+});

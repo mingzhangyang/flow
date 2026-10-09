@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createLeaveGuard, createRouteExitRegistry, authorizeRouteExit, type LeaveDisposition } from './leaveGuard';
+import { createLeaveGuard, createRouteExitRegistry, authorizeRouteExit, shareInFlight, type LeaveDisposition } from './leaveGuard';
 
 function confirmHarness(initial: LeaveDisposition) {
   let disposition = initial;
@@ -170,4 +170,39 @@ test('cleanup/re-registration for the SAME route never incorrectly approves a wa
   assert.equal(await guard(), false);
   assert.equal(called, 1);
   registry.close();
+});
+
+test('concurrent exit requests share one wait-and-confirm attempt; no stale second prompt', async () => {
+  let attempts = 0;
+  let finish!: (approved: boolean) => void;
+  const request = shareInFlight(() => {
+    attempts += 1;
+    return new Promise<boolean>((resolve) => { finish = resolve; });
+  });
+  const header = request();
+  const notification = request(); // Arrives while the first is still waiting.
+  assert.equal(header, notification);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(attempts, 1);
+  finish(true);
+  assert.equal(await header, true);
+  assert.equal(await notification, true);
+
+  // Only after it settles may a NEW request start a fresh attempt.
+  const later = request();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(attempts, 2);
+  finish(false);
+  assert.equal(await later, false);
+});
+
+test('a rejected shared attempt is released so the next exit can try again', async () => {
+  let attempts = 0;
+  const request = shareInFlight(async () => {
+    attempts += 1;
+    if (attempts === 1) throw new Error('prompt failed');
+    return true;
+  });
+  await assert.rejects(request(), /prompt failed/);
+  assert.equal(await request(), true);
 });

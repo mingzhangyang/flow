@@ -15,7 +15,7 @@ export type ApplicationScreenName =
 
 export type ApplicationBackDecision = 'system' | 'exit-screen';
 
-export type ApplicationBackTarget = 'system' | 'editor' | 'schedule' | 'home';
+export type ApplicationBackTarget = 'system' | 'editor' | 'schedule' | 'runner' | 'home';
 export interface ApplicationBackRoute {
   name: ApplicationScreenName;
   topology?: 'sequential' | 'scheduled';
@@ -28,7 +28,7 @@ export function decideApplicationBackTarget(
 ): ApplicationBackTarget {
   if (decideApplicationBack(route.name, keyboardVisible) === 'system') return 'system';
   if (route.name === 'edit') return 'editor';
-  if (route.name === 'run' && route.topology === 'scheduled') return 'schedule';
+  if (route.name === 'run') return route.topology === 'scheduled' ? 'schedule' : 'runner';
   return 'home';
 }
 
